@@ -28,6 +28,10 @@ void setRangeEnabled(bool enabled);
 bool isRangeEnabled();
 void setPlacementRadius(int radius);
 int  getPlacementRadius();
+// Manual mode: only place while the right mouse button is held, instead of
+// placing automatically. Applies to both easy-place and range placement.
+void setManualMode(bool manual);
+bool isManualMode();
 // Name of the block-entity block (chest, sign, hopper, ...) the crosshair
 // points at, for the HUD to identify projected placeholder boxes.
 std::string getAimedBlockEntityName();

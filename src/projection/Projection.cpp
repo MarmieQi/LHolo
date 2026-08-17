@@ -60,6 +60,10 @@
 #include "mc/network/MinecraftPacketIds.h"
 #include "mc/network/Packet.h"
 #include "mc/network/packet/TextPacket.h"
+#include "mc/deps/nbt/CompoundTag.h"
+#include "mc/deps/nbt/IntTag.h"
+#include "mc/deps/nbt/StringTag.h"
+#include "mc/deps/nbt/Tag.h"
 #include "mc/world/actor/Actor.h"
 #include "mc/world/Facing.h"
 #include "mc/world/level/BlockSource.h"
@@ -410,6 +414,32 @@ bool projectionStatesMatch(Block const& expected, Block const& actual) {
     }
 
     return false;
+}
+
+// Front face (Facing 0-5) for a block-entity placeholder, read from whichever
+// facing state the block actually carries. Chests and similar block entities
+// moved from the integer facing_direction to the string
+// minecraft:cardinal_direction, so both are handled. Returns -1 when the block
+// has no horizontal facing.
+int blockFrontFace(Block const& block) {
+    for (auto const& [key, value] : block.getSerializationId()) {
+        if (key != "states") continue;
+        if (!value.hold<CompoundTag>()) break;
+        for (auto const& [stateKey, stateValue] : value.get<CompoundTag>()) {
+            if (stateKey == "facing_direction" && stateValue.getId() == Tag::Type::Int) {
+                return stateValue.get<IntTag>().data;
+            }
+            if (stateKey == "minecraft:cardinal_direction" && stateValue.getId() == Tag::Type::String) {
+                std::string const& facing = static_cast<std::string const&>(stateValue.get<StringTag>());
+                if (facing == "north") return static_cast<int>(Facing::Name::North);
+                if (facing == "south") return static_cast<int>(Facing::Name::South);
+                if (facing == "west")  return static_cast<int>(Facing::Name::West);
+                if (facing == "east")  return static_cast<int>(Facing::Name::East);
+            }
+        }
+        break;
+    }
+    return -1;
 }
 
 BlockPos transformStructurePosition(
@@ -955,10 +985,7 @@ void renderProjection(BaseActorRenderContext& renderContext, bool renderAlphaLay
                     bool const isSign = expectedBlock->getTypeName().find("sign") != std::string::npos;
                     // Facing (FacingDirection state: North=2 South=3 West=4 East=5)
                     // decides which cube face is the block's front.
-                    int frontFace = -1;
-                    if (auto const facing = expectedBlock->getState<int>(VanillaStates::FacingDirection())) {
-                        frontFace = *facing;
-                    }
+                    int const frontFace = blockFrontFace(*expectedBlock);
                     float const px = static_cast<float>(p.x);
                     float const py = static_cast<float>(p.y);
                     float const pz = static_cast<float>(p.z);

@@ -14,7 +14,7 @@ option_end()
 
 add_repositories("levimc-repo " .. (get_config("levimc_repo") or "https://github.com/LiteLDev/xmake-repo.git"))
 
-add_requires("levilamina 26.20.0", {configs = {target_type = get_config("target_type") or "client"}})
+add_requires("levilamina 26.20.7", {configs = {target_type = get_config("target_type") or "client"}})
 add_requires("levibuildscript")
 add_requires("imgui v1.91.9", {configs = {shared = false, win32 = true, dx11 = true, no_demo_windows = true}})
 add_requires("minhook", {configs = {shared = false}})

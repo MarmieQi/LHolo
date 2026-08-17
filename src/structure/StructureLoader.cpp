@@ -16,6 +16,7 @@
 
 #include "structure/StructureLoader.h"
 
+#include "structure/JavaBlockMapping.h"
 #include "place/PlaceHelper.h"
 #include "plugin/LHolo.h"
 #include "projection/Projection.h"
@@ -540,12 +541,23 @@ std::optional<std::string> inflateGzip(std::string_view compressed, std::string&
     return output;
 }
 
-Block const* resolveJavaBlock(JavaNbtTag const& paletteEntry) {
+ResolvedJavaBlock resolveJavaBlock(JavaNbtTag const& paletteEntry) {
     auto const* compound = std::get_if<JavaNbtTag::Compound>(&paletteEntry.value);
-    if (!compound) return nullptr;
+    if (!compound) return {};
     auto const* name = javaValue<std::string>(*compound, "Name");
-    if (!name || name->empty()) return nullptr;
-    return BlockTypeRegistry::get().lookupByName(HashedString{*name}, 0, false);
+    if (!name || name->empty()) return {};
+    // Carry the Java `Properties` (all string values) into the mapper so that
+    // orientation and other stored states survive the Java -> Bedrock crossing.
+    std::vector<std::pair<std::string, std::string>> properties;
+    if (auto const* props = javaValue<JavaNbtTag::Compound>(*compound, "Properties")) {
+        properties.reserve(props->size());
+        for (auto const& [key, value] : *props) {
+            if (auto const* text = std::get_if<std::string>(&value.value)) {
+                properties.emplace_back(key, *text);
+            }
+        }
+    }
+    return resolveJavaBlockState(*name, properties);
 }
 
 std::uint32_t packedPaletteIndex(
@@ -705,7 +717,7 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
         int posX{}, posY{}, posZ{};
         int signedX{}, signedY{}, signedZ{};
         int sizeX{}, sizeY{}, sizeZ{};
-        std::vector<Block const*> palette;
+        std::vector<ResolvedJavaBlock> palette;
         JavaNbtTag::LongArray const* states{};
     };
     std::vector<Region> parsedRegions;
@@ -781,7 +793,7 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
     loaded->volume = static_cast<std::uint64_t>(extentX)
         * static_cast<std::uint64_t>(extentY) * static_cast<std::uint64_t>(extentZ);
     loaded->paletteEntries = paletteEntries;
-    std::unordered_map<std::uint64_t, Block const*> mergedBlocks;
+    std::unordered_map<std::uint64_t, ResolvedJavaBlock> mergedBlocks;
 
     for (auto const& region : parsedRegions) {
         auto const regionVolume = static_cast<std::uint64_t>(region.sizeX)
@@ -798,8 +810,8 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
         for (std::uint64_t index = 0; index < regionVolume; ++index) {
             auto const paletteIndex = packedPaletteIndex(*region.states, index, bits);
             if (paletteIndex >= region.palette.size()) continue;
-            auto const* block = region.palette[paletteIndex];
-            if (!block || block->isAir()) continue;
+            auto const& resolved = region.palette[paletteIndex];
+            if (!resolved.block && !resolved.liquid) continue;
             auto const layer = static_cast<std::uint64_t>(region.sizeX) * region.sizeZ;
             auto const localY = index / layer;
             auto const remainder = index % layer;
@@ -816,28 +828,23 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
             auto const z = static_cast<std::uint64_t>(worldZ - minZ);
             auto const mergedIndex = (x * static_cast<std::uint64_t>(loaded->sizeY) + y)
                 * static_cast<std::uint64_t>(loaded->sizeZ) + z;
-            mergedBlocks.insert_or_assign(mergedIndex, block);
+            mergedBlocks.insert_or_assign(mergedIndex, resolved);
         }
     }
     loaded->renderBlocks.reserve(mergedBlocks.size());
     auto const yz = static_cast<std::uint64_t>(loaded->sizeY) * loaded->sizeZ;
-    for (auto const& [index, block] : mergedBlocks) {
+    for (auto const& [index, resolved] : mergedBlocks) {
         auto const x = index / yz;
         auto const remainder = index % yz;
         auto const y = remainder / static_cast<std::uint64_t>(loaded->sizeZ);
         auto const z = remainder % static_cast<std::uint64_t>(loaded->sizeZ);
-        // Java litematics have no dual block/liquid layers: route liquid
-        // blocks into the liquid slot so both formats share correction and
-        // proxy-rendering semantics.
-        if (block->getMaterial().isLiquid()) {
-            loaded->renderBlocks.push_back({
-                static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), nullptr, block
-            });
-        } else {
-            loaded->renderBlocks.push_back({
-                static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), block, nullptr
-            });
-        }
+        // The Java -> Bedrock mapper already split each cell into its body and
+        // liquid layers (pure liquids, and the water that waterlogged blocks
+        // carry), matching the two-layer semantics of the .mcstructure path.
+        loaded->renderBlocks.push_back({
+            static_cast<int>(x), static_cast<int>(y), static_cast<int>(z),
+            resolved.block, resolved.liquid
+        });
     }
     std::sort(loaded->renderBlocks.begin(), loaded->renderBlocks.end(), [](auto const& left, auto const& right) {
         return std::tie(left.x, left.y, left.z) < std::tie(right.x, right.y, right.z);
@@ -1461,14 +1468,24 @@ void renderGui() {
             projection::setStructureBoundsEnabled(structureBoundsEnabled);
             saveSettings();
         }
+        // 轻松放置 / 手动放置 / 范围放置 are mutually exclusive placement modes:
+        // enabling one clears the others so only a single mode is ever active.
         auto easyPlaceEnabled = place::isEnabled();
         if (ImGui::Checkbox("轻松放置（准心对准投影方块自动放置）", &easyPlaceEnabled)) {
             place::setEnabled(easyPlaceEnabled);
+            if (easyPlaceEnabled) { place::setManualMode(false); place::setRangeEnabled(false); }
+            saveSettings();
+        }
+        auto manualPlace = place::isManualMode();
+        if (ImGui::Checkbox("手动放置（右键放置·按住连放）", &manualPlace)) {
+            place::setManualMode(manualPlace);
+            if (manualPlace) { place::setEnabled(false); place::setRangeEnabled(false); }
             saveSettings();
         }
         auto rangeEnabled = place::isRangeEnabled();
         if (ImGui::Checkbox("范围放置（自动放置周围投影缺块）", &rangeEnabled)) {
             place::setRangeEnabled(rangeEnabled);
+            if (rangeEnabled) { place::setEnabled(false); place::setManualMode(false); }
             saveSettings();
         }
         auto placementRadius = place::getPlacementRadius();
@@ -1805,6 +1822,7 @@ void loadSettings() {
         gHudShowBlockEntity.store(json.value("hudShowBlockEntity", true), std::memory_order_relaxed);
         gHudPosition.store(std::clamp(json.value("hudPosition", 1), 0, 3), std::memory_order_relaxed);
         place::setEnabled(json.value("easyPlaceEnabled", false));
+        place::setManualMode(json.value("easyPlaceManual", false));
         place::setRangeEnabled(json.value("rangePlaceEnabled", false));
         place::setPlacementRadius(std::clamp(json.value("placementRadius", 4), 1, 4));
         gGuiHotkey.store(std::clamp(json.value("guiHotkey", static_cast<int>('M')), 0, 255), std::memory_order_relaxed);
@@ -1908,7 +1926,7 @@ void saveSettings() {
             savedStructurePath = gSavedStructurePath;
         }
         nlohmann::ordered_json const json{
-            {"version", 6},
+            {"version", 7},
             {"lastStructurePath", lastPath},
             {"uiScale", gUiScale.load(std::memory_order_relaxed)},
             {"opacity", projection::getOpacity()},
@@ -1916,6 +1934,7 @@ void saveSettings() {
             {"correctionOutlineOpacity", projection::getCorrectionOutlineOpacity()},
             {"structureBoundsEnabled", projection::getStructureBoundsEnabled()},
             {"easyPlaceEnabled", place::isEnabled()},
+            {"easyPlaceManual", place::isManualMode()},
             {"rangePlaceEnabled", place::isRangeEnabled()},
             {"placementRadius", place::getPlacementRadius()},
             {"hudEnabled", gHudEnabled.load(std::memory_order_relaxed)},

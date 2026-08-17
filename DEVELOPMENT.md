@@ -5,7 +5,7 @@
 当前基线：
 
 - Minecraft Bedrock Windows：`1.26.20.04`
-- LeviLamina：`26.20.0`，目标类型 `client`
+- LeviLamina：`26.20.7`，目标类型 `client`
 - 架构：Windows x64
 - 图形接口：Minecraft D3D12 + LHolo D3D11On12 + Dear ImGui DX11 后端
 - 模组名称、DLL、目录和内部命名空间：`LHolo` / `LHolo.dll` / `mods/LHolo` / `lholo`
@@ -526,7 +526,7 @@ WndProc 收到首次 `WM_KEYDOWN + VK_F11`，在消息交回 Minecraft 前：
 mods/LHolo/config/config.json
 ```
 
-当前配置版本：`6`。
+当前配置版本：`7`。
 
 正式持久化字段：
 
@@ -538,6 +538,7 @@ mods/LHolo/config/config.json
 - `correctionOutlineOpacity`
 - `structureBoundsEnabled`
 - `easyPlaceEnabled`
+- `easyPlaceManual`
 - `rangePlaceEnabled`
 - `placementRadius`
 - HUD 开关、各项显示开关（含 `hudShowBlockEntity` 方块实体名称）、位置
@@ -563,7 +564,7 @@ mods/LHolo/config/config.json
 
 - Visual Studio 2022 C++ 工具链
 - xmake
-- LeviLamina 26.20.0 client
+- LeviLamina 26.20.7 client
 - levibuildscript
 - Dear ImGui 1.91.9，Win32 + DX11，静态
 - MinHook

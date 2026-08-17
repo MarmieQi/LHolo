@@ -31,6 +31,7 @@
 #include "mc/network/PacketSender.h"
 #include "mc/network/packet/InventoryTransactionPacket.h"
 #include "mc/world/Facing.h"
+#include "mc/world/gamemode/GameMode.h"
 #include "mc/world/ContainerID.h"
 #include "mc/world/actor/player/Inventory.h"
 #include "mc/world/actor/player/Player.h"
@@ -46,6 +47,11 @@
 #include "mc/world/level/Tick.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/actor/BlockActorType.h"
+#include "mc/deps/nbt/ByteTag.h"
+#include "mc/deps/nbt/CompoundTag.h"
+#include "mc/deps/nbt/IntTag.h"
+#include "mc/deps/nbt/StringTag.h"
+#include "mc/deps/nbt/Tag.h"
 
 #include <Windows.h>
 
@@ -53,8 +59,12 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <limits>
+#include <mutex>
 #include <optional>
+#include <string_view>
+#include <unordered_map>
 
 namespace lholo::place {
 namespace {
@@ -74,16 +84,63 @@ constexpr std::uint64_t kMinSendIntervalMs = 40;
 // Backoff for a rejected inventory swap. Without it a failed swap retries every
 // tick and spams the server.
 constexpr std::uint64_t kSwapRetryMs = 50;
+// Manual-mode typematic repeat: after the first block on press, holding pauses
+// for kManualInitialDelayMs and then auto-repeats every kManualRepeatIntervalMs
+// (like keyboard key-repeat), so a tap places one and a hold streams at a steady
+// rate.
+constexpr std::uint64_t kManualInitialDelayMs   = 150;
+constexpr std::uint64_t kManualRepeatIntervalMs = 120;
+// A pending first-block request expires if it cannot be fulfilled this long
+// after the press, so a stale click never places a block later.
+constexpr std::uint64_t kManualRequestTimeoutMs = 400;
 
 std::atomic_bool gEnabled{false};
 std::atomic_bool gRangeEnabled{false};
+// Manual mode: hold the right mouse button to place, instead of auto-placing.
+std::atomic_bool gManualMode{false};
+// Manual-mode press/hold tracking (typematic repeat). gManualHeld spans the
+// press (startBuildBlock) to the release (stopBuildBlock); the timestamps drive
+// the repeat rate.
+std::atomic_bool     gManualHeld{false};
+// Pending first block of a press; set on press and kept until placed so a quick
+// tap (released before the next game tick) still places one block.
+std::atomic_bool     gManualPlaceRequested{false};
+std::atomic_uint64_t gManualPressAt{0};
+std::atomic_uint64_t gLastManualPlaceAt{0};
 // Scan radius for range placement (blocks). Actual placement still respects
 // the player's reach.
 std::atomic_int gPlacementRadius{4};
 std::atomic_uint64_t gNextPlaceAt{0};
-std::optional<BlockPos> gLastPlaceCell;
-std::atomic_uint64_t gLastPlaceAt{0};
 std::atomic_uint64_t gNextSwapAt{0};
+// Recently-placed cells, so a cell placed a tick ago is not targeted again
+// before the server applies it and the correction scan catches up. This is what
+// stops a slab (or any block) being placed twice into the same cell during the
+// server round-trip (the reported "slab becomes a full block"). Keyed by packed
+// world position; the value is the millisecond time the lock expires.
+std::mutex                                      gRecentMutex;
+std::unordered_map<std::int64_t, std::uint64_t> gRecentPlacements;
+
+std::int64_t packBlockPos(BlockPos const& p) {
+    return (static_cast<std::int64_t>(p.x) & 0x3FFFFFF) << 38
+         | (static_cast<std::int64_t>(p.z) & 0x3FFFFFF) << 12
+         | (static_cast<std::int64_t>(p.y) & 0xFFF);
+}
+
+bool recentlyPlaced(BlockPos const& cell, std::uint64_t now) {
+    std::lock_guard lock(gRecentMutex);
+    auto const it = gRecentPlacements.find(packBlockPos(cell));
+    return it != gRecentPlacements.end() && now < it->second;
+}
+
+void markPlaced(BlockPos const& cell, std::uint64_t now) {
+    std::lock_guard lock(gRecentMutex);
+    if (gRecentPlacements.size() > 256) {
+        for (auto it = gRecentPlacements.begin(); it != gRecentPlacements.end();) {
+            it = now >= it->second ? gRecentPlacements.erase(it) : std::next(it);
+        }
+    }
+    gRecentPlacements[packBlockPos(cell)] = now + kCellLockMs;
+}
 // Name of the block-entity block the crosshair currently points at, shown in
 // the HUD so projected chests/signs/hoppers/... can be identified.
 std::string gAimedBlockEntityName;
@@ -108,11 +165,31 @@ struct ItemFind {
     ItemStack const* item;
 };
 
-ItemFind findItemSlot(Player& player, ItemStack const& want) {
+// Blocks whose placing item has a different name than the block. ItemStack(Block)
+// does not resolve these to the right inventory item (the item was never found),
+// so the item is built from its real name instead.
+char const* placingItemName(std::string const& blockName) {
+    if (blockName == "minecraft:redstone_wire") return "minecraft:redstone";
+    if (blockName == "minecraft:unpowered_comparator" || blockName == "minecraft:powered_comparator")
+        return "minecraft:comparator";
+    if (blockName == "minecraft:unpowered_repeater" || blockName == "minecraft:powered_repeater")
+        return "minecraft:repeater";
+    if (blockName == "minecraft:unlit_redstone_torch") return "minecraft:redstone_torch";
+    return nullptr;
+}
+
+// Find an inventory slot holding the item that places `block`. Match on item +
+// aux only (ignoring block/placement data): a plain inventory comparator or
+// redstone item carries no placement state, so the stricter
+// sameItemAndAuxAndBlockData never matched a ghost that does.
+ItemFind findItemSlot(Player& player, Block const& block) {
+    char const* const itemName = placingItemName(block.getTypeName());
+    ItemStack const want = itemName ? ItemStack(std::string_view{itemName}, 1, 0, nullptr)
+                                    : ItemStack(block, 1, nullptr);
     auto& inventory = player.getInventory();
     for (int slot = 0; slot < kInventorySlots; ++slot) {
         auto const& item = inventory.getItem(slot);
-        if (item.sameItemAndAuxAndBlockData(want)) return {slot, &item};
+        if (item.sameItemAndAux(want)) return {slot, &item};
     }
     return {-1, nullptr};
 }
@@ -144,6 +221,7 @@ struct ProjectionTarget {
     BlockPos     at;
     uchar        face;
     Block const* block;
+    Vec3         clickPos{};  // Exact click point; chosen to reproduce the ghost.
 };
 
 // Which face of a cell points most along the given (unit) direction.
@@ -280,14 +358,9 @@ void placeBlock(LocalPlayer& player, ProjectionTarget const& target, int slot, I
     // hotbar items are selected directly, backpack items were swapped in.
     transaction.mSlot = slot;
     transaction.mFromPos = player.getPosition();
-    // Click point: the center of the target cell. A point on the shared face
-    // between the support and the cell sits exactly on the cell boundary, and
-    // the server's cell rounding can then land one cell toward the player.
-    transaction.mClickPos = Vec3{
-        static_cast<float>(target.cell.x) + 0.5f,
-        static_cast<float>(target.cell.y) + 0.5f,
-        static_cast<float>(target.cell.z) + 0.5f
-    };
+    // Click point chosen by the orientation search so the server reproduces the
+    // ghost's placement state (which face/half it resolves to).
+    transaction.mClickPos = target.clickPos;
     transaction.mClientPredictedResult = ItemUseInventoryTransaction::PredictedResult::Success;
     transaction.mClientCooldownState = ItemUseInventoryTransaction::ClientCooldownState::Off;
     transaction.setTargetBlock(region.getBlock(target.at));
@@ -313,6 +386,208 @@ void placeBlock(LocalPlayer& player, ProjectionTarget const& target, int slot, I
     gNextPlaceAt.store(GetTickCount64() + kMinSendIntervalMs, std::memory_order_release);
 }
 
+// Candidate click points on the face of `cell` shared with the support in
+// direction `sf`. Side faces get a low and a high point so the search can reach
+// both halves (top/bottom slabs, upside-down stairs); top/bottom faces have a
+// single natural point.
+template <class F>
+void forEachClickCandidate(BlockPos const& cell, uchar sf, F&& fn) {
+    float const cx = static_cast<float>(cell.x);
+    float const cy = static_cast<float>(cell.y);
+    float const cz = static_cast<float>(cell.z);
+    switch (static_cast<Facing::Name>(sf)) {
+    case Facing::Name::Down:  fn(Vec3{cx + 0.5f, cy + 0.0f, cz + 0.5f}); break;
+    case Facing::Name::Up:    fn(Vec3{cx + 0.5f, cy + 1.0f, cz + 0.5f}); break;
+    case Facing::Name::North: fn(Vec3{cx + 0.5f, cy + 0.25f, cz + 0.0f});
+                              fn(Vec3{cx + 0.5f, cy + 0.75f, cz + 0.0f}); break;
+    case Facing::Name::South: fn(Vec3{cx + 0.5f, cy + 0.25f, cz + 1.0f});
+                              fn(Vec3{cx + 0.5f, cy + 0.75f, cz + 1.0f}); break;
+    case Facing::Name::West:  fn(Vec3{cx + 0.0f, cy + 0.25f, cz + 0.5f});
+                              fn(Vec3{cx + 0.0f, cy + 0.75f, cz + 0.5f}); break;
+    case Facing::Name::East:  fn(Vec3{cx + 1.0f, cy + 0.25f, cz + 0.5f});
+                              fn(Vec3{cx + 1.0f, cy + 0.75f, cz + 0.5f}); break;
+    default: break;
+    }
+}
+
+// Orientation gate (easy-place "place only when the orientation is right"). Ask
+// vanilla getPlacementBlock what block WOULD result from each reachable
+// placement (support face + click point), using the player's current facing,
+// and accept the first combo that reproduces the ghost exactly. Returns false
+// when nothing reachable matches, so the caller leaves the cell for later rather
+// than placing a wrong orientation. This reproduces the game's own computation,
+// so face-mounted blocks (torches/levers/buttons) and top/bottom halves are
+// solved automatically; rotational blocks (stairs/pistons/...) pass only while
+// the player looks the right way.
+// Centre of the face of `cell` shared with the support in direction `sf`.
+Vec3 sharedFaceCenter(BlockPos const& cell, uchar sf) {
+    float const cx = static_cast<float>(cell.x);
+    float const cy = static_cast<float>(cell.y);
+    float const cz = static_cast<float>(cell.z);
+    switch (static_cast<Facing::Name>(sf)) {
+    case Facing::Name::Down:  return Vec3{cx + 0.5f, cy + 0.0f, cz + 0.5f};
+    case Facing::Name::Up:    return Vec3{cx + 0.5f, cy + 1.0f, cz + 0.5f};
+    case Facing::Name::North: return Vec3{cx + 0.5f, cy + 0.5f, cz + 0.0f};
+    case Facing::Name::South: return Vec3{cx + 0.5f, cy + 0.5f, cz + 1.0f};
+    case Facing::Name::West:  return Vec3{cx + 0.0f, cy + 0.5f, cz + 0.5f};
+    case Facing::Name::East:  return Vec3{cx + 1.0f, cy + 0.5f, cz + 0.5f};
+    default:                  return Vec3{cx + 0.5f, cy + 0.5f, cz + 0.5f};
+    }
+}
+
+// Read one serialized state of a block as a string ("" if absent).
+std::string serializedState(Block const& block, char const* key) {
+    for (auto const& [k, v] : block.getSerializationId()) {
+        if (k != "states") continue;
+        if (!v.hold<::CompoundTag>()) break;
+        for (auto const& [stateKey, stateValue] : v.get<::CompoundTag>()) {
+            if (stateKey != key) continue;
+            switch (stateValue.getId()) {
+            case ::Tag::Type::Byte:   return std::to_string(static_cast<int>(stateValue.get<::ByteTag>().data));
+            case ::Tag::Type::Int:    return std::to_string(stateValue.get<::IntTag>().data);
+            case ::Tag::Type::String: return static_cast<std::string const&>(stateValue.get<::StringTag>());
+            default:                  return {};
+            }
+        }
+        break;
+    }
+    return {};
+}
+
+// Blocks whose final state comes from neighbours (rail curves auto-connect) or
+// is purely cosmetic-after-the-fact. The placed block can never equal the ghost
+// exactly, so easy-place gates these on the block type only.
+bool isTypeOnlyGate(Block const& block) {
+    auto const& name = block.getTypeName();
+    return name == "minecraft:rail" || name == "minecraft:golden_rail"
+        || name == "minecraft:detector_rail" || name == "minecraft:activator_rail"
+        // Redstone dust connections form from neighbours, so the placed cross/dot
+        // never equals the ghost's connection state.
+        || name == "minecraft:redstone_wire";
+}
+
+// The block's single facing value (prefixed by which state carries it, so a
+// predicted/ghost comparison uses the same one). Empty if the block has no
+// facing state.
+std::string facingValue(Block const& block) {
+    std::string v = serializedState(block, "facing_direction");
+    if (!v.empty()) return "fd:" + v;
+    v = serializedState(block, "minecraft:cardinal_direction");
+    if (!v.empty()) return "cd:" + v;
+    v = serializedState(block, "minecraft:facing_direction");
+    if (!v.empty()) return "mf:" + v;
+    return {};
+}
+
+// Blocks whose only relevant orientation is a single facing (no top/bottom half,
+// hinge, or stair shape): dispensers, droppers, observers, pistons, comparators,
+// repeaters, chests, furnaces, ... They gate on facing alone; other states
+// (triggered_bit, subtract mode, delay, lit) are set or derived after placement,
+// so an exact match would fail. Detected from the block's own states.
+bool isFacingGate(Block const& block) {
+    bool hasFacing = false;
+    for (auto const& [k, v] : block.getSerializationId()) {
+        if (k != "states") continue;
+        if (!v.hold<::CompoundTag>()) break;
+        for (auto const& [stateKey, stateValue] : v.get<::CompoundTag>()) {
+            if (stateKey == "facing_direction" || stateKey == "minecraft:cardinal_direction"
+                || stateKey == "minecraft:facing_direction") {
+                hasFacing = true;
+            } else if (stateKey == "upside_down_bit" || stateKey == "upper_block_bit"
+                || stateKey == "minecraft:vertical_half" || stateKey == "top_slot_bit"
+                || stateKey == "open_bit" || stateKey == "door_hinge_bit"
+                || stateKey == "weirdo_direction") {
+                return false;  // has half/hinge/stair shape -> needs the exact gate
+            }
+        }
+        break;
+    }
+    return hasFacing;
+}
+
+bool resolveOrientedPlacement(
+    LocalPlayer& player, BlockSource& region, BlockPos const& cell,
+    Block const& ghost, int itemAux, bool requireExact, ProjectionTarget& out
+) {
+    bool const typeOnly = isTypeOnlyGate(ghost);
+
+    // Exact placement: find the support face + click point whose predicted block
+    // reproduces the ghost (orientation and all). Uses getPlacementBlock, which
+    // is reliable for the orientation-critical full blocks (stairs, slabs,
+    // pistons, ...) this path is meant for.
+    auto const searchExact = [&]() -> bool {
+        auto const tryPlacement = [&](BlockPos const& at, uchar face, Vec3 const& clickPos) {
+            Block const& predicted = ghost.getPlacementBlock(player, cell, face, clickPos, itemAux);
+            if (!(predicted == ghost)) return false;
+            out = ProjectionTarget{cell, at, face, &ghost, clickPos};
+            return true;
+        };
+        for (uchar sf = 0; sf < 6; ++sf) {
+            BlockPos const at = cell.neighbor(sf);
+            if (region.getBlock(at).isAir()) continue;
+            uchar const face = Facing::getOpposite(sf);
+            bool matched = false;
+            forEachClickCandidate(cell, sf, [&](Vec3 const& clickPos) {
+                if (!matched && tryPlacement(at, face, clickPos)) matched = true;
+            });
+            if (matched) return true;
+        }
+        float const cx = static_cast<float>(cell.x);
+        float const cy = static_cast<float>(cell.y);
+        float const cz = static_cast<float>(cell.z);
+        for (uchar face = 0; face < 6; ++face) {
+            if (tryPlacement(cell, face, Vec3{cx + 0.5f, cy + 0.25f, cz + 0.5f})) return true;
+            if (tryPlacement(cell, face, Vec3{cx + 0.5f, cy + 0.75f, cz + 0.5f})) return true;
+        }
+        return false;
+    };
+
+    // Best-effort placement: pick the first real solid support (the block below
+    // is preferred) and let the server resolve the block. getPlacementBlock is
+    // NOT consulted here -- it returns air/defaults for several redstone
+    // components (comparator, redstone dust, hopper, ...), which would otherwise
+    // make them impossible to place.
+    auto const searchAnySupport = [&]() -> bool {
+        for (uchar sf = 0; sf < 6; ++sf) {
+            BlockPos const at = cell.neighbor(sf);
+            if (region.getBlock(at).isAir()) continue;
+            out = ProjectionTarget{cell, at, Facing::getOpposite(sf), &ghost, sharedFaceCenter(cell, sf)};
+            return true;
+        }
+        return false;
+    };
+
+    // Type-only families never orient exactly; place them on any real support.
+    if (typeOnly) return searchAnySupport();
+
+    // Comparators/repeaters: gate on facing only (mode/delay are toggled after).
+    // Facing comes from the player's view, so one support is enough to read the
+    // predicted facing. If getPlacementBlock cannot produce the block at all,
+    // fall back to placing it rather than getting stuck.
+    if (isFacingGate(ghost)) {
+        std::string const wantFacing = facingValue(ghost);
+        for (uchar sf = 0; sf < 6; ++sf) {
+            BlockPos const at = cell.neighbor(sf);
+            if (region.getBlock(at).isAir()) continue;
+            uchar const face = Facing::getOpposite(sf);
+            Vec3 const cp = sharedFaceCenter(cell, sf);
+            Block const& predicted = ghost.getPlacementBlock(player, cell, face, cp, itemAux);
+            if (predicted.getTypeName() != ghost.getTypeName()) continue;
+            if (facingValue(predicted) != wantFacing) return false;  // wrong facing
+            out = ProjectionTarget{cell, at, face, &ghost, cp};
+            return true;
+        }
+        return searchAnySupport();
+    }
+
+    // Orientation-critical blocks: prefer an exact match. Manual mode
+    // (requireExact == false) still places best-effort so a deliberate
+    // right-click is never a no-op.
+    if (searchExact()) return true;
+    if (!requireExact) return searchAnySupport();
+    return false;
+}
+
 void tickRangePlace(LocalPlayer& player) {
     auto const now = GetTickCount64();
     Vec3 const center = player.getPosition();
@@ -322,28 +597,18 @@ void tickRangePlace(LocalPlayer& player) {
     auto candidates = projection::queryMissingCellsInRange(center, radius);
     for (auto const& cand : candidates) {
         BlockPos const cell{cand.x, cand.y, cand.z};
-        Vec3 const toCell{
-            static_cast<float>(cell.x) + 0.5f - center.x,
-            static_cast<float>(cell.y) + 0.5f - center.y,
-            static_cast<float>(cell.z) + 0.5f - center.z
-        };
 
-        // Per-cell lock: the server needs a moment to apply the placement and
-        // the correction scan needs a moment to mark the cell Correct.
-        if (gLastPlaceCell && *gLastPlaceCell == cell
-            && now - gLastPlaceAt.load(std::memory_order_acquire) < kCellLockMs) {
-            continue;
-        }
+        // Skip cells placed a moment ago until the server applies them, so a
+        // cell is never placed twice mid-round-trip (the slab double-place).
+        if (recentlyPlaced(cell, now)) continue;
 
-        // Reuse the easy-place placement chain: shared support selection (with
-        // air-mPos fallback), item lookup, swap, and server transaction.
-        float const dist = std::sqrt(toCell.x * toCell.x + toCell.y * toCell.y + toCell.z * toCell.z);
-        if (dist <= 0.0f) continue;
-        Vec3 const approachDir{toCell.x / dist, toCell.y / dist, toCell.z / dist};
-        auto const target = selectPlacementTarget(region, cell, approachDir, cand.block);
+        // Orientation gate: only place when the resulting block would match the
+        // ghost. The search also picks the support face / click point, replacing
+        // the old approach-based support selection.
+        ProjectionTarget target;
+        if (!resolveOrientedPlacement(player, region, cell, *cand.block, 0, true, target)) continue;
 
-        ItemStack const want(*cand.block, 1, nullptr);
-        auto const found = findItemSlot(player, want);
+        auto const found = findItemSlot(player, *cand.block);
         if (found.slot < 0) continue;
 
         if (found.slot >= kHotbarSlots) {
@@ -358,8 +623,7 @@ void tickRangePlace(LocalPlayer& player) {
             return;
         }
         player.setSelectedSlot(found.slot);
-        gLastPlaceCell = cell;
-        gLastPlaceAt.store(now, std::memory_order_release);
+        markPlaced(cell, now);
         placeBlock(player, target, found.slot, *found.item);
         return;
     }
@@ -398,31 +662,64 @@ void tickEasyPlace() {
     updateAimedBlockEntityName(target ? target->block : nullptr);
 
     if (!gEnabled.load(std::memory_order_acquire)
+        && !gManualMode.load(std::memory_order_acquire)
         && !gRangeEnabled.load(std::memory_order_acquire)) {
         return;
     }
     if (GetTickCount64() < gNextPlaceAt.load(std::memory_order_acquire)) return;
 
-    // Range placement scans everything within the configured radius; it takes
-    // precedence over the single-target easy-place when both are on.
+    // Range placement scans everything within the configured radius.
     if (gRangeEnabled.load(std::memory_order_acquire)) {
         tickRangePlace(*player);
         return;
     }
+
+    // Single-crosshair placement: auto (轻松放置) or manual (手动放置), which are
+    // mutually exclusive in the UI. Manual mode places exactly one block per
+    // right-click press: startBuildBlock sets a one-shot request (consumed by
+    // the placement below); the buildBlock hook cancels the vanilla build so
+    // nothing is placed twice.
+    if (gManualMode.load(std::memory_order_acquire)) {
+        auto const nowManual = GetTickCount64();
+        bool allowed = false;
+        // First block of a press: place it even if the button was already
+        // released (a quick tap), until the request goes stale.
+        if (gManualPlaceRequested.load(std::memory_order_acquire)) {
+            if (nowManual - gManualPressAt.load(std::memory_order_acquire) <= kManualRequestTimeoutMs) {
+                allowed = true;
+            } else {
+                gManualPlaceRequested.store(false, std::memory_order_release);
+            }
+        }
+        // While the button stays held, pause for the initial delay and then
+        // repeat at a steady rate (typematic).
+        if (!allowed && gManualHeld.load(std::memory_order_acquire)
+            && nowManual - gManualPressAt.load(std::memory_order_acquire) >= kManualInitialDelayMs
+            && nowManual - gLastManualPlaceAt.load(std::memory_order_acquire) >= kManualRepeatIntervalMs) {
+            allowed = true;
+        }
+        if (!allowed) return;
+    }
     if (!target) return;
 
-    // Per-cell lock: the server needs a moment to apply the placement and the
-    // correction scan needs a moment to mark the cell Correct. Skip re-sending
-    // the same cell within that window; new cells place immediately.
+    // Skip cells placed a moment ago until the server applies them; new cells
+    // place immediately.
     auto const now = GetTickCount64();
-    if (gLastPlaceCell && *gLastPlaceCell == target->cell
-        && now - gLastPlaceAt.load(std::memory_order_acquire) < kCellLockMs) {
-        return;
-    }
+    if (recentlyPlaced(target->cell, now)) return;
 
-    ItemStack const want(*target->block, 1, nullptr);
-    auto const found = findItemSlot(*player, want);
-    if (found.slot < 0) return;
+    // Orientation gate: only place when the resulting block would match the
+    // ghost. The search picks the click point / support face that reproduces
+    // it; rotational blocks pass only while the player looks the right way.
+    auto& region = player->getDimensionBlockSource();
+    ProjectionTarget placement;
+    // Orientation is angle-gated in both modes: an orientable block places only
+    // when the current view would produce the ghost's facing (like pistons).
+    // Type-only families (rails, redstone, comparators, ...) bypass this.
+    bool const requireExact = true;
+    bool const resolved =
+        resolveOrientedPlacement(*player, region, target->cell, *target->block, 0, requireExact, placement);
+    auto const found = resolved ? findItemSlot(*player, *target->block) : ItemFind{-1, nullptr};
+    if (!resolved || found.slot < 0) return;
 
     if (found.slot >= kHotbarSlots) {
         // Back off a rejected swap so it never retries more often than
@@ -444,9 +741,12 @@ void tickEasyPlace() {
         return;
     }
     player->setSelectedSlot(found.slot);
-    gLastPlaceCell = target->cell;
-    gLastPlaceAt.store(now, std::memory_order_release);
-    placeBlock(*player, *target, found.slot, *found.item);
+    markPlaced(placement.cell, now);
+    placeBlock(*player, placement, found.slot, *found.item);
+    // Manual repeat bookkeeping: record this placement and mark the current
+    // press as having placed its first block (so holding then auto-repeats).
+    gLastManualPlaceAt.store(now, std::memory_order_release);
+    gManualPlaceRequested.store(false, std::memory_order_release);
 }
 
 LL_TYPE_INSTANCE_HOOK(
@@ -459,6 +759,69 @@ LL_TYPE_INSTANCE_HOOK(
 ) {
     tickEasyPlace();
     origin(currentTick);
+}
+
+// Returns true when manual mode is on and `gm` belongs to the local player, i.e.
+// this is the client-side right-click we should take over. The local-player
+// check is essential: the server processes LHolo's own placement through these
+// same functions on the ServerPlayer, and that must not be suppressed.
+bool isLocalManualBuild(GameMode& gm) {
+    if (!gManualMode.load(std::memory_order_acquire)) return false;
+    auto client = ll::service::getClientInstance();
+    auto* localPlayer = client ? client->getLocalPlayer() : nullptr;
+    return localPlayer && &gm.mPlayer == static_cast<Player*>(localPlayer);
+}
+
+// Manual-mode press edge: the initial right-click. Begin a held sequence (first
+// block placed immediately by tickEasyPlace, then typematic repeat) and cancel
+// the vanilla build start so nothing is placed twice.
+LL_TYPE_INSTANCE_HOOK(
+    GameModeStartBuildHook,
+    ll::memory::HookPriority::Normal,
+    GameMode,
+    &GameMode::$startBuildBlock,
+    void,
+    ::BlockPos const& pos,
+    uchar             face
+) {
+    if (isLocalManualBuild(*this)) {
+        gManualPressAt.store(GetTickCount64(), std::memory_order_release);
+        gManualPlaceRequested.store(true, std::memory_order_release);
+        gManualHeld.store(true, std::memory_order_release);
+        return;  // LHolo handles the placement from tickEasyPlace.
+    }
+    origin(pos, face);
+}
+
+// Manual-mode release edge: stop the typematic repeat when the button is let go.
+LL_TYPE_INSTANCE_HOOK(
+    GameModeStopBuildHook,
+    ll::memory::HookPriority::Normal,
+    GameMode,
+    &GameMode::$stopBuildBlock,
+    void
+) {
+    if (isLocalManualBuild(*this)) {
+        gManualHeld.store(false, std::memory_order_release);
+        return;
+    }
+    origin();
+}
+
+// Suppress the vanilla continuous build while the button is held in manual mode;
+// LHolo drives placement from the press/hold state above.
+LL_TYPE_INSTANCE_HOOK(
+    GameModeBuildBlockHook,
+    ll::memory::HookPriority::Normal,
+    GameMode,
+    &GameMode::$buildBlock,
+    bool,
+    ::BlockPos const& pos,
+    uchar             face,
+    bool const        isSimTick
+) {
+    if (isLocalManualBuild(*this)) return false;
+    return origin(pos, face, isSimTick);
 }
 
 } // namespace
@@ -497,6 +860,14 @@ int getPlacementRadius() {
     return gPlacementRadius.load(std::memory_order_relaxed);
 }
 
+void setManualMode(bool manual) {
+    gManualMode.store(manual, std::memory_order_release);
+}
+
+bool isManualMode() {
+    return gManualMode.load(std::memory_order_acquire);
+}
+
 std::string getAimedBlockEntityName() {
     std::lock_guard lock(gAimedNameMutex);
     return gAimedBlockEntityName;
@@ -507,10 +878,22 @@ bool installHook() {
         logger().error("Failed to install easy-place tick hook");
         return false;
     }
+    if (GameModeStartBuildHook::hook() < 0) {
+        logger().warn("Failed to install manual-place start hook; manual mode will be unavailable");
+    }
+    if (GameModeStopBuildHook::hook() < 0) {
+        logger().warn("Failed to install manual-place stop hook; manual mode may keep repeating");
+    }
+    if (GameModeBuildBlockHook::hook() < 0) {
+        logger().warn("Failed to install manual-place build hook; manual mode may double-place");
+    }
     return true;
 }
 
 void uninstallHook() {
+    GameModeBuildBlockHook::unhook();
+    GameModeStopBuildHook::unhook();
+    GameModeStartBuildHook::unhook();
     LocalPlayerEasyPlaceHook::unhook();
 }
 
