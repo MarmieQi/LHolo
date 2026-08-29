@@ -58,7 +58,7 @@ void renderMenu(MenuModel& model, MenuActions const& actions, UiMetrics const& m
             switch (model.page) {
             case MenuPage::Projection: renderProjectionPage(model, actions, metrics); break;
             case MenuPage::CreateStructure: renderCreateStructurePage(model, actions, metrics); break;
-            case MenuPage::Experimental: renderExperimentalPage(model, metrics); break;
+            case MenuPage::Experimental: renderExperimentalPage(model, actions, metrics); break;
             case MenuPage::Transform: renderTransformPage(model, metrics); break;
             case MenuPage::Render: renderRenderPage(model, actions, metrics); break;
             case MenuPage::Hotkeys: renderHotkeysPage(model, actions, metrics); break;
@@ -68,7 +68,7 @@ void renderMenu(MenuModel& model, MenuActions const& actions, UiMetrics const& m
             if (model.materialPopupRequested) ImGui::OpenPopup(kMaterialPopupName);
             // Both opening and rendering happen in this page child. Dear
             // ImGui popup IDs are scoped to the current window.
-            renderMaterialPopup(model, metrics);
+            renderMaterialPopup(model, actions, metrics);
         }
         ImGui::EndChild();
     }

@@ -22,9 +22,40 @@
 #include "mc/client/renderer/game/LevelRendererPlayer.h"
 #include "mc/deps/minecraft_renderer/framebuilder/dragon/RenderMetadata.h"
 #include "mc/deps/minecraft_renderer/renderer/RenderMaterial.h"
+#include "mc/deps/renderer/hal/interface/DepthStencilStateDescription.h"
 #include "mc/world/level/block/actor/BlockActor.h"
 
 namespace lholo::projection::detail {
+
+namespace {
+
+// Temporarily turns off depth testing on a shared render material so LHolo's
+// geometry draws through world blocks (X-ray), restoring it when the scope ends.
+// Safe because projection rendering runs synchronously on the present thread and
+// vanilla never draws between the set and the restore.
+class ScopedNoDepthTest {
+public:
+    ScopedNoDepthTest(mce::MaterialPtr const& material, bool enable) {
+        if (!enable || !material) return;
+        mMaterial = const_cast<mce::RenderMaterial*>(material.operator->());
+        if (!mMaterial) return;
+        auto& description = mMaterial->depthStencilStateDescription.get();
+        mSaved = description.depthTestEnabled;
+        description.depthTestEnabled = false;
+    }
+    ~ScopedNoDepthTest() {
+        if (!mMaterial) return;
+        mMaterial->depthStencilStateDescription.get().depthTestEnabled = mSaved;
+    }
+    ScopedNoDepthTest(ScopedNoDepthTest const&) = delete;
+    ScopedNoDepthTest& operator=(ScopedNoDepthTest const&) = delete;
+
+private:
+    mce::RenderMaterial* mMaterial{};
+    bool                 mSaved{};
+};
+
+} // namespace
 
 void submitProjectedBlockActorPass(
     ProjectionState&        state,
@@ -72,7 +103,10 @@ void submitProjectionMeshPass(
     Vec3 const&             camera,
     float                   structureOpacity,
     bool                    renderAlphaLayer,
-    bool                    structureBoundsEnabled
+    bool                    structureBoundsEnabled,
+    bool                    correctionSeeThrough,
+    bool                    missingSeeThrough,
+    bool                    projectionSeeThrough
 ) {
     auto& itemRenderer = renderContext.getItemInHandRenderer();
     auto const& blendMaterial = itemRenderer.mMatBlendBlock.get();
@@ -102,6 +136,7 @@ void submitProjectionMeshPass(
     };
     auto renderMeshes = [&](std::vector<VisibleMesh> const& meshes, mce::MaterialPtr const& material) {
         if (!material) return;
+        ScopedNoDepthTest seeThrough(material, projectionSeeThrough);
         for (auto const& visible : meshes) {
             auto& mesh = *state.sections[visible.section].meshes[visible.bucket];
             mesh.renderMesh(
@@ -171,6 +206,7 @@ void submitProjectionMeshPass(
     // Textured liquid hulls travel the proven glass path: blend-block material
     // plus the terrain atlas, sorted back to front by section.
     if (renderAlphaLayer) {
+        ScopedNoDepthTest seeThrough(blendMaterial, projectionSeeThrough);
         std::vector<std::size_t> liquidSections;
         for (std::size_t liquidSection = 0;
              liquidSection < state.liquidProxySectionMeshes.size();
@@ -233,11 +269,15 @@ void submitProjectionMeshPass(
     auto const& warningMaterial = levelRenderer
         ? levelRenderer->getLevelRendererPlayer().selectionBlockEntityOverlayColorMaterial.get()
         : itemRenderer.mMatBlendBlockNoColor.get();
+    // seeThroughMeshes is passed per call so the "missing" correction meshes stay
+    // depth-tested while only the "wrong" ones honor the X-ray toggle.
     auto renderOverlayMeshes = [&] (
         std::vector<std::unique_ptr<mce::Mesh>> const& meshes,
-        mce::MaterialPtr const& material
+        mce::MaterialPtr const& material,
+        bool seeThroughMeshes
     ) {
         if (!material) return;
+        ScopedNoDepthTest seeThrough(material, seeThroughMeshes);
         for (auto const& overlay : meshes) {
             if (!overlay || !overlay->isValid()) continue;
             overlay->renderMesh(
@@ -267,7 +307,8 @@ void submitProjectionMeshPass(
                 = blendMaterial->blendStateDescription.get();
             renderMaterial->mDepthBias = 100.0f;
             renderMaterial->mSlopeScaledDepthBias = 15.0f;
-            renderOverlayMeshes(state.warningFillSectionMeshes, outlineMaterial);
+            renderOverlayMeshes(state.warningFillSectionMeshes, outlineMaterial, missingSeeThrough);
+            renderOverlayMeshes(state.wrongFillSectionMeshes, outlineMaterial, correctionSeeThrough);
             renderMaterial->mPrimitiveMode = savedPrimitive;
             renderMaterial->blendStateDescription.get() = savedBlend;
             renderMaterial->mDepthBias = savedDepthBias;
@@ -301,20 +342,12 @@ void submitProjectionMeshPass(
             renderMaterial->mDepthBias = 100.0f;
             renderMaterial->mSlopeScaledDepthBias = 15.0f;
         }
-        renderOverlayMeshes(state.warningFillSectionMeshes, warningMaterial);
+        renderOverlayMeshes(state.warningFillSectionMeshes, warningMaterial, missingSeeThrough);
+        renderOverlayMeshes(state.wrongFillSectionMeshes, warningMaterial, correctionSeeThrough);
     }
     if (outlineMaterial) {
-        for (auto const& correctionOutline : state.correctionOutlineSectionMeshes) {
-            if (!correctionOutline || !correctionOutline->isValid()) continue;
-            correctionOutline->renderMesh(
-                renderContext.getScreenContext(),
-                outlineMaterial,
-                0,
-                static_cast<uint>(correctionOutline->getMeshVertexCount()),
-                renderContext.mOffscreenCaptureDescription.get(),
-                nullptr
-            );
-        }
+        renderOverlayMeshes(state.correctionOutlineSectionMeshes, outlineMaterial, missingSeeThrough);
+        renderOverlayMeshes(state.wrongOutlineSectionMeshes, outlineMaterial, correctionSeeThrough);
     }
 }
 

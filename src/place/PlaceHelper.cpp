@@ -20,6 +20,7 @@
 #include "place/PlacementState.h"
 
 #include "plugin/LHolo.h"
+#include "structure/StructureLoader.h"
 
 #include "ll/api/memory/Hook.h"
 #include "ll/api/mod/NativeMod.h"
@@ -32,9 +33,14 @@
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
+#include "mc/world/level/BlockSource.h"
 #include "mc/world/level/Tick.h"
+#include "mc/world/level/block/Block.h"
 
 #include <Windows.h>
+
+#include <array>
+#include <string_view>
 
 #include <algorithm>
 
@@ -72,15 +78,40 @@ bool isLocalManualBuild(GameMode& gm) {
     return localPlayer && &gm.mPlayer == static_cast<Player*>(localPlayer);
 }
 
-void requestManualPlacement(bool held) {
-    placementState().setManualPressAt(GetTickCount64());
-    placementState().setManualPlaceRequested(true);
-    placementState().setManualHeld(held);
+// Blocks whose right-click opens/uses them rather than placing. Manual mode must
+// let vanilla handle these so a chest still opens and a repeater's delay can be
+// changed even while the crosshair sits inside a dense projection.
+bool blockAcceptsRightClick(Block const& block) {
+    if (block.hasBlockEntity()) return true;  // chest/furnace/hopper/sign/barrel/...
+    std::string_view name = block.getTypeName();
+    if (name.starts_with("minecraft:")) name.remove_prefix(sizeof("minecraft:") - 1);
+    static constexpr std::string_view kExact[]{
+        "repeater", "unpowered_repeater", "powered_repeater",
+        "comparator", "unpowered_comparator", "powered_comparator",
+        "lever", "daylight_detector", "daylight_detector_inverted",
+        "crafting_table", "cartography_table", "fletching_table", "smithing_table",
+        "loom", "stonecutter_block", "grindstone", "enchanting_table",
+        "brewing_stand", "beacon", "cake", "composter", "respawn_anchor",
+        "lodestone", "dragon_egg", "flower_pot", "noteblock", "jukebox",
+        "cauldron", "lava_cauldron", "lectern", "beehive", "bee_nest", "crafter",
+    };
+    for (auto const& exact : kExact) if (name == exact) return true;
+    static constexpr std::string_view kSuffix[]{
+        "_button", "_door", "_trapdoor", "_fence_gate", "_bed", "_anvil",
+    };
+    for (auto const& suffix : kSuffix) if (name.ends_with(suffix)) return true;
+    return false;
 }
 
-// Manual-mode press edge: the initial right-click. Begin a held sequence (first
-// block placed immediately by tickEasyPlace, then typematic repeat) and cancel
-// the vanilla build start so nothing is placed twice.
+bool aimedBlockAcceptsRightClick(GameMode& gm, BlockPos const& pos) {
+    return blockAcceptsRightClick(gm.mPlayer.getDimensionBlockSource().getBlock(pos));
+}
+
+// Manual-mode press edge. If the aimed block is interactive (chest, repeater,
+// ...) we let vanilla open/use it. Otherwise we take the right button over: on a
+// projection target LHolo places it (from tickEasyPlace), and off-target we block
+// the accidental placement and show a one-shot JE-style hint. The vanilla build
+// is never allowed through, so no stray block is placed.
 LL_TYPE_INSTANCE_HOOK(
     GameModeStartBuildHook,
     ll::memory::HookPriority::Normal,
@@ -91,15 +122,25 @@ LL_TYPE_INSTANCE_HOOK(
     uchar             face
 ) {
     if (isLocalManualBuild(*this)) {
-        requestManualPlacement(true);
-        return;  // LHolo handles the placement from tickEasyPlace.
+        if (aimedBlockAcceptsRightClick(*this, pos)) {
+            origin(pos, face);  // let vanilla open/use the block
+            return;
+        }
+        placementState().setManualPressAt(GetTickCount64());
+        placementState().setManualHeld(true);
+        if (detail::manualTargetUnderCrosshair()) {
+            placementState().setManualPlaceRequested(true);
+        } else {
+            structure::showActionHint("已被手动放置模式阻止（对准投影方块才能放置）");
+        }
+        return;  // LHolo owns this press; vanilla places nothing.
     }
     origin(pos, face);
 }
 
 // Right-clicking a floating projection targets air, so Bedrock calls useItem
-// instead of startBuildBlock. Capture it as a one-shot request: unlike the
-// build path, air use has no matching stopBuildBlock edge we can rely on.
+// instead of startBuildBlock. Capture it only when a floating projection cell is
+// under the crosshair; otherwise let vanilla use the item (eat, etc.).
 LL_TYPE_INSTANCE_HOOK(
     GameModeUseItemHook,
     ll::memory::HookPriority::Normal,
@@ -108,14 +149,16 @@ LL_TYPE_INSTANCE_HOOK(
     bool,
     ::ItemStack& item
 ) {
-    if (isLocalManualBuild(*this)) {
-        requestManualPlacement(false);
+    if (isLocalManualBuild(*this) && detail::manualTargetUnderCrosshair()) {
+        placementState().setManualPressAt(GetTickCount64());
+        placementState().setManualPlaceRequested(true);
+        placementState().setManualHeld(false);
         return false;
     }
     return origin(item);
 }
 
-// Manual-mode release edge: stop the typematic repeat when the button is let go.
+// Manual-mode release edge: stop the repeat when the button is let go.
 LL_TYPE_INSTANCE_HOOK(
     GameModeStopBuildHook,
     ll::memory::HookPriority::Normal,
@@ -125,13 +168,15 @@ LL_TYPE_INSTANCE_HOOK(
 ) {
     if (isLocalManualBuild(*this)) {
         placementState().setManualHeld(false);
-        return;
     }
     origin();
 }
 
-// Suppress the vanilla continuous build while the button is held in manual mode;
-// LHolo drives placement from the press/hold state above.
+// GameMode::buildBlock is the vanilla continuous-build placement. In manual mode
+// we always suppress it (LHolo drives placement from the press edge above): the
+// interact for an interactive block already happened there, and this only ever
+// carries a block PLACEMENT, which manual mode blocks. No hint here — the press
+// edge shows it once, so holding the button never spams the notification.
 LL_TYPE_INSTANCE_HOOK(
     GameModeBuildBlockHook,
     ll::memory::HookPriority::Normal,
@@ -142,7 +187,9 @@ LL_TYPE_INSTANCE_HOOK(
     uchar             face,
     bool const        isSimTick
 ) {
-    if (isLocalManualBuild(*this)) return false;
+    if (isLocalManualBuild(*this)) {
+        return false;
+    }
     return origin(pos, face, isSimTick);
 }
 

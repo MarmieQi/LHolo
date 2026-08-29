@@ -323,6 +323,35 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         && gConsumeEscapeRelease.exchange(false, std::memory_order_acq_rel)) {
         return 1;
     }
+    // Mouse middle/side buttons can be bound as hotkeys too. They arrive as their
+    // own window messages, so translate them to virtual-key codes and route them
+    // through the same capture/trigger path as the keyboard.
+    if (!gShuttingDown.load(std::memory_order_acquire) && gImGuiInitialized) {
+        unsigned int mouseKey = 0;
+        switch (message) {
+        case WM_MBUTTONDOWN:
+        case WM_MBUTTONUP:
+            mouseKey = VK_MBUTTON;
+            break;
+        case WM_XBUTTONDOWN:
+        case WM_XBUTTONUP:
+            mouseKey = GET_XBUTTON_WPARAM(wParam) == XBUTTON1 ? VK_XBUTTON1 : VK_XBUTTON2;
+            break;
+        default:
+            break;
+        }
+        if (mouseKey != 0) {
+            if (message == WM_MBUTTONDOWN || message == WM_XBUTTONDOWN) {
+                if (structure::handleGuiHotkeyKeyDown(mouseKey)) {
+                    if (!guiWasVisible && structure::isGuiVisible()) releaseGameInput(window);
+                    if (guiWasVisible && !structure::isGuiVisible()) confineMouseToClientCenter(window);
+                    return 1;
+                }
+            } else if (structure::handleGuiHotkeyKeyUp(mouseKey)) {
+                return 1;
+            }
+        }
+    }
     if (!gShuttingDown.load(std::memory_order_acquire) && gImGuiInitialized && structure::isGuiVisible()) {
         gMouseHandoffActive.store(false, std::memory_order_release);
         ClipCursor(nullptr);
@@ -484,7 +513,8 @@ void render(IDXGISwapChain* swapChain) {
     gGuiVisibleLastFrame = showGui;
     if (!showGui) maintainMouseHandoff(gWindow);
     ImGui::GetIO().MouseDrawCursor = showGui;
-    if (!showGui && !showHud) return;
+    auto const showHint = structure::actionHintActive();
+    if (!showGui && !showHud && !showHint) return;
 
     if (showGui) ClipCursor(nullptr);
 
@@ -502,7 +532,11 @@ void render(IDXGISwapChain* swapChain) {
                 PostMessageW(gWindow, kMsgRestoreNativeCursor, 0, 0);
                 gGuiVisibleLastFrame = false;
             }
-        } else structure::renderHud();
+        } else {
+            structure::renderHud();
+            structure::renderMaterialHud();
+        }
+        structure::renderActionHint();
         ImGui::Render();
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         ID3D11RenderTargetView* empty{};

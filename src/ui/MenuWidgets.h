@@ -12,6 +12,11 @@ float fieldWidth(UiMetrics const& metrics);
 float numericFieldWidth(UiMetrics const& metrics);
 float adaptiveComboWidth(char const* const* items, int count);
 
+// JE-style stack count: below one stack -> "N"; otherwise "N (a x S + b)" (the
+// "+ b" omitted when it divides evenly), e.g. 111 -> "111 (1 x 64 + 47)",
+// 18 buckets (S=1) -> "18 (18 x 1)".
+std::string formatStackCount(std::uint64_t count, int stackSize);
+
 template <typename Body>
 void renderSection(char const* id, char const* title, UiMetrics const& metrics, Body&& body) {
     // Function groups deliberately share the page canvas.  A child window

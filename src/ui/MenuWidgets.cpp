@@ -6,8 +6,34 @@
 #include <cmath>
 #include <cfloat>
 #include <cstdio>
+#include <string>
 
 namespace lholo::ui {
+
+std::string formatStackCount(std::uint64_t count, int stackSize) {
+    auto const stack = static_cast<std::uint64_t>(stackSize > 0 ? stackSize : 64);
+    if (count < stack) return std::to_string(count);
+    auto const stacks = count / stack;
+    auto const remainder = count % stack;
+    char buffer[64];
+    if (remainder == 0) {
+        std::snprintf(
+            buffer, sizeof(buffer), "%llu (%llu x %llu)",
+            static_cast<unsigned long long>(count),
+            static_cast<unsigned long long>(stacks),
+            static_cast<unsigned long long>(stack)
+        );
+    } else {
+        std::snprintf(
+            buffer, sizeof(buffer), "%llu (%llu x %llu + %llu)",
+            static_cast<unsigned long long>(count),
+            static_cast<unsigned long long>(stacks),
+            static_cast<unsigned long long>(stack),
+            static_cast<unsigned long long>(remainder)
+        );
+    }
+    return buffer;
+}
 
 float fieldWidth(UiMetrics const& metrics) {
     auto const available = ImGui::GetContentRegionAvail().x;

@@ -86,8 +86,14 @@ struct ProjectionState {
     float                           cachedCorrectionFillOpacity{-1.0f};
     float                           cachedCorrectionOutlineOpacity{-1.0f};
     std::vector<std::vector<std::size_t>> sectionBlockIndices;
+    // Correction meshes are split by category so the see-through (X-ray) option
+    // can apply to the wrong-type/wrong-state markers only, never to the many
+    // "missing" outlines. warningFill/correctionOutline hold the MISSING cells;
+    // wrongFill/wrongOutline hold WrongType + WrongState.
     std::vector<std::unique_ptr<mce::Mesh>> warningFillSectionMeshes;
     std::vector<std::unique_ptr<mce::Mesh>> correctionOutlineSectionMeshes;
+    std::vector<std::unique_ptr<mce::Mesh>> wrongFillSectionMeshes;
+    std::vector<std::unique_ptr<mce::Mesh>> wrongOutlineSectionMeshes;
     std::vector<std::unique_ptr<mce::Mesh>> liquidProxySectionMeshes;
     std::vector<std::unique_ptr<mce::Mesh>> blockEntityPlaceholderSectionMeshes;
     std::unique_ptr<mce::Mesh>              structureBoundsMesh;

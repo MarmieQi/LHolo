@@ -22,6 +22,12 @@ bool loadSettingsFile(std::filesystem::path const& path, Settings& out) {
     out.correctionFillOpacity = json.value("correctionFillOpacity", out.correctionFillOpacity);
     out.correctionOutlineOpacity = json.value("correctionOutlineOpacity", out.correctionOutlineOpacity);
     out.structureBoundsEnabled = json.value("structureBoundsEnabled", out.structureBoundsEnabled);
+    out.correctionSeeThrough = json.value("correctionSeeThrough", out.correctionSeeThrough);
+    out.missingSeeThrough = json.value("missingSeeThrough", out.missingSeeThrough);
+    out.projectionSeeThrough = json.value("projectionSeeThrough", out.projectionSeeThrough);
+    out.experimentalConsent = json.value("experimentalConsent", out.experimentalConsent);
+    out.materialHudEnabled = json.value("materialHudEnabled", out.materialHudEnabled);
+    out.materialHudPosition = json.value("materialHudPosition", out.materialHudPosition);
     out.placementRadius = json.value("placementRadius", out.placementRadius);
     out.autoPlacementBreakCooldownSeconds = json.value(
         "autoPlacementBreakCooldownSeconds",
@@ -47,6 +53,18 @@ bool loadSettingsFile(std::filesystem::path const& path, Settings& out) {
         = json.value("layerIncreaseHotkeyModifiers", out.layerIncreaseHotkeyModifiers);
     out.layerDecreaseHotkeyModifiers
         = json.value("layerDecreaseHotkeyModifiers", out.layerDecreaseHotkeyModifiers);
+    out.toggleManualHotkey = json.value("toggleManualHotkey", out.toggleManualHotkey);
+    out.toggleManualHotkeyModifiers
+        = json.value("toggleManualHotkeyModifiers", out.toggleManualHotkeyModifiers);
+    out.toggleEasyHotkey = json.value("toggleEasyHotkey", out.toggleEasyHotkey);
+    out.toggleEasyHotkeyModifiers
+        = json.value("toggleEasyHotkeyModifiers", out.toggleEasyHotkeyModifiers);
+    out.loadProjectionHotkey = json.value("loadProjectionHotkey", out.loadProjectionHotkey);
+    out.loadProjectionHotkeyModifiers
+        = json.value("loadProjectionHotkeyModifiers", out.loadProjectionHotkeyModifiers);
+    out.closeProjectionHotkey = json.value("closeProjectionHotkey", out.closeProjectionHotkey);
+    out.closeProjectionHotkeyModifiers
+        = json.value("closeProjectionHotkeyModifiers", out.closeProjectionHotkeyModifiers);
 
     static char const* moveKeyNames[]{
         "moveXMinusHotkey",
@@ -99,6 +117,12 @@ void saveSettingsFile(std::filesystem::path const& path, Settings const& setting
         {"correctionFillOpacity", settings.correctionFillOpacity},
         {"correctionOutlineOpacity", settings.correctionOutlineOpacity},
         {"structureBoundsEnabled", settings.structureBoundsEnabled},
+        {"correctionSeeThrough", settings.correctionSeeThrough},
+        {"missingSeeThrough", settings.missingSeeThrough},
+        {"projectionSeeThrough", settings.projectionSeeThrough},
+        {"experimentalConsent", settings.experimentalConsent},
+        {"materialHudEnabled", settings.materialHudEnabled},
+        {"materialHudPosition", settings.materialHudPosition},
         {"placementRadius", settings.placementRadius},
         {"autoPlacementBreakCooldownSeconds", settings.autoPlacementBreakCooldownSeconds},
         {"hudEnabled", settings.hudEnabled},
@@ -116,6 +140,14 @@ void saveSettingsFile(std::filesystem::path const& path, Settings const& setting
         {"layerDecreaseHotkey", settings.layerDecreaseHotkey},
         {"layerIncreaseHotkeyModifiers", settings.layerIncreaseHotkeyModifiers},
         {"layerDecreaseHotkeyModifiers", settings.layerDecreaseHotkeyModifiers},
+        {"toggleManualHotkey", settings.toggleManualHotkey},
+        {"toggleManualHotkeyModifiers", settings.toggleManualHotkeyModifiers},
+        {"toggleEasyHotkey", settings.toggleEasyHotkey},
+        {"toggleEasyHotkeyModifiers", settings.toggleEasyHotkeyModifiers},
+        {"loadProjectionHotkey", settings.loadProjectionHotkey},
+        {"loadProjectionHotkeyModifiers", settings.loadProjectionHotkeyModifiers},
+        {"closeProjectionHotkey", settings.closeProjectionHotkey},
+        {"closeProjectionHotkeyModifiers", settings.closeProjectionHotkeyModifiers},
         {"moveXMinusHotkey", settings.moveHotkeys[0]},
         {"moveXPlusHotkey", settings.moveHotkeys[1]},
         {"moveZMinusHotkey", settings.moveHotkeys[2]},

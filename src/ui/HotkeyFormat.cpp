@@ -48,6 +48,10 @@ std::string hotkeyName(unsigned int key) {
     case VK_RIGHT: return "Right";
     case VK_UP: return "Up";
     case VK_DOWN: return "Down";
+    // Mouse buttons carry no keyboard scan code, so name them explicitly.
+    case VK_MBUTTON: return "鼠标中键";
+    case VK_XBUTTON1: return "鼠标侧键1";
+    case VK_XBUTTON2: return "鼠标侧键2";
     default: break;
     }
     auto scanCode = MapVirtualKeyW(key, MAPVK_VK_TO_VSC);

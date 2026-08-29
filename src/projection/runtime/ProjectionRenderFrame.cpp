@@ -285,7 +285,10 @@ void renderProjection(
             camera,
             structureOpacity,
             renderAlphaLayer,
-            ProjectionSession::getInstance().structureBoundsEnabled()
+            ProjectionSession::getInstance().structureBoundsEnabled(),
+            ProjectionSession::getInstance().correctionSeeThrough(),
+            ProjectionSession::getInstance().missingSeeThrough(),
+            ProjectionSession::getInstance().projectionSeeThrough()
         );
     } catch (std::exception const& exception) {
         logger().error("Projection immediate mesh submission failed: {}", exception.what());

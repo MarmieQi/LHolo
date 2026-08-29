@@ -44,6 +44,30 @@ void ProjectionSession::setStructureBoundsEnabled(bool enabled) {
     mStructureBoundsEnabled.store(enabled, std::memory_order_relaxed);
 }
 
+bool ProjectionSession::correctionSeeThrough() const {
+    return mCorrectionSeeThrough.load(std::memory_order_relaxed);
+}
+
+void ProjectionSession::setCorrectionSeeThrough(bool enabled) {
+    mCorrectionSeeThrough.store(enabled, std::memory_order_relaxed);
+}
+
+bool ProjectionSession::missingSeeThrough() const {
+    return mMissingSeeThrough.load(std::memory_order_relaxed);
+}
+
+void ProjectionSession::setMissingSeeThrough(bool enabled) {
+    mMissingSeeThrough.store(enabled, std::memory_order_relaxed);
+}
+
+bool ProjectionSession::projectionSeeThrough() const {
+    return mProjectionSeeThrough.load(std::memory_order_relaxed);
+}
+
+void ProjectionSession::setProjectionSeeThrough(bool enabled) {
+    mProjectionSeeThrough.store(enabled, std::memory_order_relaxed);
+}
+
 std::optional<ProjectionAnchor> ProjectionSession::consumeAnchor() {
     if (!mPendingAnchor.exchange(false, std::memory_order_acq_rel)) return std::nullopt;
     return ProjectionAnchor{

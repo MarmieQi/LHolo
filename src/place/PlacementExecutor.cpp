@@ -21,6 +21,7 @@
 #include "plugin/LHolo.h"
 #include "projection/Projection.h"
 #include "structure/StructureLoader.h"
+#include "structure/StructureUiState.h"
 
 #include "ll/api/mod/NativeMod.h"
 #include "ll/api/service/Bedrock.h"
@@ -52,6 +53,8 @@
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/BlockType.h"
 #include "mc/world/level/block/SlabBlock.h"
+#include "mc/world/level/block/registry/BlockTypeRegistry.h"
+#include "mc/deps/core/string/HashedString.h"
 #include "mc/deps/nbt/ByteTag.h"
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/deps/nbt/IntTag.h"
@@ -154,6 +157,25 @@ struct ItemFind {
     ItemStack const* item;
 };
 
+// Some blocks exist in the world only as a redstone/heat/light-driven runtime
+// state the player can never place directly: a lit redstone lamp/ore, a burning
+// furnace, a powered-off redstone torch, a powered repeater/comparator. Map such
+// a name to the base block that actually gets placed so the inventory lookup, the
+// placement prediction and the correction display all line up. The game restores
+// the lit/powered/heat bit on its own once the block is powered or fuelled.
+std::string_view basePlacedName(std::string_view name) {
+    if (name == "minecraft:lit_redstone_lamp")          return "minecraft:redstone_lamp";
+    if (name == "minecraft:lit_redstone_ore")           return "minecraft:redstone_ore";
+    if (name == "minecraft:lit_deepslate_redstone_ore") return "minecraft:deepslate_redstone_ore";
+    if (name == "minecraft:lit_furnace")                return "minecraft:furnace";
+    if (name == "minecraft:lit_blast_furnace")          return "minecraft:blast_furnace";
+    if (name == "minecraft:lit_smoker")                 return "minecraft:smoker";
+    if (name == "minecraft:unlit_redstone_torch")       return "minecraft:redstone_torch";
+    if (name == "minecraft:powered_repeater")           return "minecraft:unpowered_repeater";
+    if (name == "minecraft:powered_comparator")         return "minecraft:unpowered_comparator";
+    return name;
+}
+
 // Blocks whose placing item has a different name than the block. ItemStack(Block)
 // does not resolve these to the right inventory item (the item was never found),
 // so the item is built from its real name instead.
@@ -168,12 +190,15 @@ char const* placingItemName(std::string const& blockName) {
 }
 
 ItemStack makePlacingItem(Block const& block) {
-    char const* const itemName = placingItemName(block.getTypeName());
+    // Normalize a runtime lit/heat variant to its base block first, then apply
+    // the block->item name remaps (redstone wire/comparator/repeater).
+    std::string const blockName{basePlacedName(block.getTypeName())};
+    char const* const itemName = placingItemName(blockName);
     // Construct the inventory form by item name with neutral aux. Constructing
     // ItemStack directly from an oriented Block copies legacy placement bits
     // (stairs direction/half, pillar axis, ...), but inventory items do not
     // carry those world-state bits and therefore never matched.
-    std::string_view const name = itemName ? std::string_view{itemName} : std::string_view{block.getTypeName()};
+    std::string_view const name = itemName ? std::string_view{itemName} : std::string_view{blockName};
     return ItemStack(name, 1, 0, nullptr);
 }
 
@@ -276,6 +301,19 @@ void sendInventorySwap(LocalPlayer& player, int fromSlot, int toSlot, ItemStack 
     invTx.addAction(InventoryAction{source, static_cast<uint>(toSlot), toItem, fromItem});
     InventoryTransactionPacket packet(std::move(transaction), true);
     player.getClientInstance().getPacketSender().sendToServer(packet);
+}
+
+// Pick which hotbar slot a backpack item should swap into. Prefer an empty slot
+// so the player's held items are never evicted, and so two materials never
+// thrash through a single slot — each lands in its own empty slot and stays
+// there (next tick it is already in the bar, no further swap). Only when the
+// hotbar is completely full do we fall back to the currently selected slot.
+int chooseHotbarSwapTarget(Player& player) {
+    auto& inventory = player.getInventory();
+    for (int slot = 0; slot < kHotbarSlots; ++slot) {
+        if (inventory.getItem(slot).isNull()) return slot;
+    }
+    return player.getSelectedItemSlot();
 }
 
 // A projected ghost cell the player aims at: the cell itself, the real block
@@ -537,7 +575,7 @@ bool placementPredictionMatches(
     Block const& ghost,
     Block const* expectedDoorUpper = nullptr
 ) {
-    if (predicted.getTypeName() != ghost.getTypeName()) return false;
+    if (basePlacedName(predicted.getTypeName()) != basePlacedName(ghost.getTypeName())) return false;
 
     auto const& name = ghost.getTypeName();
     if (name.ends_with("_stairs")) {
@@ -550,17 +588,49 @@ bool placementPredictionMatches(
     if (!serializedState(ghost, "pillar_axis").empty()) {
         return sameSerializedState(predicted, ghost, "pillar_axis");
     }
-    if (expectedDoorUpper) {
+    // Walls, fences, glass panes and iron bars derive every connection state from
+    // their neighbours after placement (nothing is chosen at placement), so accept
+    // the placement on block identity alone — the connections resolve as the
+    // surrounding blocks fill in.
+    if (name.ends_with("_wall") || name.ends_with("_fence")
+        || name.ends_with("_glass_pane") || name == "minecraft:glass_pane"
+        || name == "minecraft:iron_bars") {
+        return true;
+    }
+    // Repeaters and comparators: only facing is chosen at placement (delay/mode
+    // are set by right-clicking afterwards, the powered bit is redstone-driven),
+    // so match on facing alone — including the powered name variants, which reach
+    // here via basePlacedName above. This also lets a delay-adjusted repeater place.
+    if (name == "minecraft:unpowered_repeater" || name == "minecraft:powered_repeater"
+        || name == "minecraft:unpowered_comparator" || name == "minecraft:powered_comparator") {
+        return sameSerializedState(predicted, ghost, "minecraft:cardinal_direction");
+    }
+    if (isTwoBlockDoor(ghost)) {
         // A door item places both cells. The lower ghost owns direction/open,
-        // while the upper ghost owns the hinge. Require the official predictor
-        // to expose all of those values; if it cannot, leave the door for manual
-        // placement rather than risking a two-cell wrong result.
-        std::string const expectedHinge = serializedState(*expectedDoorUpper, "door_hinge_bit");
-        return sameSerializedState(predicted, ghost, "upper_block_bit")
+        // the upper owns the hinge. Verify direction/open/half always; the hinge
+        // only when the upper half is visible (expectedDoorUpper). A layer cut
+        // hides the upper, leaving the hinge unverifiable — one DoorItem use
+        // still creates both halves, so accept the placement without it.
+        bool matched = sameSerializedState(predicted, ghost, "upper_block_bit")
             && sameSerializedState(predicted, ghost, "direction")
-            && sameSerializedState(predicted, ghost, "open_bit")
-            && !expectedHinge.empty()
-            && serializedState(predicted, "door_hinge_bit") == expectedHinge;
+            && sameSerializedState(predicted, ghost, "open_bit");
+        if (matched && expectedDoorUpper) {
+            std::string const expectedHinge = serializedState(*expectedDoorUpper, "door_hinge_bit");
+            matched = !expectedHinge.empty()
+                && serializedState(predicted, "door_hinge_bit") == expectedHinge;
+        }
+        return matched;
+    }
+    // A runtime lit/heat variant (lit lamp/ore, burning furnace) is placed as its
+    // base block and switched on by the game afterwards, so the names only matched
+    // after normalization and the runtime id is expected to differ. Accept on
+    // facing where directional (furnaces), otherwise unconditionally (lamp/ore).
+    if (basePlacedName(ghost.getTypeName()) != ghost.getTypeName()) {
+        if (!serializedState(ghost, "facing_direction").empty())
+            return sameSerializedState(predicted, ghost, "facing_direction");
+        if (!serializedState(ghost, "minecraft:cardinal_direction").empty())
+            return sameSerializedState(predicted, ghost, "minecraft:cardinal_direction");
+        return true;
     }
     return predicted.getRuntimeId() == ghost.getRuntimeId();
 }
@@ -575,23 +645,28 @@ bool resolveOrientedPlacement(
     ProjectionTarget&       out
 ) {
     Block const* expectedDoorUpper = nullptr;
+    bool const   isDoor = isTwoBlockDoor(ghost);
 
-    if (isTwoBlockDoor(ghost)) {
+    if (isDoor) {
         // The upper projected half is never an independent placement target.
         // One DoorItem use on the lower cell creates both halves.
         if (serializedState(ghost, "upper_block_bit") != "0") return false;
         BlockPos const upperCell = cell.neighbor(static_cast<uchar>(Facing::Name::Up));
+        // The upper cell must be free for the door's second half.
+        if (!region.getBlock(upperCell).isAir()) return false;
+        // When the upper half is visible we use its hinge to verify the placement
+        // exactly. When a layer cut hides it, the cell is not in the query-able
+        // virtual world (hasBlock=false) — we still place the door and let the
+        // hinge be best-effort, since one DoorItem use creates both halves anyway.
         auto const upper = projection::queryProjection(player, upperCell);
-        if (!upper.block || !upper.missing || upper.block->getTypeName() != ghost.getTypeName()
-            || serializedState(*upper.block, "upper_block_bit") != "1"
-            || !region.getBlock(upperCell).isAir()) {
-            return false;
+        if (upper.block && upper.missing && upper.block->getTypeName() == ghost.getTypeName()
+            && serializedState(*upper.block, "upper_block_bit") == "1") {
+            expectedDoorUpper = upper.block;
         }
         // DoorBlock::mayPlace is the official two-cell/support validation. It is
         // intentionally used only for doors; treating it as a universal gate
         // previously rejected valid stairs and wall-mounted blocks.
         if (!ghost.mayPlace(region, cell)) return false;
-        expectedDoorUpper = upper.block;
     }
 
     // Only accept a real support and a click point for which the official
@@ -622,8 +697,8 @@ bool resolveOrientedPlacement(
     };
 
     auto const searchCurrentRotation = [&](ProjectionTarget& result) {
-        uchar const firstSupport = expectedDoorUpper ? static_cast<uchar>(Facing::Name::Down) : 0;
-        uchar const supportEnd   = expectedDoorUpper ? firstSupport + 1 : 6;
+        uchar const firstSupport = isDoor ? static_cast<uchar>(Facing::Name::Down) : 0;
+        uchar const supportEnd   = isDoor ? firstSupport + 1 : 6;
         for (uchar sf = firstSupport; sf < supportEnd; ++sf) {
             BlockPos const at = cell.neighbor(sf);
             Block const& support = region.getBlock(at);
@@ -644,7 +719,7 @@ bool resolveOrientedPlacement(
         // RuntimeId matching still prevents an incorrect placement.
         // DoorItem only accepts a floor-supported lower cell and creates its
         // upper half itself; never use the floating/air-mPos fallback for doors.
-        if (expectedDoorUpper) return false;
+        if (isDoor) return false;
 
         float const cx = static_cast<float>(cell.x);
         float const cy = static_cast<float>(cell.y);
@@ -713,7 +788,7 @@ void tickRangePlaceImpl(LocalPlayer& player, PlacementContext const& placementCo
             // logic in tickEasyPlaceImpl.
             if (now < placementState().nextSwapAt()) continue;
             auto& inventory = player.getInventory();
-            int const hotbarSlot = player.getSelectedItemSlot();
+            int const hotbarSlot = chooseHotbarSwapTarget(player);
             auto const& toItem = inventory.getItem(hotbarSlot);
             sendInventorySwap(player, found.slot, hotbarSlot, *found.item, toItem);
             placementState().setNextSwapAt(now + kSwapRetryMs);
@@ -725,8 +800,29 @@ void tickRangePlaceImpl(LocalPlayer& player, PlacementContext const& placementCo
     }
 }
 
+// Refresh the material HUD's held-item counts. Runs on the game tick thread,
+// where touching the inventory and constructing ItemStacks (item-registry
+// lookups, inside availableCounts) is safe; the HUD renders on the D3D present
+// thread and must never call those APIs. Throttled — the HUD needs no per-tick
+// precision — and stores a snapshot the HUD reads lock-free-ish under a mutex.
+void updateMaterialAvailability() {
+    static std::uint64_t lastMs = 0;
+    auto const now = GetTickCount64();
+    if (now - lastMs < 400) return;
+    lastMs = now;
+
+    auto& state = structure::detail::StructureUiState::getInstance();
+    auto const requirements = state.materialRequirements();
+    if (requirements.empty()) return;
+    std::vector<std::string> names;
+    names.reserve(requirements.size());
+    for (auto const& requirement : requirements) names.push_back(requirement.typeName);
+    state.setMaterialAvailability(detail::availableCounts(names));
+}
+
 void tickEasyPlaceImpl() {
     structure::processPendingMaterialList();
+    updateMaterialAvailability();
 
     auto client = ll::service::getClientInstance();
     if (!client) {
@@ -851,7 +947,7 @@ void tickEasyPlaceImpl() {
         // lock. The next tick finds the item in the hotbar and places via the
         // single-packet fast path.
         auto& inventory = player->getInventory();
-        int const hotbarSlot = player->getSelectedItemSlot();
+        int const hotbarSlot = chooseHotbarSwapTarget(*player);
         auto const& toItem = inventory.getItem(hotbarSlot);
         sendInventorySwap(*player, found.slot, hotbarSlot, *found.item, toItem);
         placementState().setNextSwapAt(now + kSwapRetryMs);
@@ -868,6 +964,52 @@ void tickEasyPlaceImpl() {
 } // namespace
 
 namespace detail {
+
+std::vector<int> availableCounts(std::vector<std::string> const& blockNames) {
+    std::vector<int> result(blockNames.size(), 0);
+    auto client = ll::service::getClientInstance();
+    auto* player = client ? client->getLocalPlayer() : nullptr;
+    if (!player) return result;
+    // One inventory pass builds a histogram keyed by the item's id+aux; each
+    // material then looks up the item its block resolves to (via makePlacingItem,
+    // so redstone/comparator/etc. map to the right item).
+    auto& inventory = player->getInventory();
+    std::unordered_map<int, int> histogram;
+    for (int slot = 0; slot < kInventorySlots; ++slot) {
+        auto const& item = inventory.getItem(slot);
+        if (item.isNull()) continue;
+        histogram[item.getIdAux()] += static_cast<int>(item.mCount);
+    }
+    for (std::size_t i = 0; i < blockNames.size(); ++i) {
+        auto const& block =
+            BlockTypeRegistry::get().getDefaultBlockState(HashedString(blockNames[i]), false);
+        if (block.isAir()) continue;
+        ItemStack const want = makePlacingItem(block);
+        auto const found = histogram.find(want.getIdAux());
+        if (found != histogram.end()) result[i] = found->second;
+    }
+    return result;
+}
+
+int maxStackForBlock(Block const& block) {
+    ItemStack const item = makePlacingItem(block);
+    if (item.isNull()) return 64;
+    int const size = static_cast<int>(item.getMaxStackSize());
+    return size > 0 ? size : 64;
+}
+
+bool manualTargetUnderCrosshair() {
+    auto client = ll::service::getClientInstance();
+    auto* player = client ? client->getLocalPlayer() : nullptr;
+    if (!player) return false;
+    Vec3 const eye = player->getEyePos();
+    Vec3 const rawDir = player->getViewVector(1.0f);
+    float const length = std::sqrt(rawDir.x * rawDir.x + rawDir.y * rawDir.y + rawDir.z * rawDir.z);
+    if (length <= 0.0f) return false;
+    Vec3 const dir{rawDir.x / length, rawDir.y / length, rawDir.z / length};
+    auto const target = findProjectionTarget(*player, eye, dir, player->getPickRange());
+    return target && findItemSlot(*player, *target->block).slot >= 0;
+}
 
 void tickEasyPlace() {
     tickEasyPlaceImpl();

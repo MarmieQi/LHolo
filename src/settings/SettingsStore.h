@@ -19,6 +19,12 @@ struct Settings {
     float correctionFillOpacity{0.15f};
     float correctionOutlineOpacity{1.0f};
     bool structureBoundsEnabled{true};
+    bool correctionSeeThrough{false};
+    bool missingSeeThrough{false};
+    bool projectionSeeThrough{false};
+    bool experimentalConsent{false};
+    bool materialHudEnabled{false};
+    int materialHudPosition{1};
     int placementRadius{4};
     int autoPlacementBreakCooldownSeconds{10};
     bool hudEnabled{true};
@@ -36,6 +42,14 @@ struct Settings {
     int layerDecreaseHotkey{0x28}; // VK_DOWN
     int layerIncreaseHotkeyModifiers{2};
     int layerDecreaseHotkeyModifiers{2};
+    int toggleManualHotkey{'R'};
+    int toggleManualHotkeyModifiers{0};
+    int toggleEasyHotkey{'F'};
+    int toggleEasyHotkeyModifiers{0};
+    int loadProjectionHotkey{0};
+    int loadProjectionHotkeyModifiers{0};
+    int closeProjectionHotkey{0};
+    int closeProjectionHotkeyModifiers{0};
     // X-, X+, Z-, Z+, Y+, Y-
     std::array<int, 6> moveHotkeys{0x25, 0x27, 0x26, 0x28, 0x26, 0x28};
     std::array<int, 6> moveHotkeyModifiers{1, 1, 1, 1, 4, 4};

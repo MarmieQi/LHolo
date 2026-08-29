@@ -58,6 +58,15 @@ public:
     void setCorrectionOutlineOpacity(float opacity);
     [[nodiscard]] bool structureBoundsEnabled() const;
     void setStructureBoundsEnabled(bool enabled);
+    // See-through (X-ray): draw the meshes with depth testing off so they show
+    // through world blocks. Independent for the correction markers and the
+    // projection ghost blocks.
+    [[nodiscard]] bool correctionSeeThrough() const;
+    void setCorrectionSeeThrough(bool enabled);
+    [[nodiscard]] bool missingSeeThrough() const;
+    void setMissingSeeThrough(bool enabled);
+    [[nodiscard]] bool projectionSeeThrough() const;
+    void setProjectionSeeThrough(bool enabled);
 
     [[nodiscard]] std::optional<ProjectionAnchor> consumeAnchor();
     void requestAnchor(int x, int y, int z);
@@ -70,6 +79,9 @@ private:
     std::atomic<float> mCorrectionFillOpacity{0.15f};
     std::atomic<float> mCorrectionOutlineOpacity{1.0f};
     std::atomic_bool   mStructureBoundsEnabled{true};
+    std::atomic_bool   mCorrectionSeeThrough{false};
+    std::atomic_bool   mMissingSeeThrough{false};
+    std::atomic_bool   mProjectionSeeThrough{false};
     std::atomic_bool   mPendingAnchor{false};
     std::atomic_int    mPendingAnchorX{0};
     std::atomic_int    mPendingAnchorY{0};

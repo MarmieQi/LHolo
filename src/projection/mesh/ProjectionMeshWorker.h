@@ -37,6 +37,8 @@ struct AsyncSectionBuildResult {
         sectionMeshes;
     std::unique_ptr<mce::Mesh> warningFillMesh;
     std::unique_ptr<mce::Mesh> correctionOutlineMesh;
+    std::unique_ptr<mce::Mesh> wrongFillMesh;
+    std::unique_ptr<mce::Mesh> wrongOutlineMesh;
     std::unique_ptr<mce::Mesh> liquidProxyMesh;
     std::unique_ptr<mce::Mesh> blockEntityPlaceholderMesh;
 };

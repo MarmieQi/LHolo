@@ -170,6 +170,8 @@ void scheduleProjectionMeshBuild(
     snapshot->sections.resize(1);
     snapshot->warningFillSectionMeshes.resize(1);
     snapshot->correctionOutlineSectionMeshes.resize(1);
+    snapshot->wrongFillSectionMeshes.resize(1);
+    snapshot->wrongOutlineSectionMeshes.resize(1);
     snapshot->liquidProxySectionMeshes.resize(1);
     snapshot->blockEntityPlaceholderSectionMeshes.resize(1);
 
@@ -254,6 +256,8 @@ void scheduleProjectionMeshBuild(
                 }
                 result.warningFillMesh = std::move(snapshot->warningFillSectionMeshes[0]);
                 result.correctionOutlineMesh = std::move(snapshot->correctionOutlineSectionMeshes[0]);
+                result.wrongFillMesh = std::move(snapshot->wrongFillSectionMeshes[0]);
+                result.wrongOutlineMesh = std::move(snapshot->wrongOutlineSectionMeshes[0]);
                 result.liquidProxyMesh = std::move(snapshot->liquidProxySectionMeshes[0]);
                 result.blockEntityPlaceholderMesh
                     = std::move(snapshot->blockEntityPlaceholderSectionMeshes[0]);

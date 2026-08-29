@@ -12,10 +12,6 @@
 namespace lholo::structure::detail {
 namespace {
 
-constexpr std::size_t kGuiHotkeyIndex = 0;
-constexpr std::size_t kLayerIncreaseHotkeyIndex = StructureUiState::kHotkeyCount - 2;
-constexpr std::size_t kLayerDecreaseHotkeyIndex = StructureUiState::kHotkeyCount - 1;
-
 template <class T>
 bool updateRelaxed(std::atomic<T>& target, T value) {
     if (target.load(std::memory_order_relaxed) == value) return false;
@@ -27,7 +23,7 @@ bool updateRelaxed(std::atomic<T>& target, T value) {
 
 StructureUiState::StructureUiState() {
     static constexpr unsigned int keys[kHotkeyCount]{
-        'M', VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_UP, VK_DOWN, VK_UP, VK_DOWN
+        'M', VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_UP, VK_DOWN, VK_UP, VK_DOWN, 'R', 'F', 0, 0
     };
     static constexpr unsigned int modifiers[kHotkeyCount]{
         lholo::ui::kHotkeyModifierAlt,
@@ -38,7 +34,11 @@ StructureUiState::StructureUiState() {
         lholo::ui::kHotkeyModifierShift,
         lholo::ui::kHotkeyModifierShift,
         lholo::ui::kHotkeyModifierAlt,
-        lholo::ui::kHotkeyModifierAlt
+        lholo::ui::kHotkeyModifierAlt,
+        0,
+        0,
+        0,
+        0
     };
     for (std::size_t index = 0; index < kHotkeyCount; ++index) {
         mHotkeys[index].key.store(keys[index], std::memory_order_relaxed);
@@ -163,18 +163,9 @@ void StructureUiState::setHotkey(
 }
 
 std::optional<std::size_t> StructureUiState::capturingHotkey() const {
-    static constexpr std::size_t order[kHotkeyCount]{
-        kGuiHotkeyIndex,
-        kLayerIncreaseHotkeyIndex,
-        kLayerDecreaseHotkeyIndex,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6
-    };
-    for (auto const index : order) {
+    // Only one hotkey can be capturing at a time (beginHotkeyCapture clears the
+    // rest), so a plain scan over every slot is sufficient and count-agnostic.
+    for (std::size_t index = 0; index < mHotkeys.size(); ++index) {
         if (mHotkeys[index].capturing.load(std::memory_order_acquire)) return index;
     }
     return std::nullopt;
@@ -222,7 +213,7 @@ void StructureUiState::bindCapturedHotkey(
 
 void StructureUiState::resetHotkeys() {
     static constexpr unsigned int keys[kHotkeyCount]{
-        'M', VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_UP, VK_DOWN, VK_UP, VK_DOWN
+        'M', VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_UP, VK_DOWN, VK_UP, VK_DOWN, 'R', 'F', 0, 0
     };
     static constexpr unsigned int modifiers[kHotkeyCount]{
         lholo::ui::kHotkeyModifierAlt,
@@ -233,7 +224,11 @@ void StructureUiState::resetHotkeys() {
         lholo::ui::kHotkeyModifierShift,
         lholo::ui::kHotkeyModifierShift,
         lholo::ui::kHotkeyModifierAlt,
-        lholo::ui::kHotkeyModifierAlt
+        lholo::ui::kHotkeyModifierAlt,
+        0,
+        0,
+        0,
+        0
     };
     for (std::size_t index = 0; index < mHotkeys.size(); ++index) {
         mHotkeys[index].key.store(keys[index], std::memory_order_relaxed);
@@ -312,6 +307,22 @@ void StructureUiState::queueLayerDelta(int delta) {
     else if (delta < 0) mPendingLayerDelta.fetch_sub(1, std::memory_order_relaxed);
 }
 
+void StructureUiState::queueToggleManual() {
+    mPendingToggleManual.store(true, std::memory_order_release);
+}
+
+void StructureUiState::queueToggleEasy() {
+    mPendingToggleEasy.store(true, std::memory_order_release);
+}
+
+void StructureUiState::queueLoadProjection() {
+    mPendingLoadProjection.store(true, std::memory_order_release);
+}
+
+void StructureUiState::queueCloseProjection() {
+    mPendingCloseProjection.store(true, std::memory_order_release);
+}
+
 void StructureUiState::requestSettingsSave() {
     mPendingSettingsSave.store(true, std::memory_order_release);
 }
@@ -322,7 +333,11 @@ PendingHotkeyActions StructureUiState::consumePendingHotkeyActions() {
         mPendingOffsetY.exchange(0, std::memory_order_acq_rel),
         mPendingOffsetZ.exchange(0, std::memory_order_acq_rel),
         mPendingLayerDelta.exchange(0, std::memory_order_acq_rel),
-        mPendingSettingsSave.exchange(false, std::memory_order_acq_rel)
+        mPendingSettingsSave.exchange(false, std::memory_order_acq_rel),
+        mPendingToggleManual.exchange(false, std::memory_order_acq_rel),
+        mPendingToggleEasy.exchange(false, std::memory_order_acq_rel),
+        mPendingLoadProjection.exchange(false, std::memory_order_acq_rel),
+        mPendingCloseProjection.exchange(false, std::memory_order_acq_rel)
     };
 }
 
@@ -337,6 +352,9 @@ bool StructureUiState::consumeMaterialListRequest() {
 void StructureUiState::replaceMaterialRequirements(std::vector<MaterialRequirement> materials) {
     std::lock_guard lock(mMaterialMutex);
     mMaterialRequirements = std::move(materials);
+    // Availability belongs to the previous requirement list; drop it so the HUD
+    // never pairs new requirements with stale counts before the next scan.
+    mMaterialAvailability.clear();
 }
 
 std::vector<MaterialRequirement> StructureUiState::materialRequirements() const {
@@ -344,10 +362,21 @@ std::vector<MaterialRequirement> StructureUiState::materialRequirements() const 
     return mMaterialRequirements;
 }
 
+void StructureUiState::setMaterialAvailability(std::vector<int> counts) {
+    std::lock_guard lock(mMaterialMutex);
+    mMaterialAvailability = std::move(counts);
+}
+
+MaterialSnapshot StructureUiState::materialSnapshot() const {
+    std::lock_guard lock(mMaterialMutex);
+    return {mMaterialRequirements, mMaterialAvailability};
+}
+
 void StructureUiState::clearMaterials() {
     mMaterialListRequested.store(false, std::memory_order_release);
     std::lock_guard lock(mMaterialMutex);
     mMaterialRequirements.clear();
+    mMaterialAvailability.clear();
 }
 
 } // namespace lholo::structure::detail

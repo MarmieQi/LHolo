@@ -43,7 +43,8 @@ struct CaptureDraftModel {
 
 enum class HotkeyId : std::uint8_t {
     Gui, MoveXMinus, MoveXPlus, MoveZMinus, MoveZPlus,
-    MoveYPlus, MoveYMinus, LayerIncrease, LayerDecrease
+    MoveYPlus, MoveYMinus, LayerIncrease, LayerDecrease,
+    ToggleManual, ToggleEasy, LoadProjection, CloseProjection
 };
 
 struct HotkeyRow {
@@ -57,6 +58,7 @@ struct MaterialRow {
     std::string displayName;
     std::string typeName;
     std::uint64_t count{};
+    int stackSize{64};
 };
 
 struct MenuModel {
@@ -78,9 +80,14 @@ struct MenuModel {
     std::string       captureStatus;
 
     bool structureBoundsEnabled{};
+    bool correctionSeeThrough{};
+    bool missingSeeThrough{};
+    bool projectionSeeThrough{};
     bool easyPlaceEnabled{};
     bool manualPlace{};
     bool rangeEnabled{};
+    bool experimentalConsent{};
+    int  consentPopupRequest{};
     int placementRadius{4};
     int autoPlacementBreakCooldownSeconds{10};
     int offsetX{};
@@ -98,7 +105,7 @@ struct MenuModel {
     int maxLayerY{};
     int maxLayerX{};
 
-    std::array<HotkeyRow, 9> hotkeys{};
+    std::array<HotkeyRow, 13> hotkeys{};
     bool hudEnabled{true};
     int hudPosition{1};
     bool hudShowFileName{true};
@@ -111,6 +118,8 @@ struct MenuModel {
 
     std::vector<MaterialRow> materials;
     bool materialPopupRequested{};
+    bool materialHudEnabled{};
+    int  materialHudPosition{1};
     bool closeRequested{};
 };
 
@@ -120,10 +129,12 @@ struct MenuActions {
     std::function<void()> restoreProjection;
     std::function<void()> closeProjection;
     std::function<void()> requestMaterials;
+    std::function<void(bool)> setMaterialHudEnabled;
     std::function<void(HotkeyId)> beginHotkeyCapture;
     std::function<void(HotkeyId)> clearHotkey;
     std::function<void()> resetHotkeys;
     std::function<void()> resetCorrectionStyle;
+    std::function<void()> giveExperimentalConsent;
     std::function<void(CapturePointId)> usePlayerCapturePosition;
     std::function<void()> clearCapture;
     std::function<void(CaptureDraftModel const&)> exportCapture;

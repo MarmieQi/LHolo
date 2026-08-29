@@ -28,7 +28,9 @@
 #include "ui/FileDialog.h"
 #include "ui/FluentTheme.h"
 #include "ui/LHoloMenu.h"
+#include "ui/MenuWidgets.h"
 #include "place/PlaceHelper.h"
+#include "place/PlacementExecutor.h"
 #include "plugin/LHolo.h"
 #include "projection/Projection.h"
 
@@ -78,8 +80,12 @@ using detail::MaterialRequirement;
 
 constexpr char           kMaterialPopupName[]       = "材料清单###LHoloMaterialList";
 constexpr std::size_t    kGuiHotkeyIndex             = 0;
-constexpr std::size_t    kLayerIncreaseHotkeyIndex   = detail::StructureUiState::kHotkeyCount - 2;
-constexpr std::size_t    kLayerDecreaseHotkeyIndex   = detail::StructureUiState::kHotkeyCount - 1;
+constexpr std::size_t    kLayerIncreaseHotkeyIndex   = 7;
+constexpr std::size_t    kLayerDecreaseHotkeyIndex   = 8;
+constexpr std::size_t    kToggleManualHotkeyIndex    = 9;
+constexpr std::size_t    kToggleEasyHotkeyIndex      = 10;
+constexpr std::size_t    kLoadProjectionHotkeyIndex  = 11;
+constexpr std::size_t    kCloseProjectionHotkeyIndex = 12;
 
 
 std::string localizedBlockName(Block const& block, std::string_view localeCode) {
@@ -122,11 +128,25 @@ std::vector<MaterialRequirement> collectMaterials(
     auto aggregate = [&](auto& destination, Block const* block) {
         if (!block) return;
 
-        auto const& typeName = block->getTypeName();
+        std::string typeName{block->getTypeName()};
+        std::string displayOverride;
+        // Bedrock keeps water/lava as static (minecraft:water / minecraft:lava)
+        // and flowing (minecraft:flowing_*) variants. Treat each liquid as one
+        // material named just "水" / "熔岩" instead of "静态水" etc.
+        if (typeName == "minecraft:water" || typeName == "minecraft:flowing_water") {
+            typeName = "minecraft:water";
+            displayOverride = "水";
+        } else if (typeName == "minecraft:lava" || typeName == "minecraft:flowing_lava") {
+            typeName = "minecraft:lava";
+            displayOverride = "熔岩";
+        }
+
         auto [it, inserted] = destination.try_emplace(typeName);
         if (inserted) {
-            it->second.displayName = localizedBlockName(*block, localeCode);
+            it->second.displayName = displayOverride.empty()
+                ? localizedBlockName(*block, localeCode) : displayOverride;
             it->second.typeName = typeName;
+            it->second.stackSize = place::detail::maxStackForBlock(*block);
         }
         if (it->second.count != std::numeric_limits<std::uint64_t>::max()) {
             ++it->second.count;
@@ -295,6 +315,42 @@ bool handleGuiHotkeyKeyDown(unsigned int virtualKey) {
         }
         return true;
     }
+    auto const toggleManualHotkey = uiState().inputHotkey(kToggleManualHotkeyIndex);
+    if (toggleManualHotkey.key != 0 && virtualKey == toggleManualHotkey.key
+        && modifiers == toggleManualHotkey.modifiers) {
+        if (GetTickCount64() >= uiState().ignoreHotkeyUntil()
+            && uiState().tryPressHotkey(kToggleManualHotkeyIndex)) {
+            uiState().queueToggleManual();
+        }
+        return true;
+    }
+    auto const toggleEasyHotkey = uiState().inputHotkey(kToggleEasyHotkeyIndex);
+    if (toggleEasyHotkey.key != 0 && virtualKey == toggleEasyHotkey.key
+        && modifiers == toggleEasyHotkey.modifiers) {
+        if (GetTickCount64() >= uiState().ignoreHotkeyUntil()
+            && uiState().tryPressHotkey(kToggleEasyHotkeyIndex)) {
+            uiState().queueToggleEasy();
+        }
+        return true;
+    }
+    auto const loadProjectionHotkey = uiState().inputHotkey(kLoadProjectionHotkeyIndex);
+    if (loadProjectionHotkey.key != 0 && virtualKey == loadProjectionHotkey.key
+        && modifiers == loadProjectionHotkey.modifiers) {
+        if (GetTickCount64() >= uiState().ignoreHotkeyUntil()
+            && uiState().tryPressHotkey(kLoadProjectionHotkeyIndex)) {
+            uiState().queueLoadProjection();
+        }
+        return true;
+    }
+    auto const closeProjectionHotkey = uiState().inputHotkey(kCloseProjectionHotkeyIndex);
+    if (closeProjectionHotkey.key != 0 && virtualKey == closeProjectionHotkey.key
+        && modifiers == closeProjectionHotkey.modifiers) {
+        if (GetTickCount64() >= uiState().ignoreHotkeyUntil()
+            && uiState().tryPressHotkey(kCloseProjectionHotkeyIndex)) {
+            uiState().queueCloseProjection();
+        }
+        return true;
+    }
     return false;
 }
 
@@ -327,11 +383,57 @@ void processPendingHotkeyActions() {
     session.adjustOffsets(pending.offsetX, pending.offsetY, pending.offsetZ);
     if (layerActionEnabled) session.adjustDisplayLayer(pending.layerDelta);
 
+    // Assisted-placement modes are session-only, so a hotkey toggle shows a
+    // JE-style hint but is not persisted. Manual/easy/range stay mutually
+    // exclusive, matching the UI.
+    // Experimental assisted-placement modes require a one-time consent. A hotkey
+    // that would ENABLE one without it is refused with a hint pointing to the menu
+    // (where the consent popup lives); disabling is always allowed.
+    if (pending.toggleManual) {
+        bool const enable = !place::isManualMode();
+        if (enable && !experimentalConsentGiven()) {
+            requestExperimentalConsentPopup(1);
+        } else {
+            place::setManualMode(enable);
+            if (enable) {
+                place::setEnabled(false);
+                place::setRangeEnabled(false);
+            }
+            showActionHint(enable ? "手动放置模式：开启" : "手动放置模式：关闭");
+        }
+    }
+    if (pending.toggleEasy) {
+        bool const enable = !place::isEnabled();
+        if (enable && !experimentalConsentGiven()) {
+            requestExperimentalConsentPopup(2);
+        } else {
+            place::setEnabled(enable);
+            if (enable) {
+                place::setManualMode(false);
+                place::setRangeEnabled(false);
+            }
+            showActionHint(enable ? "轻松放置模式：开启" : "轻松放置模式：关闭");
+        }
+    }
+    if (pending.loadProjection) {
+        restoreSavedProjection();
+        showActionHint("加载投影");
+    }
+    if (pending.closeProjection) {
+        clear();
+        saveSettings();
+        showActionHint("关闭投影");
+    }
+
     changed = pending.settingsSave || changed;
     if (changed) saveSettings();
 }
 
 bool hasHudInfo() {
+    if (!detail::StructureSession::getInstance().hasLoaded()) return false;
+    // The material HUD renders independently of the projection HUD, so the
+    // overlay must draw when it is enabled even if the projection HUD is off.
+    if (materialHudEnabled()) return true;
     auto const hud = uiState().hud();
     if (!hud.enabled) return false;
     if (!hud.showFileName
@@ -341,7 +443,124 @@ bool hasHudInfo() {
         && !hud.showWrongState
         && !hud.showWrongType
         && !hud.showProjectedBlockName) return false;
-    return detail::StructureSession::getInstance().hasLoaded();
+    return true;
+}
+
+namespace {
+std::mutex            gActionHintMutex;
+std::string          gActionHintText;
+std::atomic_uint64_t gActionHintExpiry{0};
+std::atomic_bool     gExperimentalConsent{false};
+// Opt-in, off by default: the on-screen material-progress HUD is toggled from
+// the material-list popup, independent of the main projection HUD.
+std::atomic_bool     gMaterialHudEnabled{false};
+// Material HUD corner, same encoding as the projection HUD position
+// (0 top-left, 1 bottom-left, 2 top-right, 3 bottom-right). Default bottom-left.
+std::atomic_int      gMaterialHudPosition{1};
+// Render-thread only. renderHud records its rect + corner each frame so
+// renderMaterialHud (drawn right after, same frame) can stack clear of it when
+// they share a corner. `frame` guards against stale reads.
+struct ProjectionHudLayout {
+    int   frame{-1};
+    int   position{1};
+    float topY{0.0f};
+    float bottomY{0.0f};
+};
+ProjectionHudLayout  gProjectionHudLayout;
+// 0 none, -1 view-only, 1 manual, 2 easy, 3 range. Set when a hotkey needs
+// consent so the menu jumps to the experimental page and opens the popup.
+std::atomic_int      gPendingConsentPopupFeature{0};
+} // namespace
+
+bool experimentalConsentGiven() {
+    return gExperimentalConsent.load(std::memory_order_acquire);
+}
+
+void setExperimentalConsentGiven(bool given) {
+    gExperimentalConsent.store(given, std::memory_order_release);
+}
+
+bool materialHudEnabled() {
+    return gMaterialHudEnabled.load(std::memory_order_acquire);
+}
+
+void setMaterialHudEnabled(bool enabled) {
+    gMaterialHudEnabled.store(enabled, std::memory_order_release);
+}
+
+int materialHudPosition() {
+    return gMaterialHudPosition.load(std::memory_order_acquire);
+}
+
+void setMaterialHudPosition(int position) {
+    gMaterialHudPosition.store(std::clamp(position, 0, 3), std::memory_order_release);
+}
+
+void requestExperimentalConsentPopup(int feature) {
+    gPendingConsentPopupFeature.store(feature, std::memory_order_release);
+    if (!isGuiVisible()) requestOpenGui();
+}
+
+int consumeExperimentalConsentPopupRequest() {
+    return gPendingConsentPopupFeature.exchange(0, std::memory_order_acq_rel);
+}
+
+void showActionHint(std::string text, std::uint64_t durationMs) {
+    {
+        std::lock_guard lock(gActionHintMutex);
+        gActionHintText = std::move(text);
+    }
+    gActionHintExpiry.store(GetTickCount64() + durationMs, std::memory_order_release);
+}
+
+bool actionHintActive() {
+    return GetTickCount64() < gActionHintExpiry.load(std::memory_order_acquire);
+}
+
+void renderActionHint() {
+    auto const now = GetTickCount64();
+    auto const expiry = gActionHintExpiry.load(std::memory_order_acquire);
+    if (now >= expiry) return;
+    std::string text;
+    {
+        std::lock_guard lock(gActionHintMutex);
+        text = gActionHintText;
+    }
+    if (text.empty()) return;
+
+    auto const remaining = expiry - now;
+    float const alpha = remaining < 300 ? static_cast<float>(remaining) / 300.0f : 1.0f;
+    auto const displaySize = ImGui::GetIO().DisplaySize;
+    float const uiScale = std::clamp(
+        std::min(displaySize.x / 1920.0f, displaySize.y / 1080.0f), 1.0f, 5.0f
+    );
+    auto const metrics = lholo::ui::calculateMetrics(displaySize, uiScale);
+    lholo::ui::applyFluentTheme(metrics);
+
+    // Centered horizontally, sitting just above the hotbar like JE's action bar.
+    ImGui::SetNextWindowPos(
+        ImVec2(displaySize.x * 0.5f, displaySize.y * 0.76f), ImGuiCond_Always, ImVec2(0.5f, 0.5f)
+    );
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.36f, 0.20f, 0.42f, 0.86f * alpha));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, alpha));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, metrics.rounding * 0.6f);
+    ImGui::PushStyleVar(
+        ImGuiStyleVar_WindowPadding, ImVec2(metrics.sectionPadding, metrics.gap)
+    );
+    constexpr auto flags = ImGuiWindowFlags_NoDecoration
+        | ImGuiWindowFlags_AlwaysAutoResize
+        | ImGuiWindowFlags_NoSavedSettings
+        | ImGuiWindowFlags_NoFocusOnAppearing
+        | ImGuiWindowFlags_NoBringToFrontOnFocus
+        | ImGuiWindowFlags_NoNavInputs
+        | ImGuiWindowFlags_NoNavFocus
+        | ImGuiWindowFlags_NoInputs;
+    if (ImGui::Begin("##LHoloActionHint", nullptr, flags)) {
+        ImGui::TextUnformatted(text.c_str());
+    }
+    ImGui::End();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor(2);
 }
 
 void renderHud() {
@@ -465,6 +684,119 @@ void renderHud() {
                 static_cast<unsigned long long>(progress.wrongType)
             );
         }
+        // Record our rect + corner so the material HUD (drawn right after) can
+        // stack clear of us when it shares this corner, instead of overlapping.
+        gProjectionHudLayout.frame = ImGui::GetFrameCount();
+        gProjectionHudLayout.position = hudPosition;
+        gProjectionHudLayout.topY = ImGui::GetWindowPos().y;
+        gProjectionHudLayout.bottomY = ImGui::GetWindowPos().y + ImGui::GetWindowSize().y;
+    }
+    ImGui::End();
+    ImGui::PopStyleVar(2);
+}
+
+void renderMaterialHud() {
+    if (isGuiVisible()) return;
+    if (!materialHudEnabled()) return;
+    auto const hud = uiState().hud();
+    if (!detail::StructureSession::getInstance().hasLoaded()) return;
+    // Both vectors come from one locked copy so they stay index-aligned. The
+    // inventory scan itself runs on the game tick thread (availableCounts touches
+    // the item registry, which must not be called from this present thread).
+    auto const snapshot = uiState().materialSnapshot();
+    auto const& materials = snapshot.requirements;
+    auto const& available = snapshot.available;
+    if (materials.empty()) {
+        // Nothing computed yet for this structure — kick off a scan; it lands via
+        // processPendingMaterialList on the next tick. Setting the request flag is
+        // just an atomic store, so it is safe from the render thread.
+        uiState().requestMaterialList();
+        return;
+    }
+
+    struct Row {
+        std::string const* name;
+        std::uint64_t      missing;
+        int                stackSize;
+    };
+    std::vector<Row> missing;
+    std::uint64_t totalNeed{}, totalMissing{};
+    for (std::size_t index = 0; index < materials.size(); ++index) {
+        auto const need = materials[index].count;
+        auto const have = index < available.size() ? available[index] : 0;
+        auto const miss = static_cast<std::uint64_t>(have) >= need
+            ? 0ULL : need - static_cast<std::uint64_t>(have);
+        totalNeed += need;
+        totalMissing += miss;
+        if (miss > 0) {
+            missing.push_back({&materials[index].displayName, miss, materials[index].stackSize});
+        }
+    }
+    std::sort(missing.begin(), missing.end(), [](Row const& a, Row const& b) {
+        return a.missing > b.missing;
+    });
+
+    auto const displaySize = ImGui::GetIO().DisplaySize;
+    float uiScale = hud.uiScale;
+    if (uiScale <= 0.0f) {
+        uiScale = std::clamp(std::min(displaySize.x / 1920.0f, displaySize.y / 1080.0f), 1.0f, 5.0f);
+    }
+    auto const metrics = lholo::ui::calculateMetrics(displaySize, uiScale);
+    lholo::ui::applyFluentTheme(metrics);
+    auto const margin = metrics.outerPadding;
+    auto const position = std::clamp(materialHudPosition(), 0, 3);
+    bool const right = position >= 2;
+    bool const bottom = (position & 1) != 0;
+    float anchorX = right ? displaySize.x - margin : margin;
+    float anchorY = bottom ? displaySize.y - margin : margin;
+    // When the projection HUD occupies the same corner this frame, stack clear
+    // of it — above it for a bottom corner, below it for a top corner.
+    if (gProjectionHudLayout.frame == ImGui::GetFrameCount()
+        && gProjectionHudLayout.position == position) {
+        if (bottom) {
+            anchorY = std::min(anchorY, gProjectionHudLayout.topY - metrics.gap);
+        } else {
+            anchorY = std::max(anchorY, gProjectionHudLayout.bottomY + metrics.gap);
+        }
+    }
+    ImGui::SetNextWindowPos(
+        ImVec2(anchorX, anchorY), ImGuiCond_Always, ImVec2(right ? 1.0f : 0.0f, bottom ? 1.0f : 0.0f)
+    );
+    ImGui::SetNextWindowBgAlpha(0.68f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, metrics.rounding * 0.7f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(metrics.sectionPadding, metrics.gap));
+    constexpr auto flags = ImGuiWindowFlags_NoDecoration
+        | ImGuiWindowFlags_AlwaysAutoResize
+        | ImGuiWindowFlags_NoSavedSettings
+        | ImGuiWindowFlags_NoFocusOnAppearing
+        | ImGuiWindowFlags_NoBringToFrontOnFocus
+        | ImGuiWindowFlags_NoNavInputs
+        | ImGuiWindowFlags_NoNavFocus
+        | ImGuiWindowFlags_NoInputs;
+    if (ImGui::Begin("##LHoloMaterialHud", nullptr, flags)) {
+        if (totalMissing == 0) {
+            ImGui::TextColored(ImVec4(0.55f, 0.85f, 0.40f, 1.0f), "材料已备齐 ✓（共 %llu）",
+                static_cast<unsigned long long>(totalNeed));
+        } else {
+            ImGui::Text("材料进度  缺 %llu / 共 %llu",
+                static_cast<unsigned long long>(totalMissing),
+                static_cast<unsigned long long>(totalNeed));
+            ImGui::Separator();
+            constexpr std::size_t kMaxRows = 14;
+            for (std::size_t index = 0; index < missing.size() && index < kMaxRows; ++index) {
+                auto const& row = missing[index];
+                // JE Litematica style: name then the missing amount broken into
+                // stacks, e.g. "白色玻璃  111 (1 x 64 + 47)".
+                ImGui::TextColored(
+                    ImVec4(1.0f, 0.62f, 0.20f, 1.0f), "%s  %s",
+                    row.name->c_str(),
+                    lholo::ui::formatStackCount(row.missing, row.stackSize).c_str()
+                );
+            }
+            if (missing.size() > kMaxRows) {
+                ImGui::TextDisabled("…还有 %zu 种材料", missing.size() - kMaxRows);
+            }
+        }
     }
     ImGui::End();
     ImGui::PopStyleVar(2);
@@ -489,6 +821,12 @@ void loadSettings() {
         projection::setCorrectionFillOpacity(settings.correctionFillOpacity);
         projection::setCorrectionOutlineOpacity(settings.correctionOutlineOpacity);
         projection::setStructureBoundsEnabled(settings.structureBoundsEnabled);
+        projection::setCorrectionSeeThrough(settings.correctionSeeThrough);
+        projection::setMissingSeeThrough(settings.missingSeeThrough);
+        projection::setProjectionSeeThrough(settings.projectionSeeThrough);
+        setExperimentalConsentGiven(settings.experimentalConsent);
+        setMaterialHudEnabled(settings.materialHudEnabled);
+        setMaterialHudPosition(settings.materialHudPosition);
         // Transform and layer state are session-local. Only the explicit
         // "restore last projection" record below is persisted.
         session.resetTransform();
@@ -534,6 +872,26 @@ void loadSettings() {
                 std::clamp(settings.moveHotkeyModifiers[index], 0, 7)
             );
         }
+        uiState().setHotkey(
+            kToggleManualHotkeyIndex,
+            std::clamp(settings.toggleManualHotkey, 0, 255),
+            std::clamp(settings.toggleManualHotkeyModifiers, 0, 7)
+        );
+        uiState().setHotkey(
+            kToggleEasyHotkeyIndex,
+            std::clamp(settings.toggleEasyHotkey, 0, 255),
+            std::clamp(settings.toggleEasyHotkeyModifiers, 0, 7)
+        );
+        uiState().setHotkey(
+            kLoadProjectionHotkeyIndex,
+            std::clamp(settings.loadProjectionHotkey, 0, 255),
+            std::clamp(settings.loadProjectionHotkeyModifiers, 0, 7)
+        );
+        uiState().setHotkey(
+            kCloseProjectionHotkeyIndex,
+            std::clamp(settings.closeProjectionHotkey, 0, 255),
+            std::clamp(settings.closeProjectionHotkeyModifiers, 0, 7)
+        );
         session.setSavedProjection({
             settings.hasSavedProjection,
             settings.savedAnchorX,
@@ -575,6 +933,12 @@ void saveSettings() {
         settings.correctionFillOpacity = projection::getCorrectionFillOpacity();
         settings.correctionOutlineOpacity = projection::getCorrectionOutlineOpacity();
         settings.structureBoundsEnabled = projection::getStructureBoundsEnabled();
+        settings.correctionSeeThrough = projection::getCorrectionSeeThrough();
+        settings.missingSeeThrough = projection::getMissingSeeThrough();
+        settings.projectionSeeThrough = projection::getProjectionSeeThrough();
+        settings.experimentalConsent = experimentalConsentGiven();
+        settings.materialHudEnabled = materialHudEnabled();
+        settings.materialHudPosition = materialHudPosition();
         settings.placementRadius = place::getPlacementRadius();
         settings.autoPlacementBreakCooldownSeconds
             = place::getAutoPlacementBreakCooldownSeconds();
@@ -601,6 +965,18 @@ void saveSettings() {
             settings.moveHotkeys[index] = moveHotkey.key;
             settings.moveHotkeyModifiers[index] = moveHotkey.modifiers;
         }
+        auto const toggleManualHotkey = uiState().hotkey(kToggleManualHotkeyIndex);
+        auto const toggleEasyHotkey = uiState().hotkey(kToggleEasyHotkeyIndex);
+        settings.toggleManualHotkey = toggleManualHotkey.key;
+        settings.toggleManualHotkeyModifiers = toggleManualHotkey.modifiers;
+        settings.toggleEasyHotkey = toggleEasyHotkey.key;
+        settings.toggleEasyHotkeyModifiers = toggleEasyHotkey.modifiers;
+        auto const loadProjectionHotkey = uiState().hotkey(kLoadProjectionHotkeyIndex);
+        auto const closeProjectionHotkey = uiState().hotkey(kCloseProjectionHotkeyIndex);
+        settings.loadProjectionHotkey = loadProjectionHotkey.key;
+        settings.loadProjectionHotkeyModifiers = loadProjectionHotkey.modifiers;
+        settings.closeProjectionHotkey = closeProjectionHotkey.key;
+        settings.closeProjectionHotkeyModifiers = closeProjectionHotkey.modifiers;
         settings.hasSavedProjection = sessionSnapshot.saved.available;
         settings.savedAnchorX = sessionSnapshot.saved.anchorX;
         settings.savedAnchorY = sessionSnapshot.saved.anchorY;
@@ -642,6 +1018,33 @@ int getLayerAxis() { return detail::StructureSession::getInstance().transform().
 void recordProjectionAnchor(int x, int y, int z) {
     detail::StructureSession::getInstance().recordProjectionAnchor(x, y, z);
     saveSettings();
+}
+
+void restoreSavedProjection() {
+    auto& session = detail::StructureSession::getInstance();
+    auto const saved = session.savedProjection();
+    auto const& savedPath = saved.structurePath;
+    std::string error;
+    auto loaded = detail::loadStructureFile(detail::pathFromUtf8(savedPath), error);
+    if (!loaded) {
+        session.setStatus("恢复失败: " + error);
+        logger().error("Could not restore structure {}: {}", savedPath, error);
+        return;
+    }
+    session.setRotation(saved.transform.rotation);
+    session.setMirror(std::clamp(saved.transform.mirror, 0, 2));
+    session.setOffsetX(saved.transform.offsetX);
+    session.setOffsetY(saved.transform.offsetY);
+    session.setOffsetZ(saved.transform.offsetZ);
+    session.setLayerDisplayMode(saved.transform.layerDisplayMode);
+    session.setDisplayLayer(saved.transform.displayLayer);
+    session.setLayerAxis(saved.transform.layerAxis);
+    projection::requestNextStructureAnchor(saved.anchorX, saved.anchorY, saved.anchorZ);
+    session.replaceLoaded(std::move(loaded), savedPath, "已恢复上次投影记录，等待进入渲染");
+    logger().info(
+        "Restoring projection {} at ({}, {}, {})",
+        savedPath, saved.anchorX, saved.anchorY, saved.anchorZ
+    );
 }
 
 void clear() {

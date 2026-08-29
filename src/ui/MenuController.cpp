@@ -49,7 +49,7 @@ bool                   gPathInitialized{};
 MenuPage               gActivePage{MenuPage::Projection};
 
 struct HotkeyDefinition { HotkeyId id; char const* label; };
-constexpr std::array<HotkeyDefinition, 9> kHotkeyDefinitions{{
+constexpr std::array<HotkeyDefinition, 13> kHotkeyDefinitions{{
     {HotkeyId::Gui, "打开投影菜单"},
     {HotkeyId::MoveXMinus, "结构偏移 X -1"},
     {HotkeyId::MoveXPlus, "结构偏移 X +1"},
@@ -58,7 +58,11 @@ constexpr std::array<HotkeyDefinition, 9> kHotkeyDefinitions{{
     {HotkeyId::MoveYPlus, "结构偏移 Y +1"},
     {HotkeyId::MoveYMinus, "结构偏移 Y -1"},
     {HotkeyId::LayerIncrease, "上一层"},
-    {HotkeyId::LayerDecrease, "下一层"}
+    {HotkeyId::LayerDecrease, "下一层"},
+    {HotkeyId::ToggleManual, "开关手动放置"},
+    {HotkeyId::ToggleEasy, "开关轻松放置"},
+    {HotkeyId::LoadProjection, "加载投影"},
+    {HotkeyId::CloseProjection, "关闭投影"}
 }};
 
 } // namespace
@@ -68,6 +72,10 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
     auto& session = structure::detail::StructureSession::getInstance();
     auto const sessionSnapshot = session.snapshot();
     auto const hud = uiState().hud();
+    // A placement hotkey pressed before consent asks the menu to jump here and
+    // open the consent popup.
+    model.consentPopupRequest = structure::consumeExperimentalConsentPopupRequest();
+    if (model.consentPopupRequest != 0) gActivePage = MenuPage::Experimental;
     model.page = gActivePage;
     model.pathBuffer = gPathBuffer.data();
     model.pathBufferSize = gPathBuffer.size();
@@ -97,9 +105,15 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
     model.maxLayerY = sessionSnapshot.maxLayerY;
     model.maxLayerX = sessionSnapshot.maxLayerX;
     model.structureBoundsEnabled = projection::getStructureBoundsEnabled();
+    model.correctionSeeThrough = projection::getCorrectionSeeThrough();
+    model.missingSeeThrough = projection::getMissingSeeThrough();
+    model.projectionSeeThrough = projection::getProjectionSeeThrough();
     model.easyPlaceEnabled = place::isEnabled();
     model.manualPlace = place::isManualMode();
     model.rangeEnabled = place::isRangeEnabled();
+    model.experimentalConsent = structure::experimentalConsentGiven();
+    model.materialHudEnabled = structure::materialHudEnabled();
+    model.materialHudPosition = std::clamp(structure::materialHudPosition(), 0, 3);
     model.placementRadius = place::getPlacementRadius();
     model.autoPlacementBreakCooldownSeconds = place::getAutoPlacementBreakCooldownSeconds();
     model.offsetX = sessionSnapshot.transform.offsetX;
@@ -135,7 +149,9 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
     auto const materials = uiState().materialRequirements();
     model.materials.reserve(materials.size());
     for (auto const& material : materials) {
-        model.materials.push_back({material.displayName, material.typeName, material.count});
+        model.materials.push_back(
+            {material.displayName, material.typeName, material.count, material.stackSize}
+        );
     }
     return model;
 }
@@ -150,6 +166,18 @@ void applyStructureMenuModel(MenuModel const& model, float effectiveUiScale) {
     }
     if (projection::getStructureBoundsEnabled() != model.structureBoundsEnabled) {
         projection::setStructureBoundsEnabled(model.structureBoundsEnabled);
+        changed = true;
+    }
+    if (projection::getCorrectionSeeThrough() != model.correctionSeeThrough) {
+        projection::setCorrectionSeeThrough(model.correctionSeeThrough);
+        changed = true;
+    }
+    if (projection::getMissingSeeThrough() != model.missingSeeThrough) {
+        projection::setMissingSeeThrough(model.missingSeeThrough);
+        changed = true;
+    }
+    if (projection::getProjectionSeeThrough() != model.projectionSeeThrough) {
+        projection::setProjectionSeeThrough(model.projectionSeeThrough);
         changed = true;
     }
     // Assisted-placement modes are session-only safety controls. Applying a
@@ -205,6 +233,11 @@ void applyStructureMenuModel(MenuModel const& model, float effectiveUiScale) {
     hud.showWrongType = model.hudShowWrongType;
     hud.showProjectedBlockName = model.hudShowProjectedBlockName;
     changed = uiState().applyHud(hud) || changed;
+    auto const materialPosition = std::clamp(model.materialHudPosition, 0, 3);
+    if (structure::materialHudPosition() != materialPosition) {
+        structure::setMaterialHudPosition(materialPosition);
+        changed = true;
+    }
     structure::capture::Draft captureDraft;
     captureDraft.mode = static_cast<structure::capture::CaptureMode>(
         std::clamp(model.capture.mode, 0, 1)
@@ -257,41 +290,11 @@ MenuActions buildStructureMenuActions(bool& refreshModel) {
         logger().info("{}", status);
     };
     actions.restoreProjection = [&refreshModel] {
-        auto& session = structure::detail::StructureSession::getInstance();
-        auto const saved = session.savedProjection();
-        auto const& savedPath = saved.structurePath;
-        auto const x = saved.anchorX;
-        auto const y = saved.anchorY;
-        auto const z = saved.anchorZ;
-        std::string error;
-        auto loaded = structure::detail::loadStructureFile(
-            structure::detail::pathFromUtf8(savedPath), error
-        );
-        if (!loaded) {
-            session.setStatus("恢复失败: " + error);
-            logger().error("Could not restore structure {}: {}", savedPath, error);
-            return;
-        }
-        session.setRotation(saved.transform.rotation);
-        session.setMirror(std::clamp(saved.transform.mirror, 0, 2));
-        session.setOffsetX(saved.transform.offsetX);
-        session.setOffsetY(saved.transform.offsetY);
-        session.setOffsetZ(saved.transform.offsetZ);
-        session.setLayerDisplayMode(saved.transform.layerDisplayMode);
-        session.setDisplayLayer(saved.transform.displayLayer);
-        session.setLayerAxis(saved.transform.layerAxis);
-        projection::requestNextStructureAnchor(x, y, z);
-        session.replaceLoaded(
-            std::move(loaded), savedPath, "已恢复上次投影记录，等待进入渲染"
-        );
-        std::snprintf(
-            gPathBuffer.data(),
-            gPathBuffer.size(),
-            "%s",
-            savedPath.c_str()
-        );
+        structure::restoreSavedProjection();
+        auto const savedPath =
+            structure::detail::StructureSession::getInstance().savedProjection().structurePath;
+        std::snprintf(gPathBuffer.data(), gPathBuffer.size(), "%s", savedPath.c_str());
         refreshModel = true;
-        logger().info("Restoring projection {} at ({}, {}, {})", savedPath, x, y, z);
     };
     actions.closeProjection = [&refreshModel] {
         structure::clear();
@@ -301,6 +304,10 @@ MenuActions buildStructureMenuActions(bool& refreshModel) {
         refreshModel = true;
     };
     actions.requestMaterials = [] { structure::requestMaterialList(); };
+    actions.setMaterialHudEnabled = [](bool enabled) {
+        structure::setMaterialHudEnabled(enabled);
+        structure::saveSettings();
+    };
     actions.beginHotkeyCapture = [](HotkeyId id) {
         uiState().beginHotkeyCapture(static_cast<std::size_t>(id));
     };
@@ -316,6 +323,10 @@ MenuActions buildStructureMenuActions(bool& refreshModel) {
     actions.resetCorrectionStyle = [] {
         projection::setCorrectionFillOpacity(0.15f);
         projection::setCorrectionOutlineOpacity(1.0f);
+        structure::saveSettings();
+    };
+    actions.giveExperimentalConsent = [] {
+        structure::setExperimentalConsentGiven(true);
         structure::saveSettings();
     };
     actions.usePlayerCapturePosition = [&refreshModel](CapturePointId point) {

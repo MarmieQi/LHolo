@@ -260,19 +260,121 @@ void renderCreateStructurePage(MenuModel& model, MenuActions const& actions, UiM
     });
 }
 
-void renderExperimentalPage(MenuModel& model, UiMetrics const& metrics) {
+namespace {
+
+// The experimental-features consent modal. On "启用" it records consent and
+// enables the feature the user was trying to turn on (pendingFeature: 1 manual,
+// 2 easy, 3 range; -1 view-only, 0 none).
+void renderExperimentalConsentModal(
+    MenuModel& model, MenuActions const& actions, int& pendingFeature
+) {
+    auto const displaySize = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowPos(
+        ImVec2(displaySize.x * 0.5f, displaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f)
+    );
+    if (!ImGui::BeginPopupModal(
+            "##ExperimentalConsent", nullptr,
+            ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings
+        )) {
+        return;
+    }
+    ImGui::TextUnformatted("⚠ 实验性功能 · 使用前请阅读");
+    ImGui::Separator();
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 22.0f);
+    ImGui::TextWrapped(
+        "轻松放置 / 手动放置 / 范围放置 属于实验性辅助功能，会自动或半自动地帮你"
+        "放置投影中的方块。\n\n"
+        "由于这些功能会程序化地模拟方块放置，部分服务器的反作弊系统可能将其判定为"
+        "作弊 / 外挂行为。\n\n"
+        "· 请仅在单人世界，或已获得服主明确许可的服务器上使用。\n"
+        "· 在未经许可的服务器上使用，可能导致被踢出、封禁账号等后果。\n"
+        "· 一切风险与后果由使用者自行承担，作者与本模组概不负责。\n\n"
+        "手动逐格搭建始终是安全的做法；辅助放置仅为提升效率的实验性工具。"
+    );
+    ImGui::PopTextWrapPos();
+    ImGui::Separator();
+    if (model.experimentalConsent) {
+        if (ImGui::Button("关闭")) {
+            pendingFeature = 0;
+            ImGui::CloseCurrentPopup();
+        }
+    } else {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.72f, 0.20f, 0.22f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.26f, 0.28f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.62f, 0.16f, 0.18f, 1.0f));
+        bool const enable = ImGui::Button("我已了解风险，启用");
+        ImGui::PopStyleColor(3);
+        if (enable) {
+            if (actions.giveExperimentalConsent) actions.giveExperimentalConsent();
+            model.experimentalConsent = true;
+            model.manualPlace = pendingFeature == 1;
+            model.easyPlaceEnabled = pendingFeature == 2;
+            model.rangeEnabled = pendingFeature == 3;
+            pendingFeature = 0;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("取消")) {
+            pendingFeature = 0;
+            ImGui::CloseCurrentPopup();
+        }
+    }
+    ImGui::EndPopup();
+}
+
+} // namespace
+
+void renderExperimentalPage(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics) {
+    static int pendingConsentFeature = 0;
     renderSection("##AssistedPlacement", "辅助放置", metrics, [&] {
+        // A placement hotkey pressed before consent routed us here and asked to
+        // open the popup for the feature it was trying to enable.
+        if (model.consentPopupRequest != 0) {
+            pendingConsentFeature = model.consentPopupRequest;
+            model.consentPopupRequest = 0;
+            ImGui::OpenPopup("##ExperimentalConsent");
+        }
+        // The说明 / consent entry sits at the very top and is coloured to stand out.
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.72f, 0.20f, 0.22f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.26f, 0.28f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.62f, 0.16f, 0.18f, 1.0f));
+            char const* label = model.experimentalConsent
+                ? "查看实验性功能说明"
+                : "⚠ 实验性功能说明（点此阅读并启用）";
+            if (ImGui::Button(label)) {
+                pendingConsentFeature = -1;
+                ImGui::OpenPopup("##ExperimentalConsent");
+            }
+            ImGui::PopStyleColor(3);
+        }
+        renderExperimentalConsentModal(model, actions, pendingConsentFeature);
+        ImGui::Dummy(ImVec2(0.0f, metrics.gap * 0.25f));
+
+        // A feature toggled on without consent is reverted and the popup opened.
+        auto const gate = [&](bool& flag, int feature) {
+            if (flag && !model.experimentalConsent) {
+                flag = false;
+                pendingConsentFeature = feature;
+                ImGui::OpenPopup("##ExperimentalConsent");
+            }
+        };
         renderCheckboxRow("##ManualPlace", "手动放置（右键放置·按住连放）", model.manualPlace, metrics);
+        gate(model.manualPlace, 1);
         if (model.manualPlace) { model.easyPlaceEnabled = false; model.rangeEnabled = false; }
         renderCheckboxRow("##EasyPlace", "轻松放置（准心对准投影方块自动放置）", model.easyPlaceEnabled, metrics);
+        gate(model.easyPlaceEnabled, 2);
         if (model.easyPlaceEnabled) { model.manualPlace = false; model.rangeEnabled = false; }
         renderCheckboxRow("##RangePlace", "范围放置（自动放置周围投影缺块）", model.rangeEnabled, metrics);
+        gate(model.rangeEnabled, 3);
         if (model.rangeEnabled) { model.easyPlaceEnabled = false; model.manualPlace = false; }
         ImGui::Dummy(ImVec2(0.0f, metrics.gap * 0.25f));
         if (model.manualPlace || model.easyPlaceEnabled || model.rangeEnabled) {
             char const* mode = model.manualPlace ? "手动放置"
                 : model.easyPlaceEnabled ? "轻松放置" : "范围放置";
             ImGui::TextWrapped("%s已临时开启", mode);
+        } else if (!model.experimentalConsent) {
+            ImGui::TextDisabled("辅助放置未开启（需先同意实验性功能声明）");
         } else {
             ImGui::TextDisabled("辅助放置未开启");
         }
@@ -320,6 +422,9 @@ void renderRenderPage(MenuModel& model, MenuActions const& actions, UiMetrics co
             }
         });
         renderCheckboxRow("##RenderBounds", "显示整体结构边框", model.structureBoundsEnabled, metrics);
+        renderCheckboxRow(
+            "##ProjectionSeeThrough", "投影方块穿透显示（X 光）", model.projectionSeeThrough, metrics
+        );
     });
 
     renderSection("##LayerSettings", "分层显示设置", metrics, [&] {
@@ -355,6 +460,13 @@ void renderRenderPage(MenuModel& model, MenuActions const& actions, UiMetrics co
                 model.correctionOutlineOpacity = static_cast<float>(std::clamp(outline, 0, 100)) / 100.0f;
             }
         });
+        renderCheckboxRow(
+            "##CorrectionSeeThrough", "错误标记穿透显示（X 光）", model.correctionSeeThrough, metrics
+        );
+        ImGui::TextDisabled("放置错误与状态错误共用此开关");
+        renderCheckboxRow(
+            "##MissingSeeThrough", "未放置标记穿透显示（X 光）", model.missingSeeThrough, metrics
+        );
         if (ImGui::Button("恢复默认纠错样式")) {
             if (actions.resetCorrectionStyle) actions.resetCorrectionStyle();
             model.correctionFillOpacity = 0.15f;
@@ -435,6 +547,14 @@ void renderHudPage(MenuModel& model, UiMetrics const& metrics) {
         renderCheckboxRow("##HudWrongState", "显示朝向错误", model.hudShowWrongState, metrics);
         renderCheckboxRow("##HudWrongType", "显示放置错误", model.hudShowWrongType, metrics);
         ImGui::EndDisabled();
+        // The material HUD is independent of the main HUD, so its position stays
+        // enabled here; whether it shows is toggled in the material-list popup.
+        ImGui::Separator();
+        renderValueRow("材料HUD 位置", metrics, [&] {
+            ImGui::SetNextItemWidth(adaptiveComboWidth(positions, 4));
+            ImGui::Combo("##MaterialHudPosition", &model.materialHudPosition, positions, 4);
+        });
+        ImGui::TextDisabled("材料HUD 在「材料清单」里开启显示");
         ImGui::TextDisabled("HUD 仅在关闭投影菜单后显示");
     });
 }
@@ -448,7 +568,7 @@ void renderUiScalePage(MenuModel& model, UiMetrics const& metrics) {
     });
 }
 
-void renderMaterialPopup(MenuModel const& model, UiMetrics const& metrics) {
+void renderMaterialPopup(MenuModel const& model, MenuActions const& actions, UiMetrics const& metrics) {
     // The material list has a little more breathing room than the regular
     // menu: its table is intentionally 1.5x the original logical footprint.
     constexpr float popupDensity = 1.20f;
@@ -509,6 +629,13 @@ void renderMaterialPopup(MenuModel const& model, UiMetrics const& metrics) {
     ));
     if (ImGui::Button("关闭")) ImGui::CloseCurrentPopup();
     ImGui::Separator();
+    ImGui::Dummy(ImVec2(0.0f, metrics.gap * 0.35f));
+
+    // Opt-in toggle for the on-screen material-progress HUD (bottom-left).
+    bool materialHud = model.materialHudEnabled;
+    if (ImGui::Checkbox("在屏幕上显示材料HUD（左下角）", &materialHud)) {
+        if (actions.setMaterialHudEnabled) actions.setMaterialHudEnabled(materialHud);
+    }
     ImGui::Dummy(ImVec2(0.0f, metrics.gap * 0.35f));
 
     if (!model.hasLoadedStructure) {

@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <string_view>
 #include <tuple>
 
 #include "mc/world/level/BlockSource.h"
@@ -23,6 +24,23 @@
 
 namespace lholo::projection::detail {
 namespace {
+
+// A game-driven runtime variant (lit lamp/ore, burning furnace, powered
+// repeater/comparator, powered-off torch) shares a base block with its resting
+// form. Comparing base names keeps such a mismatch out of WrongType (red) — it
+// falls through to WrongState (orange, "same block, wrong state") instead.
+std::string_view runtimeBaseName(std::string_view name) {
+    if (name == "minecraft:lit_redstone_lamp")          return "minecraft:redstone_lamp";
+    if (name == "minecraft:lit_redstone_ore")           return "minecraft:redstone_ore";
+    if (name == "minecraft:lit_deepslate_redstone_ore") return "minecraft:deepslate_redstone_ore";
+    if (name == "minecraft:lit_furnace")                return "minecraft:furnace";
+    if (name == "minecraft:lit_blast_furnace")          return "minecraft:blast_furnace";
+    if (name == "minecraft:lit_smoker")                 return "minecraft:smoker";
+    if (name == "minecraft:unlit_redstone_torch")       return "minecraft:redstone_torch";
+    if (name == "minecraft:powered_repeater")           return "minecraft:unpowered_repeater";
+    if (name == "minecraft:powered_comparator")         return "minecraft:unpowered_comparator";
+    return name;
+}
 
 void markSectionDirty(ProjectionState& state, std::size_t section) {
     if (section >= state.sections.size()) return;
@@ -77,7 +95,8 @@ CorrectionProgressChanges updateCorrectionTracker(
         auto const bodyMissing = expected && actual.isAir();
         auto const liquidMissing = expectedLiquid && actualLiquid.isAir();
         auto const bodyTypeWrong = expected
-            && !actual.isAir() && actual.getTypeName() != expected->getTypeName();
+            && !actual.isAir()
+            && runtimeBaseName(actual.getTypeName()) != runtimeBaseName(expected->getTypeName());
         auto const liquidTypeWrong = expectedLiquid
             && !actualLiquid.isAir() && actualLiquid.getTypeName() != expectedLiquid->getTypeName();
         auto const liquidCellOccupiedBySolid = !expected && expectedLiquid && !actual.isAir()

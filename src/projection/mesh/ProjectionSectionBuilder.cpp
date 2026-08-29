@@ -577,127 +577,150 @@ void buildCorrectionSectionMeshes(
     Tessellator::UploadMode               uploadMode,
     ProjectionSectionBuildSettings const& settings
 ) {
-    std::size_t warningCount{};
+    // Split the correction geometry into "missing" and "wrong" (WrongType +
+    // WrongState) so the see-through option can X-ray only the wrong markers,
+    // never the many "missing" outlines.
+    auto const isWrongState = [](CorrectionState correction) {
+        return correction == CorrectionState::WrongType
+            || correction == CorrectionState::WrongState;
+    };
+    std::size_t missingCount{};
+    std::size_t wrongCount{};
     for (auto const index : state.sectionBlockIndices[section]) {
         auto const correction = state.correctionStates[index];
-        warningCount += correction == CorrectionState::Missing
-            || correction == CorrectionState::WrongType
-            || correction == CorrectionState::WrongState;
+        if (isWrongState(correction)) ++wrongCount;
+        else if (correction == CorrectionState::Missing) ++missingCount;
     }
-    if (warningCount == 0) {
+    if (missingCount == 0 && wrongCount == 0) {
         state.warningFillSectionMeshes[section].reset();
         state.correctionOutlineSectionMeshes[section].reset();
+        state.wrongFillSectionMeshes[section].reset();
+        state.wrongOutlineSectionMeshes[section].reset();
         return;
     }
 
-    // Use true LineList geometry rendered with the vanilla outline material.
     constexpr float outlineInset  = 0.0f;
     constexpr float outlineExtent = 1.0f;
-    tessellator.begin(
-        Tessellator::DebugContextCallback{},
-        mce::PrimitiveMode::LineList,
-        static_cast<int>(warningCount * 24),
-        false
-    );
     auto addOutlineEdge = [&](Vec3 const& first, Vec3 const& second) {
         tessellator.vertex(first);
         tessellator.vertex(second);
     };
-    for (auto const index : state.sectionBlockIndices[section]) {
-        auto const correction = state.correctionStates[index];
-        auto const priority = correctionPriority(correction);
-        if (priority == 0) continue;
-        auto const& entry = state.structure->renderBlocks[index];
-        // A missing pure-liquid cell is already communicated by its blue
-        // translucent proxy hull; skip the duplicate outline.
-        if (correction == CorrectionState::Missing && !entry.block && entry.liquid) continue;
-        auto const p = transformStructurePosition(
-            entry, *state.structure, settings.mirrorMode, settings.rotationTurns
+    // Use true LineList geometry rendered with the vanilla outline material.
+    auto buildOutline = [&](bool wantWrong, std::size_t count) -> std::unique_ptr<mce::Mesh> {
+        if (count == 0) return nullptr;
+        tessellator.begin(
+            Tessellator::DebugContextCallback{},
+            mce::PrimitiveMode::LineList,
+            static_cast<int>(count * 24),
+            false
         );
-        auto const outlineColor = correction == CorrectionState::Missing
-            ? withAlpha(MissingColorAbgrRgb, settings.correctionOutlineOpacity)
-            : correction == CorrectionState::WrongState
-                ? withAlpha(WrongStateColorAbgrRgb, settings.correctionOutlineOpacity)
-                : withAlpha(WrongBlockColorAbgrRgb, settings.correctionOutlineOpacity);
-        float const x0 = static_cast<float>(p.x) + outlineInset;
-        float const y0 = static_cast<float>(p.y) + outlineInset;
-        float const z0 = static_cast<float>(p.z) + outlineInset;
-        float const x1 = static_cast<float>(p.x) + outlineExtent;
-        float const y1 = static_cast<float>(p.y) + outlineExtent;
-        float const z1 = static_cast<float>(p.z) + outlineExtent;
-        tessellator.colorABGR(static_cast<int>(outlineColor));
-        addOutlineEdge({x0,y0,z0},{x1,y0,z0}); addOutlineEdge({x1,y0,z0},{x1,y1,z0});
-        addOutlineEdge({x1,y1,z0},{x0,y1,z0}); addOutlineEdge({x0,y1,z0},{x0,y0,z0});
-        addOutlineEdge({x0,y0,z1},{x1,y0,z1}); addOutlineEdge({x1,y0,z1},{x1,y1,z1});
-        addOutlineEdge({x1,y1,z1},{x0,y1,z1}); addOutlineEdge({x0,y1,z1},{x0,y0,z1});
-        addOutlineEdge({x0,y0,z0},{x0,y0,z1}); addOutlineEdge({x1,y0,z0},{x1,y0,z1});
-        addOutlineEdge({x1,y1,z0},{x1,y1,z1}); addOutlineEdge({x0,y1,z0},{x0,y1,z1});
-    }
-    state.correctionOutlineSectionMeshes[section] = std::make_unique<mce::Mesh>(tessellator.end(
-        uploadMode,
-        "LHoloCorrectionOutline",
-        Tessellator::SupplementaryFieldAutoGenerationMode::None
-    ));
+        for (auto const index : state.sectionBlockIndices[section]) {
+            auto const correction = state.correctionStates[index];
+            auto const priority = correctionPriority(correction);
+            if (priority == 0) continue;
+            if (isWrongState(correction) != wantWrong) continue;
+            auto const& entry = state.structure->renderBlocks[index];
+            // A missing pure-liquid cell is already communicated by its blue
+            // translucent proxy hull; skip the duplicate outline.
+            if (correction == CorrectionState::Missing && !entry.block && entry.liquid) continue;
+            auto const p = transformStructurePosition(
+                entry, *state.structure, settings.mirrorMode, settings.rotationTurns
+            );
+            auto const outlineColor = correction == CorrectionState::Missing
+                ? withAlpha(MissingColorAbgrRgb, settings.correctionOutlineOpacity)
+                : correction == CorrectionState::WrongState
+                    ? withAlpha(WrongStateColorAbgrRgb, settings.correctionOutlineOpacity)
+                    : withAlpha(WrongBlockColorAbgrRgb, settings.correctionOutlineOpacity);
+            float const x0 = static_cast<float>(p.x) + outlineInset;
+            float const y0 = static_cast<float>(p.y) + outlineInset;
+            float const z0 = static_cast<float>(p.z) + outlineInset;
+            float const x1 = static_cast<float>(p.x) + outlineExtent;
+            float const y1 = static_cast<float>(p.y) + outlineExtent;
+            float const z1 = static_cast<float>(p.z) + outlineExtent;
+            tessellator.colorABGR(static_cast<int>(outlineColor));
+            addOutlineEdge({x0,y0,z0},{x1,y0,z0}); addOutlineEdge({x1,y0,z0},{x1,y1,z0});
+            addOutlineEdge({x1,y1,z0},{x0,y1,z0}); addOutlineEdge({x0,y1,z0},{x0,y0,z0});
+            addOutlineEdge({x0,y0,z1},{x1,y0,z1}); addOutlineEdge({x1,y0,z1},{x1,y1,z1});
+            addOutlineEdge({x1,y1,z1},{x0,y1,z1}); addOutlineEdge({x0,y1,z1},{x0,y0,z1});
+            addOutlineEdge({x0,y0,z0},{x0,y0,z1}); addOutlineEdge({x1,y0,z0},{x1,y0,z1});
+            addOutlineEdge({x1,y1,z0},{x1,y1,z1}); addOutlineEdge({x0,y1,z0},{x0,y1,z1});
+        }
+        return std::make_unique<mce::Mesh>(tessellator.end(
+            uploadMode,
+            "LHoloCorrectionOutline",
+            Tessellator::SupplementaryFieldAutoGenerationMode::None
+        ));
+    };
+    state.correctionOutlineSectionMeshes[section] = buildOutline(false, missingCount);
+    state.wrongOutlineSectionMeshes[section] = buildOutline(true, wrongCount);
 
-    // Litematica-style correction fill: an exact untextured 1x1x1 cell
-    // overlay. Rasterizer bias supplies depth separation at submission time.
-    tessellator.begin(
-        Tessellator::DebugContextCallback{},
-        mce::PrimitiveMode::QuadList,
-        static_cast<int>(warningCount * 24),
-        false
-    );
+    // Litematica-style correction fill: an exact untextured 1x1x1 cell overlay.
+    // Rasterizer bias supplies depth separation at submission time.
     auto addFillFace = [&](Vec3 const& a, Vec3 const& b, Vec3 const& c, Vec3 const& d) {
         tessellator.vertex(a);
         tessellator.vertex(b);
         tessellator.vertex(c);
         tessellator.vertex(d);
     };
-    for (auto const index : state.sectionBlockIndices[section]) {
-        auto const correction = state.correctionStates[index];
-        auto const priority = correctionPriority(correction);
-        if (priority == 0) continue;
-        auto const& entry = state.structure->renderBlocks[index];
-        if (correction == CorrectionState::Missing && !entry.block && entry.liquid) continue;
-        auto const p = transformStructurePosition(
-            entry, *state.structure, settings.mirrorMode, settings.rotationTurns
+    auto buildFill = [&](bool wantWrong, std::size_t count) -> std::unique_ptr<mce::Mesh> {
+        if (count == 0) return nullptr;
+        tessellator.begin(
+            Tessellator::DebugContextCallback{},
+            mce::PrimitiveMode::QuadList,
+            static_cast<int>(count * 24),
+            false
         );
-        BlockPos const worldPosition{
-            state.anchor.x + settings.offsetX + p.x,
-            state.anchor.y + settings.offsetY + p.y,
-            state.anchor.z + settings.offsetZ + p.z
-        };
-        auto const neighborPriority = [&](int dx, int dy, int dz) {
-            auto const found = state.expectedWorldBlockIndices->find(std::tuple{
-                worldPosition.x + dx, worldPosition.y + dy, worldPosition.z + dz
-            });
-            return found == state.expectedWorldBlockIndices->end()
-                ? 0 : correctionPriority(state.correctionStates[found->second]);
-        };
-        float const x0 = static_cast<float>(p.x);
-        float const y0 = static_cast<float>(p.y);
-        float const z0 = static_cast<float>(p.z);
-        float const x1 = static_cast<float>(p.x + 1);
-        float const y1 = static_cast<float>(p.y + 1);
-        float const z1 = static_cast<float>(p.z + 1);
-        auto const fillColor = correction == CorrectionState::Missing
-            ? withAlpha(MissingColorAbgrRgb, settings.correctionFillOpacity)
-            : correction == CorrectionState::WrongState
-                ? withAlpha(WrongStateColorAbgrRgb, settings.correctionFillOpacity)
-                : withAlpha(WrongBlockColorAbgrRgb, settings.correctionFillOpacity);
-        tessellator.colorABGR(static_cast<int>(fillColor));
-        if (priority > neighborPriority(0, 0, -1)) addFillFace({x0,y0,z0}, {x0,y1,z0}, {x1,y1,z0}, {x1,y0,z0});
-        if (priority > neighborPriority(0, 0, 1))  addFillFace({x1,y0,z1}, {x1,y1,z1}, {x0,y1,z1}, {x0,y0,z1});
-        if (priority > neighborPriority(-1, 0, 0)) addFillFace({x0,y0,z1}, {x0,y1,z1}, {x0,y1,z0}, {x0,y0,z0});
-        if (priority > neighborPriority(1, 0, 0))  addFillFace({x1,y0,z0}, {x1,y1,z0}, {x1,y1,z1}, {x1,y0,z1});
-        if (priority > neighborPriority(0, -1, 0)) addFillFace({x0,y0,z1}, {x0,y0,z0}, {x1,y0,z0}, {x1,y0,z1});
-        if (priority > neighborPriority(0, 1, 0))  addFillFace({x0,y1,z0}, {x0,y1,z1}, {x1,y1,z1}, {x1,y1,z0});
-    }
-    state.warningFillSectionMeshes[section] = std::make_unique<mce::Mesh>(tessellator.end(
-        uploadMode,
-        "LHoloWarningFill",
-        Tessellator::SupplementaryFieldAutoGenerationMode::None
-    ));
+        for (auto const index : state.sectionBlockIndices[section]) {
+            auto const correction = state.correctionStates[index];
+            auto const priority = correctionPriority(correction);
+            if (priority == 0) continue;
+            if (isWrongState(correction) != wantWrong) continue;
+            auto const& entry = state.structure->renderBlocks[index];
+            if (correction == CorrectionState::Missing && !entry.block && entry.liquid) continue;
+            auto const p = transformStructurePosition(
+                entry, *state.structure, settings.mirrorMode, settings.rotationTurns
+            );
+            BlockPos const worldPosition{
+                state.anchor.x + settings.offsetX + p.x,
+                state.anchor.y + settings.offsetY + p.y,
+                state.anchor.z + settings.offsetZ + p.z
+            };
+            // Face-culling stays global across categories so a wrong cell next
+            // to a missing cell still hides the lower-priority shared face.
+            auto const neighborPriority = [&](int dx, int dy, int dz) {
+                auto const found = state.expectedWorldBlockIndices->find(std::tuple{
+                    worldPosition.x + dx, worldPosition.y + dy, worldPosition.z + dz
+                });
+                return found == state.expectedWorldBlockIndices->end()
+                    ? 0 : correctionPriority(state.correctionStates[found->second]);
+            };
+            float const x0 = static_cast<float>(p.x);
+            float const y0 = static_cast<float>(p.y);
+            float const z0 = static_cast<float>(p.z);
+            float const x1 = static_cast<float>(p.x + 1);
+            float const y1 = static_cast<float>(p.y + 1);
+            float const z1 = static_cast<float>(p.z + 1);
+            auto const fillColor = correction == CorrectionState::Missing
+                ? withAlpha(MissingColorAbgrRgb, settings.correctionFillOpacity)
+                : correction == CorrectionState::WrongState
+                    ? withAlpha(WrongStateColorAbgrRgb, settings.correctionFillOpacity)
+                    : withAlpha(WrongBlockColorAbgrRgb, settings.correctionFillOpacity);
+            tessellator.colorABGR(static_cast<int>(fillColor));
+            if (priority > neighborPriority(0, 0, -1)) addFillFace({x0,y0,z0}, {x0,y1,z0}, {x1,y1,z0}, {x1,y0,z0});
+            if (priority > neighborPriority(0, 0, 1))  addFillFace({x1,y0,z1}, {x1,y1,z1}, {x0,y1,z1}, {x0,y0,z1});
+            if (priority > neighborPriority(-1, 0, 0)) addFillFace({x0,y0,z1}, {x0,y1,z1}, {x0,y1,z0}, {x0,y0,z0});
+            if (priority > neighborPriority(1, 0, 0))  addFillFace({x1,y0,z0}, {x1,y1,z0}, {x1,y1,z1}, {x1,y0,z1});
+            if (priority > neighborPriority(0, -1, 0)) addFillFace({x0,y0,z1}, {x0,y0,z0}, {x1,y0,z0}, {x1,y0,z1});
+            if (priority > neighborPriority(0, 1, 0))  addFillFace({x0,y1,z0}, {x0,y1,z1}, {x1,y1,z1}, {x1,y1,z0});
+        }
+        return std::make_unique<mce::Mesh>(tessellator.end(
+            uploadMode,
+            "LHoloWarningFill",
+            Tessellator::SupplementaryFieldAutoGenerationMode::None
+        ));
+    };
+    state.warningFillSectionMeshes[section] = buildFill(false, missingCount);
+    state.wrongFillSectionMeshes[section] = buildFill(true, wrongCount);
 }
 
 void buildStructureBoundsMesh(

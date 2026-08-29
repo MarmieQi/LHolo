@@ -59,6 +59,31 @@ void resetHotkeyState();
 void processPendingHotkeyActions();
 bool hasHudInfo();
 void renderHud();
+// Material-progress HUD (bottom-left): needed vs. what the inventory holds.
+void renderMaterialHud();
+// JE-style transient hint shown centered above the hotbar for a moment (e.g.
+// when manual mode blocks an action, or a placement hotkey is toggled).
+void showActionHint(std::string text, std::uint64_t durationMs = 1600);
+void renderActionHint();
+// True while a hint is still on screen, so the overlay keeps drawing even with
+// no projection loaded and the menu closed.
+bool actionHintActive();
+// One-time consent for the experimental assisted-placement features (they may be
+// flagged as cheating by server anti-cheat). Persisted once acknowledged.
+bool experimentalConsentGiven();
+void setExperimentalConsentGiven(bool given);
+// Opt-in on-screen material-progress HUD, toggled from the material-list popup
+// (default off). Independent of the main projection HUD toggle.
+bool materialHudEnabled();
+void setMaterialHudEnabled(bool enabled);
+// Material HUD corner: 0 top-left, 1 bottom-left, 2 top-right, 3 bottom-right
+// (same encoding as the projection HUD position). Default 1.
+int  materialHudPosition();
+void setMaterialHudPosition(int position);
+// Ask the menu to jump to the experimental page and open the consent popup (used
+// by a placement hotkey pressed before consent). feature: 1 manual, 2 easy.
+void requestExperimentalConsentPopup(int feature);
+int  consumeExperimentalConsentPopupRequest();
 void renderGui();
 void requestMaterialList();
 void processPendingMaterialList();
@@ -75,5 +100,8 @@ int getDisplayLayer();
 int getLayerAxis();
 void recordProjectionAnchor(int x, int y, int z);
 void clear();
+// Reload the last saved projection at its saved anchor/transform. Standalone so
+// both the menu action and the load hotkey can trigger it.
+void restoreSavedProjection();
 
 } // namespace lholo::structure

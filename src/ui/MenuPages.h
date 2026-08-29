@@ -19,12 +19,12 @@ void renderProjectionPage(MenuModel& model, MenuActions const& actions, UiMetric
 void renderCreateStructurePage(
     MenuModel& model, MenuActions const& actions, UiMetrics const& metrics
 );
-void renderExperimentalPage(MenuModel& model, UiMetrics const& metrics);
+void renderExperimentalPage(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics);
 void renderTransformPage(MenuModel& model, UiMetrics const& metrics);
 void renderRenderPage(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics);
 void renderHotkeysPage(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics);
 void renderHudPage(MenuModel& model, UiMetrics const& metrics);
 void renderUiScalePage(MenuModel& model, UiMetrics const& metrics);
-void renderMaterialPopup(MenuModel const& model, UiMetrics const& metrics);
+void renderMaterialPopup(MenuModel const& model, MenuActions const& actions, UiMetrics const& metrics);
 
 } // namespace lholo::ui

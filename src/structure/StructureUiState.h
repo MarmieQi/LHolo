@@ -21,6 +21,19 @@ struct MaterialRequirement {
     std::string   displayName;
     std::string   typeName;
     std::uint64_t count{};
+    // Max stack size of the item this block resolves to (64 normally, 16 for
+    // signs etc., 1 for filled buckets). Used for the JE-style "N (a x S + b)"
+    // count display. Computed on the tick thread; 64 when unknown.
+    int           stackSize{64};
+};
+
+// Requirements plus the matching held-item counts, copied together under one
+// lock so the HUD always sees the two vectors aligned (available[i] pairs with
+// requirements[i]). `available` is empty until the tick thread has scanned the
+// inventory at least once for the current structure.
+struct MaterialSnapshot {
+    std::vector<MaterialRequirement> requirements;
+    std::vector<int>                 available;
 };
 
 struct HudStateSnapshot {
@@ -48,11 +61,17 @@ struct PendingHotkeyActions {
     int  offsetZ{};
     int  layerDelta{};
     bool settingsSave{};
+    bool toggleManual{};
+    bool toggleEasy{};
+    bool loadProjection{};
+    bool closeProjection{};
 };
 
 class StructureUiState {
 public:
-    static constexpr std::size_t kHotkeyCount = 9;
+    // 0 gui, 1-6 moves, 7 layer+, 8 layer-, 9 toggle manual, 10 toggle easy,
+    // 11 load projection, 12 close projection.
+    static constexpr std::size_t kHotkeyCount = 13;
     static constexpr std::size_t kMoveHotkeyCount = 6;
 
     static StructureUiState& getInstance();
@@ -101,6 +120,10 @@ public:
 
     void queueMove(std::size_t index);
     void queueLayerDelta(int delta);
+    void queueToggleManual();
+    void queueToggleEasy();
+    void queueLoadProjection();
+    void queueCloseProjection();
     void requestSettingsSave();
     [[nodiscard]] PendingHotkeyActions consumePendingHotkeyActions();
 
@@ -108,6 +131,11 @@ public:
     [[nodiscard]] bool consumeMaterialListRequest();
     void replaceMaterialRequirements(std::vector<MaterialRequirement> materials);
     [[nodiscard]] std::vector<MaterialRequirement> materialRequirements() const;
+    // Held-item counts aligned to the current requirements, updated from the game
+    // tick thread (safe to touch the inventory / item registry there). The HUD,
+    // which runs on the render thread, reads the snapshot instead of scanning.
+    void setMaterialAvailability(std::vector<int> counts);
+    [[nodiscard]] MaterialSnapshot materialSnapshot() const;
     void clearMaterials();
 
 private:
@@ -148,12 +176,17 @@ private:
     std::atomic_int      mPendingOffsetY{0};
     std::atomic_int      mPendingOffsetZ{0};
     std::atomic_int      mPendingLayerDelta{0};
+    std::atomic_bool     mPendingToggleManual{false};
+    std::atomic_bool     mPendingToggleEasy{false};
+    std::atomic_bool     mPendingLoadProjection{false};
+    std::atomic_bool     mPendingCloseProjection{false};
     std::atomic_bool     mPendingSettingsSave{false};
     std::atomic_uint64_t mIgnoreHotkeyUntil{0};
 
     mutable std::mutex                mMaterialMutex;
     std::atomic_bool                  mMaterialListRequested{false};
     std::vector<MaterialRequirement>  mMaterialRequirements;
+    std::vector<int>                  mMaterialAvailability;
 };
 
 } // namespace lholo::structure::detail
