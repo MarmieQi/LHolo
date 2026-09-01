@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -31,38 +33,80 @@ namespace lholo::structure {
 inline constexpr std::uint64_t kProjectionLifecycleHintDurationMs = 2500;
 
 struct LoadedStructure {
-    struct RegionBox {
-        int x{};
-        int y{};
-        int z{};
-        int sizeX{};
-        int sizeY{};
-        int sizeZ{};
-    };
+  struct RegionBox {
+    int x{};
+    int y{};
+    int z{};
+    int sizeX{};
+    int sizeY{};
+    int sizeZ{};
+  };
 
-    std::filesystem::path                 sourcePath;
-    int                                  sizeX{};
-    int                                  sizeY{};
-    int                                  sizeZ{};
-    std::uint64_t                        volume{};
-    std::uint64_t                        primaryBlocks{};
-    std::uint64_t                        secondaryBlocks{};
-    std::uint64_t                        paletteEntries{};
-    std::uint64_t                        generation{};
-    // Cells covered by the source format. mcstructure contributes one box;
-    // litematic contributes one per region so gaps between regions are not
-    // mistaken for schematic air by projection correction.
-    std::vector<RegionBox>               regions;
-    struct RenderBlock {
-        int          x{};
-        int          y{};
-        int          z{};
-        Block const* block{};
-        Block const* liquid{};
-        std::shared_ptr<CompoundTag const> blockEntityNbt;
-    };
-    std::vector<RenderBlock>              renderBlocks;
+  std::filesystem::path sourcePath;
+  int sizeX{};
+  int sizeY{};
+  int sizeZ{};
+  std::uint64_t volume{};
+  std::uint64_t primaryBlocks{};
+  std::uint64_t secondaryBlocks{};
+  std::uint64_t paletteEntries{};
+  std::uint64_t generation{};
+  // Cells covered by the source format. mcstructure contributes one box;
+  // litematic contributes one per region so gaps between regions are not
+  // mistaken for schematic air by projection correction.
+  std::vector<RegionBox> regions;
+  struct RenderBlock {
+    int x{};
+    int y{};
+    int z{};
+    Block const *block{};
+    Block const *liquid{};
+    std::shared_ptr<CompoundTag const> blockEntityNbt;
+  };
+  std::vector<RenderBlock> renderBlocks;
 };
+
+bool computeRelativeOffsetFromView(float forwardX, float forwardY,
+                                   float forwardZ, int wheelDelta, int &offsetX,
+                                   int &offsetY, int &offsetZ);
+bool handleMouseWheelDelta(int wheelDelta);
+
+inline bool computeRelativeOffsetFromView(float forwardX, float forwardY,
+                                          float forwardZ, int wheelDelta,
+                                          int &offsetX, int &offsetY,
+                                          int &offsetZ) {
+  offsetX = 0;
+  offsetY = 0;
+  offsetZ = 0;
+  if (wheelDelta == 0)
+    return false;
+
+  int constexpr kWheelStep = 120;
+  int const steps = std::max(1, std::abs(wheelDelta) / kWheelStep);
+  int const direction = wheelDelta > 0 ? 1 : -1;
+
+  // Use a single axis per wheel gesture: if the view is pitched up or down
+  // enough, keep the vertical move; otherwise keep the planar forward/backward
+  // shift. This prevents horizontal and vertical offset from being applied
+  // simultaneously to the same roll event.
+  float const pitchMagnitude = std::abs(forwardY);
+  float const planarMagnitude =
+      std::max(std::abs(forwardX), std::abs(forwardZ));
+  if (pitchMagnitude >= planarMagnitude && pitchMagnitude > 0.0f) {
+    offsetY = direction * steps * (forwardY >= 0.0f ? 1 : -1);
+    return offsetY != 0;
+  }
+
+  float const horizontalLength = std::hypot(forwardX, forwardZ);
+  if (horizontalLength <= 0.0f)
+    return false;
+
+  float const dx = forwardX / horizontalLength;
+  float const dz = forwardZ / horizontalLength;
+  offsetX = static_cast<int>(std::round(dx * direction * steps));
+  offsetZ = static_cast<int>(std::round(dz * direction * steps));
+  return offsetX != 0 || offsetZ != 0;
+}
 
 void requestOpenGui();
 bool isGuiVisible();
@@ -90,8 +134,8 @@ void renderActionHint();
 // True while a hint is still on screen, so the overlay keeps drawing even with
 // no projection loaded and the menu closed.
 bool actionHintActive();
-// One-time consent for the experimental assisted-placement features (they may be
-// flagged as cheating by server anti-cheat). Persisted once acknowledged.
+// One-time consent for the experimental assisted-placement features (they may
+// be flagged as cheating by server anti-cheat). Persisted once acknowledged.
 bool experimentalConsentGiven();
 void setExperimentalConsentGiven(bool given);
 // Opt-in on-screen material-progress HUD, configured on the HUD settings page
@@ -100,7 +144,7 @@ bool materialHudEnabled();
 void setMaterialHudEnabled(bool enabled);
 // Material HUD corner: 0 top-left, 1 bottom-left, 2 top-right, 3 bottom-right
 // (same encoding as the projection HUD position). Default 3.
-int  materialHudPosition();
+int materialHudPosition();
 void setMaterialHudPosition(int position);
 void renderGui();
 void requestMaterialList();
