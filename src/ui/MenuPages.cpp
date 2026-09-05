@@ -59,6 +59,7 @@ bool parseCaptureCoordinate(std::array<char, 16> const& text, int& value) {
 
 
 int maxLayer(MenuModel const& model) {
+    if (model.layerAxis == 2) return std::max(0, model.materialCount - 1);
     return model.layerAxis == 1 ? model.maxLayerX : model.maxLayerY;
 }
 
@@ -450,11 +451,11 @@ void renderRenderPage(MenuModel& model, MenuActions const& actions, UiMetrics co
     });
 
     renderSection("##LayerSettings", "分层显示设置", metrics, [&] {
-        static char const* axisNames[]{"Y 轴（水平分层）", "X 轴（纵向切片）"};
+        static char const* axisNames[]{"Y 轴（水平分层）", "X 轴（纵向切片）", "按材料"};
         static char const* modeNames[]{"完整结构", "单层", "当前层及以下", "当前层及以上"};
         renderValueRow("分层轴", metrics, [&] {
-            ImGui::SetNextItemWidth(adaptiveComboWidth(axisNames, 2));
-            if (ImGui::Combo("##LayerAxis", &model.layerAxis, axisNames, 2)) {
+            ImGui::SetNextItemWidth(adaptiveComboWidth(axisNames, 3));
+            if (ImGui::Combo("##LayerAxis", &model.layerAxis, axisNames, 3)) {
                 model.displayLayer = std::clamp(model.displayLayer, 0, maxLayer(model));
             }
         });
@@ -465,7 +466,11 @@ void renderRenderPage(MenuModel& model, MenuActions const& actions, UiMetrics co
         renderSteppedInt("DisplayLayer", "当前层", model.displayLayer, 0, maxLayer(model), metrics);
         if (!metrics.compact) ImGui::SameLine(0.0f, metrics.gap * 0.55f);
         ImGui::PushTextWrapPos(-1.0f);
-        ImGui::TextDisabled("0 - %d（结构 %s 轴起点为 0）", maxLayer(model), model.layerAxis == 1 ? "X" : "Y");
+        if (model.layerAxis == 2) {
+            ImGui::TextDisabled("0 - %d（按材料清单顺序）", maxLayer(model));
+        } else {
+            ImGui::TextDisabled("0 - %d（结构 %s 轴起点为 0）", maxLayer(model), model.layerAxis == 1 ? "X" : "Y");
+        }
         ImGui::PopTextWrapPos();
     });
 
@@ -537,6 +542,8 @@ void renderHotkeysPage(MenuModel& model, MenuActions const& actions, UiMetrics c
             if (ImGui::Button(label, ImVec2(bindWidth, 0.0f)) && !hotkey.capturing && actions.beginHotkeyCapture) {
                 actions.beginHotkeyCapture(hotkey.id);
             }
+            ImGui::SameLine();
+            if (ImGui::Button("恢复默认") && actions.resetHotkey) actions.resetHotkey(hotkey.id);
             ImGui::SameLine();
             if (ImGui::Button("清除") && actions.clearHotkey) actions.clearHotkey(hotkey.id);
             ImGui::PopID();

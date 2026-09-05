@@ -49,6 +49,7 @@ struct LoadedStructure {
     std::uint64_t                        secondaryBlocks{};
     std::uint64_t                        paletteEntries{};
     std::uint64_t                        generation{};
+    std::size_t                          materialCount{};
     // Cells covered by the source format. mcstructure contributes one box;
     // litematic contributes one per region so gaps between regions are not
     // mistaken for schematic air by projection correction.
@@ -60,6 +61,8 @@ struct LoadedStructure {
         Block const* block{};
         Block const* liquid{};
         std::shared_ptr<CompoundTag const> blockEntityNbt;
+        int          materialIndex{-1};
+        int          liquidMaterialIndex{-1};
     };
     std::vector<RenderBlock>              renderBlocks;
 };
@@ -73,6 +76,7 @@ bool isInputTransitionBlocked();
 bool isMenuInputCaptured();
 bool handleGuiHotkeyKeyDown(unsigned int virtualKey);
 bool handleGuiHotkeyKeyUp(unsigned int virtualKey);
+bool handleProjectionOffsetWheel(short wheelDelta);
 void resetHotkeyState();
 // Present-frame control plane for deferred world-lifecycle and hotkey actions.
 void processPendingActions();

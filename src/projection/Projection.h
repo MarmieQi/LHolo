@@ -57,7 +57,14 @@ std::optional<MaterialProgressKey> getMaterialProgressKey();
 std::optional<MaterialProgressSnapshot> captureMaterialProgress(
     MaterialProgressKey const& expected
 );
-bool isLayerVisible(int layer, int layerDisplayMode, int displayLayer);
+bool isLayerVisible(
+    int layer,
+    int layerDisplayMode,
+    int displayLayer,
+    int materialIndex = -1,
+    int secondaryMaterialIndex = -1,
+    int layerAxis = 0
+);
 std::vector<BrokenProjectionCell> takeBrokenProjectionCells(LocalPlayer& player);
 
 ProjectionQuery queryProjection(LocalPlayer& player, BlockPos const& worldPos);

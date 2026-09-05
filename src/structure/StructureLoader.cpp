@@ -69,6 +69,7 @@ constexpr std::size_t kLayerIncreaseHotkeyIndex = input::hotkeyIndex(input::Hotk
 constexpr std::size_t kLayerDecreaseHotkeyIndex = input::hotkeyIndex(input::HotkeyId::LayerDecrease);
 constexpr std::size_t kLoadProjectionHotkeyIndex = input::hotkeyIndex(input::HotkeyId::LoadProjection);
 constexpr std::size_t kCloseProjectionHotkeyIndex = input::hotkeyIndex(input::HotkeyId::CloseProjection);
+constexpr std::size_t kProjectionOffsetHotkeyIndex = input::hotkeyIndex(input::HotkeyId::ProjectionOffset);
 constexpr float kActionHintVerticalScreenRatio = 0.80f;
 auto& logger() {
     return LHolo::getInstance().getSelf().getLogger();
@@ -91,6 +92,24 @@ void resetWorldSession();
 
 unsigned int currentHotkeyModifiers() {
     return uiState().currentHotkeyModifiers();
+}
+
+bool projectionOffsetHotkeyMatches(unsigned int virtualKey) {
+    auto const hotkey = uiState().inputHotkey(kProjectionOffsetHotkeyIndex);
+    auto modifiers = currentHotkeyModifiers();
+    if (virtualKey == VK_CONTROL || virtualKey == VK_LCONTROL || virtualKey == VK_RCONTROL) {
+        modifiers &= ~ui::kHotkeyModifierControl;
+    } else if (virtualKey == VK_MENU || virtualKey == VK_LMENU || virtualKey == VK_RMENU) {
+        modifiers &= ~ui::kHotkeyModifierAlt;
+    } else if (virtualKey == VK_SHIFT || virtualKey == VK_LSHIFT || virtualKey == VK_RSHIFT) {
+        modifiers &= ~ui::kHotkeyModifierShift;
+    }
+    auto const altKey = [](unsigned int key) {
+        return key == VK_MENU || key == VK_LMENU || key == VK_RMENU;
+    };
+    auto const keysMatch = hotkey.key == virtualKey
+        || (altKey(hotkey.key) && altKey(virtualKey));
+    return hotkey.key != 0 && keysMatch && hotkey.modifiers == modifiers;
 }
 
 } // namespace
@@ -152,6 +171,13 @@ bool handleGuiHotkeyKeyDown(unsigned int virtualKey) {
             uiState().bindCapturedHotkey(*captureIndex, virtualKey, modifiers);
             uiState().setIgnoreHotkeyUntil(GetTickCount64() + 250);
             uiState().requestSettingsSave();
+        }
+        return true;
+    }
+
+    if (projectionOffsetHotkeyMatches(virtualKey)) {
+        if (GetTickCount64() >= uiState().ignoreHotkeyUntil()) {
+            (void)uiState().tryPressHotkey(kProjectionOffsetHotkeyIndex);
         }
         return true;
     }
@@ -225,18 +251,39 @@ bool handleGuiHotkeyKeyDown(unsigned int virtualKey) {
 bool handleGuiHotkeyKeyUp(unsigned int virtualKey) {
     if (virtualKey == VK_CONTROL || virtualKey == VK_LCONTROL || virtualKey == VK_RCONTROL) {
         uiState().setControlHeld(false);
-        return false;
+        return uiState().releaseHotkeysForKey(virtualKey, GetTickCount64());
     }
     if (virtualKey == VK_MENU || virtualKey == VK_LMENU || virtualKey == VK_RMENU) {
         uiState().setAltHeld(false);
-        return false;
+        return uiState().releaseHotkeysForKey(virtualKey, GetTickCount64());
     }
     if (virtualKey == VK_SHIFT || virtualKey == VK_LSHIFT || virtualKey == VK_RSHIFT) {
         uiState().setShiftHeld(false);
-        return false;
+        return uiState().releaseHotkeysForKey(virtualKey, GetTickCount64());
     }
 
     return uiState().releaseHotkeysForKey(virtualKey, GetTickCount64());
+}
+
+bool handleProjectionOffsetWheel(short wheelDelta) {
+    if (isGuiVisible() || !uiState().hotkeyHeld(kProjectionOffsetHotkeyIndex)
+        || !detail::StructureSession::getInstance().hasLoaded()) {
+        return false;
+    }
+
+    auto client = ll::service::getClientInstance();
+    auto* player = client ? client->getLocalPlayer() : nullptr;
+    if (!player) return false;
+
+    auto const steps = static_cast<int>(wheelDelta) / WHEEL_DELTA;
+    if (steps == 0) return false;
+    auto const view = player->getViewVector(1.0f);
+    auto const deltaX = static_cast<int>(std::round(view.x));
+    auto const deltaY = static_cast<int>(std::round(view.y));
+    auto const deltaZ = static_cast<int>(std::round(view.z));
+    if (deltaX == 0 && deltaY == 0 && deltaZ == 0) return false;
+    uiState().queueOffsetDelta(deltaX * steps, deltaY * steps, deltaZ * steps);
+    return true;
 }
 
 void resetHotkeyState() {
@@ -405,7 +452,10 @@ void renderHud() {
     if (!sessionSnapshot.loaded) return;
     auto const fileName = detail::pathToUtf8(sessionSnapshot.loaded->sourcePath.filename());
     auto const layerAxis = sessionSnapshot.transform.layerAxis;
-    auto const maxLayer = layerAxis == 1 ? sessionSnapshot.maxLayerX : sessionSnapshot.maxLayerY;
+    auto const layerMode = sessionSnapshot.transform.layerDisplayMode;
+    auto const maxLayer = layerAxis == 2
+        ? std::max(0, static_cast<int>(sessionSnapshot.loaded->materialCount) - 1)
+        : (layerAxis == 1 ? sessionSnapshot.maxLayerX : sessionSnapshot.maxLayerY);
 
     auto const displaySize = ImGui::GetIO().DisplaySize;
     auto uiScale = hud.uiScale;
@@ -418,7 +468,6 @@ void renderHud() {
     }
     auto const hudMetrics = lholo::ui::calculateMetrics(displaySize, uiScale);
     lholo::ui::applyFluentTheme(hudMetrics);
-    auto const layerMode = sessionSnapshot.transform.layerDisplayMode;
     auto const currentLayer = std::clamp(
         sessionSnapshot.transform.displayLayer,
         0,
@@ -450,7 +499,17 @@ void renderHud() {
         | ImGuiWindowFlags_NoInputs;
     if (ImGui::Begin("##LHoloHud", nullptr, flags)) {
         if (showFileName) ImGui::Text("投影：%s", fileName.c_str());
-        if (showLayer && layerMode == 0) {
+        if (showLayer && layerAxis == 2) {
+            if (layerMode == 0) {
+                ImGui::TextUnformatted("显示范围：完整材料清单");
+            } else if (layerMode == 1) {
+                ImGui::Text("当前材料：%d / %d", currentLayer, maxLayer);
+            } else if (layerMode == 2) {
+                ImGui::Text("显示材料：第 0～%d", currentLayer);
+            } else {
+                ImGui::Text("显示材料：第 %d～%d", currentLayer, maxLayer);
+            }
+        } else if (showLayer && layerMode == 0) {
             ImGui::TextUnformatted("显示范围：完整结构");
         } else if (showLayer && layerMode == 1) {
             ImGui::Text(
@@ -706,6 +765,11 @@ void loadSettings() {
             std::clamp(settings.closeProjectionHotkey, 0, 255),
             std::clamp(settings.closeProjectionHotkeyModifiers, 0, 7)
         );
+        uiState().setHotkey(
+            kProjectionOffsetHotkeyIndex,
+            std::clamp(settings.projectionOffsetHotkey, 0, 255),
+            std::clamp(settings.projectionOffsetHotkeyModifiers, 0, 7)
+        );
         session.setSavedProjection({
             settings.hasSavedProjection,
             settings.savedAnchorX,
@@ -719,7 +783,7 @@ void loadSettings() {
                 settings.savedOffsetZ,
                 settings.savedLayerDisplayMode,
                 settings.savedDisplayLayer,
-                std::clamp(settings.savedLayerAxis, 0, 1)
+                std::clamp(settings.savedLayerAxis, 0, 2)
             },
             settings.savedStructurePath
         });
@@ -785,6 +849,9 @@ void saveSettings() {
         settings.loadProjectionHotkeyModifiers = loadProjectionHotkey.modifiers;
         settings.closeProjectionHotkey = closeProjectionHotkey.key;
         settings.closeProjectionHotkeyModifiers = closeProjectionHotkey.modifiers;
+        auto const projectionOffsetHotkey = uiState().hotkey(kProjectionOffsetHotkeyIndex);
+        settings.projectionOffsetHotkey = projectionOffsetHotkey.key;
+        settings.projectionOffsetHotkeyModifiers = projectionOffsetHotkey.modifiers;
         settings.hasSavedProjection = sessionSnapshot.saved.available;
         settings.savedAnchorX = sessionSnapshot.saved.anchorX;
         settings.savedAnchorY = sessionSnapshot.saved.anchorY;

@@ -108,7 +108,8 @@ CorrectionProgressChanges updateCorrectionTracker(
     auto const updateCorrection = [&](std::size_t index) {
         auto const& entry = state.structure->renderBlocks[index];
         auto const visible = isLayerVisible(
-            layerAxis == 1 ? entry.x : entry.y, layerDisplayMode, displayLayer
+            layerAxis == 1 ? entry.x : entry.y, layerDisplayMode, displayLayer,
+            entry.materialIndex, entry.liquidMaterialIndex, layerAxis
         );
         auto const transformed = transformStructurePosition(
             entry, *state.structure, mirrorMode, rotationTurns
@@ -298,7 +299,12 @@ CorrectionProgressChanges updateCorrectionTracker(
         if (isStructureCellCovered(*state.structure, local)
             && !hasExpectedLocalCell(local)) {
             auto const visible = isLayerVisible(
-                layerAxis == 1 ? local.x : local.y, layerDisplayMode, displayLayer
+                layerAxis == 1 ? local.x : local.y,
+                layerDisplayMode,
+                displayLayer,
+                -1,
+                -1,
+                layerAxis
             );
             updateExtra(local, changedPosition, visible);
             ++correctionChecks;
@@ -341,7 +347,12 @@ CorrectionProgressChanges updateCorrectionTracker(
             box.z + static_cast<int>(z),
         };
         auto const visible = isLayerVisible(
-            layerAxis == 1 ? local.x : local.y, layerDisplayMode, displayLayer
+            layerAxis == 1 ? local.x : local.y,
+            layerDisplayMode,
+            displayLayer,
+            -1,
+            -1,
+            layerAxis
         );
         if (hasExpectedLocalCell(local)) continue;
         auto const transformed = transformStructurePosition(
@@ -390,7 +401,10 @@ CorrectionProgressChanges updateCorrectionTracker(
                     auto const visible = isLayerVisible(
                         layerAxis == 1 ? local.x : local.y,
                         layerDisplayMode,
-                        displayLayer
+                        displayLayer,
+                        -1,
+                        -1,
+                        layerAxis
                     );
                     updateExtra(local, BlockPos{x, y, z}, visible);
                 }

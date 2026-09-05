@@ -65,6 +65,13 @@ bool isStructureCellCovered(
     BlockPos const&                    position
 );
 
-bool isLayerVisible(int layer, int layerDisplayMode, int displayLayer);
+bool isLayerVisible(
+    int layer,
+    int layerDisplayMode,
+    int displayLayer,
+    int materialIndex = -1,
+    int secondaryMaterialIndex = -1,
+    int layerAxis = 0
+);
 
 } // namespace lholo::projection::detail

@@ -72,9 +72,14 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         }
     }
 
-    auto const layerIsVisible = [&](int layer) {
+    auto const layerIsVisible = [&](structure::LoadedStructure::RenderBlock const& entry) {
         return isLayerVisible(
-            layer, settings.layerDisplayMode, settings.displayLayer
+            settings.layerAxis == 1 ? entry.x : entry.y,
+            settings.layerDisplayMode,
+            settings.displayLayer,
+            entry.materialIndex,
+            entry.liquidMaterialIndex,
+            settings.layerAxis
         );
     };
     // LayerRange changes only invalidate sections containing blocks whose
@@ -84,14 +89,13 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
             if (state.cachedLayerDisplayMode < 0 || state.cachedLayerAxis < 0) return false;
             auto const layer = state.cachedLayerAxis == 1 ? entry.x : entry.y;
             return isLayerVisible(
-                layer, state.cachedLayerDisplayMode, state.cachedDisplayLayer
+                layer, state.cachedLayerDisplayMode, state.cachedDisplayLayer,
+                entry.materialIndex, entry.liquidMaterialIndex, state.cachedLayerAxis
             );
         };
         for (std::size_t index = 0; index < state.structure->renderBlocks.size(); ++index) {
             auto const& entry = state.structure->renderBlocks[index];
-            auto const visible = layerIsVisible(
-                settings.layerAxis == 1 ? entry.x : entry.y
-            );
+            auto const visible = layerIsVisible(entry);
             if (oldLayerVisible(entry) == visible) continue;
             markSectionDirty(state, state.blockToSection[index], false);
             state.correctionStates[index] = visible
@@ -161,7 +165,7 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         std::uint64_t visibleTotal{};
         for (std::size_t index = 0; index < state.structure->renderBlocks.size(); ++index) {
             auto const& entry = state.structure->renderBlocks[index];
-            if (!layerIsVisible(settings.layerAxis == 1 ? entry.x : entry.y)) continue;
+            if (!layerIsVisible(entry)) continue;
             ++visibleTotal;
             if (state.progressCorrect[index] != 0) {
                 ++state.progressVisibleCorrectCount;

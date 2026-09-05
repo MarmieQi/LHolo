@@ -16,6 +16,7 @@
 
 #include "structure/formats/StructureFormatLoaders.h"
 #include "structure/StructureLoader.h"
+#include "block/BlockPlacementRules.h"
 #include "structure/java_to_bedrock/JavaBlockEntityToBedrock.h"
 #include "structure/java_to_bedrock/JavaToBedrock.h"
 
@@ -30,6 +31,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -61,6 +63,79 @@ namespace {
 constexpr std::uintmax_t kMaximumStructureFileSize = 512ull * 1024ull * 1024ull;
 constexpr std::size_t    kMaximumInflatedFileSize  = 1024ull * 1024ull * 1024ull;
 std::atomic_uint64_t     gGeneration{0};
+
+std::string materialKey(Block const* block) {
+    if (!block) return {};
+    auto const typeName = std::string{block->getTypeName()};
+    if (typeName == "minecraft:bubble_column"
+        || typeName == "minecraft:piston_arm_collision"
+        || typeName == "minecraft:sticky_piston_arm_collision"
+        || typeName == "minecraft:moving_block") return {};
+    if (typeName == "minecraft:water" || typeName == "minecraft:flowing_water") {
+        return "minecraft:water";
+    }
+    if (typeName == "minecraft:lava" || typeName == "minecraft:flowing_lava") {
+        return "minecraft:lava";
+    }
+    auto const baseName = std::string{block::placeableBaseName(typeName)};
+    if (baseName == "minecraft:redstone_wire") return "item:minecraft:redstone";
+    if (baseName == "minecraft:unpowered_comparator"
+        || baseName == "minecraft:powered_comparator") {
+        return "item:minecraft:comparator";
+    }
+    if (baseName == "minecraft:unpowered_repeater"
+        || baseName == "minecraft:powered_repeater") {
+        return "item:minecraft:repeater";
+    }
+    if (baseName == "minecraft:unlit_redstone_torch") {
+        return "item:minecraft:redstone_torch";
+    }
+    return "item:" + baseName;
+}
+
+void assignMaterialIndices(LoadedStructure& loaded) {
+    std::map<std::string, std::uint64_t> bodyCounts;
+    std::map<std::string, std::uint64_t> liquidCounts;
+    for (auto const& entry : loaded.renderBlocks) {
+        auto const body = materialKey(entry.block);
+        auto const liquid = materialKey(entry.liquid);
+        if (!body.empty()) ++bodyCounts[body];
+        if (!liquid.empty()) ++liquidCounts[liquid];
+    }
+    auto sortedKeys = [](auto const& counts) {
+        std::vector<std::string> keys;
+        for (auto const& [key, count] : counts) {
+            (void)count;
+            keys.push_back(key);
+        }
+        std::sort(keys.begin(), keys.end(), [&](auto const& left, auto const& right) {
+            if (counts.at(left) != counts.at(right)) return counts.at(left) > counts.at(right);
+            return left < right;
+        });
+        return keys;
+    };
+    auto const bodyKeys = sortedKeys(bodyCounts);
+    auto const liquidKeys = sortedKeys(liquidCounts);
+    std::map<std::string, int> bodyIndices;
+    std::map<std::string, int> liquidIndices;
+    for (std::size_t index = 0; index < bodyKeys.size(); ++index) {
+        bodyIndices.emplace(bodyKeys[index], static_cast<int>(index));
+    }
+    for (std::size_t index = 0; index < liquidKeys.size(); ++index) {
+        liquidIndices.emplace(
+            liquidKeys[index], static_cast<int>(bodyKeys.size() + index)
+        );
+    }
+    for (auto& entry : loaded.renderBlocks) {
+        if (auto const found = bodyIndices.find(materialKey(entry.block)); found != bodyIndices.end()) {
+            entry.materialIndex = found->second;
+        }
+        if (auto const found = liquidIndices.find(materialKey(entry.liquid)); found != liquidIndices.end()) {
+            entry.liquidMaterialIndex = found->second;
+        }
+    }
+    loaded.materialCount = bodyKeys.size() + liquidKeys.size();
+}
 
 std::optional<std::string> readFile(std::filesystem::path const& path, std::string& error) {
     std::error_code filesystemError;
@@ -528,6 +603,7 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
             std::move(blockEntityNbt)
         });
     }
+    assignMaterialIndices(*loaded);
     loaded->generation = gGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
     loaded->sourcePath = path;
     return loaded;
@@ -764,6 +840,7 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
         return std::tie(left.x, left.y, left.z) < std::tie(right.x, right.y, right.z);
     });
     loaded->primaryBlocks = loaded->renderBlocks.size();
+    assignMaterialIndices(*loaded);
     loaded->generation = gGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
     loaded->sourcePath = path;
     return loaded;

@@ -159,8 +159,18 @@ std::optional<MaterialProgressSnapshot> captureMaterialProgress(
     );
 }
 
-bool isLayerVisible(int layer, int layerDisplayMode, int displayLayer) {
-    return detail::isLayerVisible(layer, layerDisplayMode, displayLayer);
+bool isLayerVisible(
+    int layer,
+    int layerDisplayMode,
+    int displayLayer,
+    int materialIndex,
+    int secondaryMaterialIndex,
+    int layerAxis
+) {
+    return detail::isLayerVisible(
+        layer, layerDisplayMode, displayLayer,
+        materialIndex, secondaryMaterialIndex, layerAxis
+    );
 }
 
 std::vector<BrokenProjectionCell> takeBrokenProjectionCells(LocalPlayer& player) {

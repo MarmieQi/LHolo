@@ -99,6 +99,7 @@ struct MenuModel {
     int displayLayer{};
     int maxLayerY{};
     int maxLayerX{};
+    int materialCount{};
 
     std::array<HotkeyRow, input::kHotkeyCount> hotkeys{};
     bool hudEnabled{true};
@@ -127,6 +128,7 @@ struct MenuActions {
     std::function<void()> requestMaterials;
     std::function<void(HotkeyId)> beginHotkeyCapture;
     std::function<void(HotkeyId)> clearHotkey;
+    std::function<void(HotkeyId)> resetHotkey;
     std::function<void()> resetHotkeys;
     std::function<void()> resetCorrectionStyle;
     std::function<void()> giveExperimentalConsent;

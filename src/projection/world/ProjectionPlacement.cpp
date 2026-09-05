@@ -103,7 +103,10 @@ void rebuildProjectionPlacement(
         if (!isLayerVisible(
                 settings.layerAxis == 1 ? entry.x : entry.y,
                 settings.layerDisplayMode,
-                settings.displayLayer
+                settings.displayLayer,
+                entry.materialIndex,
+                entry.liquidMaterialIndex,
+                settings.layerAxis
             )) {
             // Hidden layers behave like completed cells for mesh generation,
             // but are excluded from the world lookup below.
