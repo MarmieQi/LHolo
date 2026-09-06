@@ -116,6 +116,8 @@ struct MenuModel {
     bool materialPopupRequested{};
     bool materialHudEnabled{};
     int  materialHudPosition{3};
+    bool stickToolEnabled{};
+    bool hudAlwaysVisible{};
     bool closeRequested{};
 };
 

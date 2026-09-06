@@ -27,6 +27,8 @@ bool loadSettingsFile(std::filesystem::path const& path, Settings& out) {
     out.experimentalConsent = json.value("experimentalConsent", out.experimentalConsent);
     out.materialHudEnabled = json.value("materialHudEnabled", out.materialHudEnabled);
     out.materialHudPosition = json.value("materialHudPosition", out.materialHudPosition);
+    out.stickToolEnabled = json.value("stickToolEnabled", out.stickToolEnabled);
+    out.hudAlwaysVisible = json.value("hudAlwaysVisible", out.hudAlwaysVisible);
     out.placementRadius = json.value("placementRadius", out.placementRadius);
     out.autoPlacementBreakCooldownSeconds = json.value(
         "autoPlacementBreakCooldownSeconds",
@@ -59,6 +61,9 @@ bool loadSettingsFile(std::filesystem::path const& path, Settings& out) {
     out.closeProjectionHotkey = json.value("closeProjectionHotkey", out.closeProjectionHotkey);
     out.closeProjectionHotkeyModifiers
         = json.value("closeProjectionHotkeyModifiers", out.closeProjectionHotkeyModifiers);
+    out.scrollMoveHotkey = json.value("scrollMoveHotkey", out.scrollMoveHotkey);
+    out.scrollMoveHotkeyModifiers
+        = json.value("scrollMoveHotkeyModifiers", out.scrollMoveHotkeyModifiers);
 
     static char const* moveKeyNames[]{
         "moveXMinusHotkey",
@@ -116,6 +121,8 @@ void saveSettingsFile(std::filesystem::path const& path, Settings const& setting
         {"experimentalConsent", settings.experimentalConsent},
         {"materialHudEnabled", settings.materialHudEnabled},
         {"materialHudPosition", settings.materialHudPosition},
+        {"stickToolEnabled", settings.stickToolEnabled},
+        {"hudAlwaysVisible", settings.hudAlwaysVisible},
         {"placementRadius", settings.placementRadius},
         {"autoPlacementBreakCooldownSeconds", settings.autoPlacementBreakCooldownSeconds},
         {"hudEnabled", settings.hudEnabled},
@@ -138,6 +145,8 @@ void saveSettingsFile(std::filesystem::path const& path, Settings const& setting
         {"loadProjectionHotkeyModifiers", settings.loadProjectionHotkeyModifiers},
         {"closeProjectionHotkey", settings.closeProjectionHotkey},
         {"closeProjectionHotkeyModifiers", settings.closeProjectionHotkeyModifiers},
+        {"scrollMoveHotkey", settings.scrollMoveHotkey},
+        {"scrollMoveHotkeyModifiers", settings.scrollMoveHotkeyModifiers},
         {"moveXMinusHotkey", settings.moveHotkeys[0]},
         {"moveXPlusHotkey", settings.moveHotkeys[1]},
         {"moveZMinusHotkey", settings.moveHotkeys[2]},

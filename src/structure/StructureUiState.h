@@ -115,6 +115,9 @@ public:
     void setAltHeld(bool held);
     void setShiftHeld(bool held);
     [[nodiscard]] unsigned int currentHotkeyModifiers() const;
+    // True when the ScrollMove hotkey's binding (key and/or modifiers) is
+    // physically held right now. Safe to poll from the input thread.
+    [[nodiscard]] bool scrollModifierHeld() const;
     [[nodiscard]] bool tryPressHotkey(std::size_t index);
     [[nodiscard]] bool releaseHotkeysForKey(unsigned int key, std::uint64_t now);
     void resetHotkeyState();

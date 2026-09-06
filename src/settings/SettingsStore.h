@@ -26,6 +26,8 @@ struct Settings {
     bool experimentalConsent{false};
     bool materialHudEnabled{false};
     int materialHudPosition{3};
+    bool stickToolEnabled{false};
+    bool hudAlwaysVisible{false};
     int placementRadius{4};
     int autoPlacementBreakCooldownSeconds{10};
     bool hudEnabled{true};
@@ -48,6 +50,9 @@ struct Settings {
     int loadProjectionHotkeyModifiers{0};
     int closeProjectionHotkey{0};
     int closeProjectionHotkeyModifiers{0};
+    // Held (not pressed) while scrolling to move the projection. Default Alt.
+    int scrollMoveHotkey{0};
+    int scrollMoveHotkeyModifiers{2}; // kHotkeyModifierAlt
     // X-, X+, Z-, Z+, Y+, Y-
     std::array<int, input::kMoveHotkeyCount> moveHotkeys{0x25, 0x27, 0x26, 0x28, 0x26, 0x28};
     std::array<int, input::kMoveHotkeyCount> moveHotkeyModifiers{1, 1, 1, 1, 4, 4};

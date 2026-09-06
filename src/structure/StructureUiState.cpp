@@ -37,6 +37,7 @@ constexpr std::array<DefaultHotkey, input::kHotkeyCount> kDefaultHotkeys{{
     {VK_DOWN, lholo::ui::kHotkeyModifierAlt},
     {0,       0},
     {0,       0},
+    {0,       lholo::ui::kHotkeyModifierAlt},  // ScrollMove: hold Alt + wheel
 }};
 
 } // namespace
@@ -153,6 +154,17 @@ HotkeyBindingSnapshot StructureUiState::inputHotkey(std::size_t index) const {
         storage->modifiers.load(std::memory_order_acquire),
         storage->capturing.load(std::memory_order_acquire)
     };
+}
+
+bool StructureUiState::scrollModifierHeld() const {
+    auto const snapshot = inputHotkey(input::hotkeyIndex(input::HotkeyId::ScrollMove));
+    if (snapshot.key == 0 && snapshot.modifiers == 0) return false;  // unbound
+    auto const down = [](int vkey) { return (GetAsyncKeyState(vkey) & 0x8000) != 0; };
+    if (snapshot.key != 0 && !down(static_cast<int>(snapshot.key))) return false;
+    if ((snapshot.modifiers & lholo::ui::kHotkeyModifierControl) && !down(VK_CONTROL)) return false;
+    if ((snapshot.modifiers & lholo::ui::kHotkeyModifierAlt) && !down(VK_MENU)) return false;
+    if ((snapshot.modifiers & lholo::ui::kHotkeyModifierShift) && !down(VK_SHIFT)) return false;
+    return true;
 }
 
 void StructureUiState::setHotkey(

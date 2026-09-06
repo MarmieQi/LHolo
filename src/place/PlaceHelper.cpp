@@ -30,8 +30,10 @@
 #include "mc/client/game/ClientInstance.h"
 #include "mc/client/game/IClientInstance.h"
 #include "mc/client/player/LocalPlayer.h"
+#include "mc/world/ContainerID.h"
 #include "mc/world/gamemode/GameMode.h"
 #include "mc/world/actor/player/Player.h"
+#include "mc/world/actor/player/PlayerInventory.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
@@ -64,6 +66,33 @@ LL_TYPE_INSTANCE_HOOK(
     structure::detail::tickMaterialTracker(*this);
     detail::tickEasyPlace();
     origin(currentTick);
+}
+
+// Alt + wheel repurposes the mouse wheel to move the projection (JE-style)
+// instead of switching the hotbar. Bedrock changes the hotbar slot through its
+// own input pipeline, not our WndProc, so we suppress the change here at its
+// source: PlayerInventory::selectSlot. Gated tightly — only the local player's
+// inventory, only while Alt is held with a projection loaded, and never for the
+// mod's own placement slot swaps (guarded by ModSlotSelectGuard).
+LL_TYPE_INSTANCE_HOOK(
+    PlayerInventorySelectSlotHook,
+    ll::memory::HookPriority::Normal,
+    PlayerInventory,
+    &PlayerInventory::selectSlot,
+    bool,
+    int          slot,
+    ::ContainerID containerId
+) {
+    if (!detail::modSlotSelectActive()
+        && structure::scrollModifierHeld()
+        && structure::scrollLockActive()) {
+        auto client = ll::service::getClientInstance();
+        auto* localPlayer = client ? client->getLocalPlayer() : nullptr;
+        if (localPlayer && this == &localPlayer->getSupplies()) {
+            return false;  // keep the held item; the wheel is driving the projection
+        }
+    }
+    return origin(slot, containerId);
 }
 
 // Returns true when manual mode is on and `gm` belongs to the local player, i.e.
@@ -143,10 +172,14 @@ LL_TYPE_INSTANCE_HOOK(
             return origin(item);
         }
         placementState().setManualPressAt(GetTickCount64());
-        placementState().setManualHeld(false);
         if (targetStatus == detail::ManualTargetStatus::Ready) {
+            // Mark the button held so holding right-click over a floating
+            // projection keeps placing (the tick's typematic repeat). The tick
+            // clears the hold when the right button is actually released.
+            placementState().setManualHeld(true);
             placementState().setManualPlaceRequested(true);
         } else {
+            placementState().setManualHeld(false);
             placementState().setManualPlaceRequested(false);
             structure::showActionHint("背包中没有对应的投影方块");
         }
@@ -279,10 +312,14 @@ bool installHook() {
     if (GameModeBuildBlockHook::hook() < 0) {
         logger().warn("Failed to install manual-place build hook; manual mode may double-place");
     }
+    if (PlayerInventorySelectSlotHook::hook() < 0) {
+        logger().warn("Failed to install selectSlot hook; Alt+wheel may still scroll the hotbar");
+    }
     return true;
 }
 
 void uninstallHook() {
+    PlayerInventorySelectSlotHook::unhook();
     GameModeBuildBlockHook::unhook();
     GameModeStopBuildHook::unhook();
     GameModeUseItemHook::unhook();

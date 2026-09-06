@@ -21,6 +21,10 @@ enum class HotkeyId : std::uint8_t {
     LayerDecrease,
     LoadProjection,
     CloseProjection,
+    // Held (not pressed) while scrolling to move the projection along the axis
+    // the player faces. Default is Alt. Polled via scrollModifierHeld(), never
+    // dispatched as a press action, so a key of 0 simply means "unbound".
+    ScrollMove,
     Count
 };
 

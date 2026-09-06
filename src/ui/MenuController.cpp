@@ -61,7 +61,8 @@ constexpr std::array<HotkeyDefinition, input::kHotkeyCount> kHotkeyDefinitions{{
     {HotkeyId::LayerIncrease, "上一层"},
     {HotkeyId::LayerDecrease, "下一层"},
     {HotkeyId::LoadProjection, "加载投影"},
-    {HotkeyId::CloseProjection, "关闭投影"}
+    {HotkeyId::CloseProjection, "关闭投影"},
+    {HotkeyId::ScrollMove, "移动投影修饰键（滚轮）"}
 }};
 
 } // namespace
@@ -108,6 +109,8 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
     model.experimentalConsent = structure::experimentalConsentGiven();
     model.materialHudEnabled = structure::materialHudEnabled();
     model.materialHudPosition = std::clamp(structure::materialHudPosition(), 0, 3);
+    model.stickToolEnabled = structure::stickToolEnabled();
+    model.hudAlwaysVisible = structure::hudAlwaysVisible();
     model.placementRadius = place::getPlacementRadius();
     model.autoPlacementBreakCooldownSeconds = place::getAutoPlacementBreakCooldownSeconds();
     model.offsetX = sessionSnapshot.transform.offsetX;
@@ -233,6 +236,14 @@ void applyStructureMenuModel(MenuModel const& model, float effectiveUiScale) {
     auto const materialPosition = std::clamp(model.materialHudPosition, 0, 3);
     if (structure::materialHudPosition() != materialPosition) {
         structure::setMaterialHudPosition(materialPosition);
+        changed = true;
+    }
+    if (structure::stickToolEnabled() != model.stickToolEnabled) {
+        structure::setStickToolEnabled(model.stickToolEnabled);
+        changed = true;
+    }
+    if (structure::hudAlwaysVisible() != model.hudAlwaysVisible) {
+        structure::setHudAlwaysVisible(model.hudAlwaysVisible);
         changed = true;
     }
     structure::capture::Draft captureDraft;

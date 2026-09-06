@@ -460,6 +460,18 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             }
         }
     }
+    // TEMP wheel-path diagnostic: is the wheel a classic message here at all?
+    // Alt + wheel nudges the projection along the axis the player is facing
+    // (JE-style). Only during gameplay. Bedrock reads the wheel through its own
+    // input pipeline (not this WndProc), so we can't stop the hotbar here; the
+    // tick thread pins the hotbar slot instead. We just queue the move — the tick
+    // thread reads the player's look vector and applies it.
+    if (!gShuttingDown.load(std::memory_order_acquire) && gImGuiInitialized
+        && !structure::isGuiVisible() && message == WM_MOUSEWHEEL
+        && structure::scrollModifierHeld()) {
+        int const notches = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+        if (notches != 0 && structure::queueFacingScroll(notches)) return 1;
+    }
     if (!gShuttingDown.load(std::memory_order_acquire) && gImGuiInitialized && structure::isGuiVisible()) {
         gMouseHandoffActive.store(false, std::memory_order_release);
         ClipCursor(nullptr);

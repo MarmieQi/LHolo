@@ -116,6 +116,29 @@ int getLayerDisplayMode();
 int getDisplayLayer();
 int getLayerAxis();
 void recordProjectionAnchor(int x, int y, int z);
+// Alt + wheel projection nudge. queueFacingScroll accumulates wheel notches from
+// the input thread (returns false, so the wheel is not consumed, when no
+// projection is loaded); applyFacingScroll runs on the tick thread with the
+// player's look vector and shifts the offset along the dominant facing axis.
+bool queueFacingScroll(int notches);
+void applyFacingScroll(float viewX, float viewY, float viewZ);
+// True when Alt+wheel should capture the wheel: a projection is loaded and, in
+// stick-tool mode, a stick is in hand. The selectSlot hook uses this to decide
+// whether to lock the hotbar, so the hotbar lock and the projection move engage
+// under exactly the same condition.
+bool scrollLockActive();
+// True while the ScrollMove hotkey (default Alt) is physically held. Used by the
+// wheel handler and the selectSlot hook so the trigger key is rebindable.
+bool scrollModifierHeld();
+// "Stick tool" mode: use a stick to move the projection (Alt+wheel), and gate the
+// info HUD on holding a stick unless pinned always-visible.
+bool stickToolEnabled();
+void setStickToolEnabled(bool enabled);
+bool hudAlwaysVisible();
+void setHudAlwaysVisible(bool enabled);
+// Runtime flag: whether the player currently holds a stick (refreshed each tick).
+bool holdingStick();
+void setHoldingStick(bool holding);
 void clear();
 // Reload the last saved projection at its saved anchor/transform. Standalone so
 // both the menu action and the load hotkey can trigger it.

@@ -544,6 +544,17 @@ void renderHotkeysPage(MenuModel& model, MenuActions const& actions, UiMetrics c
         ImGui::PopStyleVar();
         if (ImGui::Button("恢复默认快捷键") && actions.resetHotkeys) actions.resetHotkeys();
         ImGui::TextDisabled("可在聊天栏输入 LHolo 打开投影菜单");
+        ImGui::Separator();
+        renderCheckboxRow(
+            "##StickTool", "使用木棒操作投影（持木棒才可用修饰键+滚轮移动，信息 HUD 仅持木棒时显示）",
+            model.stickToolEnabled, metrics
+        );
+        ImGui::BeginDisabled(!model.stickToolEnabled);
+        renderCheckboxRow(
+            "##HudAlwaysVisible", "信息 HUD 常驻显示（不需手持木棒）",
+            model.hudAlwaysVisible, metrics
+        );
+        ImGui::EndDisabled();
     });
 }
 

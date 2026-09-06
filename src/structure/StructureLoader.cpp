@@ -69,6 +69,7 @@ constexpr std::size_t kLayerIncreaseHotkeyIndex = input::hotkeyIndex(input::Hotk
 constexpr std::size_t kLayerDecreaseHotkeyIndex = input::hotkeyIndex(input::HotkeyId::LayerDecrease);
 constexpr std::size_t kLoadProjectionHotkeyIndex = input::hotkeyIndex(input::HotkeyId::LoadProjection);
 constexpr std::size_t kCloseProjectionHotkeyIndex = input::hotkeyIndex(input::HotkeyId::CloseProjection);
+constexpr std::size_t kScrollMoveHotkeyIndex = input::hotkeyIndex(input::HotkeyId::ScrollMove);
 constexpr float kActionHintVerticalScreenRatio = 0.80f;
 auto& logger() {
     return LHolo::getInstance().getSelf().getLogger();
@@ -387,6 +388,8 @@ void renderActionHint() {
 void renderHud() {
     if (isGuiVisible()) return;
     if (!hudContextAvailable()) return;
+    // Stick-tool mode hides the info HUD unless a stick is held (or it is pinned).
+    if (stickToolEnabled() && !hudAlwaysVisible() && !holdingStick()) return;
     auto const hud = uiState().hud();
     if (!hud.enabled) return;
     auto const showFileName = hud.showFileName;
@@ -515,6 +518,13 @@ void renderHud() {
         auto const aimedProjectedBlock = place::getAimedProjectedBlockName();
         if (showProjectedBlockName && !aimedProjectedBlock.empty()) {
             ImGui::Text("投影方块：%s", aimedProjectedBlock.c_str());
+        }
+        // Show which assisted-placement mode (if any) is currently on.
+        char const* const placeMode = place::isManualMode() ? "手动放置"
+            : place::isEnabled() ? "轻松放置"
+            : place::isRangeEnabled() ? "范围放置" : nullptr;
+        if (placeMode) {
+            ImGui::TextColored(ImVec4(0.45f, 0.85f, 1.0f, 1.0f), "辅助放置：%s", placeMode);
         }
         // Record our rect + corner so the material HUD (drawn right after) can
         // stack clear of us when it shares this corner, instead of overlapping.
@@ -649,6 +659,8 @@ void loadSettings() {
         projection::setMissingSeeThrough(settings.missingSeeThrough);
         setExperimentalConsentGiven(settings.experimentalConsent);
         setMaterialHudEnabled(settings.materialHudEnabled);
+        setStickToolEnabled(settings.stickToolEnabled);
+        setHudAlwaysVisible(settings.hudAlwaysVisible);
         setMaterialHudPosition(settings.materialHudPosition);
         // Transform and layer state are session-local. Only the explicit
         // "restore last projection" record below is persisted.
@@ -706,6 +718,11 @@ void loadSettings() {
             std::clamp(settings.closeProjectionHotkey, 0, 255),
             std::clamp(settings.closeProjectionHotkeyModifiers, 0, 7)
         );
+        uiState().setHotkey(
+            kScrollMoveHotkeyIndex,
+            std::clamp(settings.scrollMoveHotkey, 0, 255),
+            std::clamp(settings.scrollMoveHotkeyModifiers, 0, 7)
+        );
         session.setSavedProjection({
             settings.hasSavedProjection,
             settings.savedAnchorX,
@@ -751,6 +768,8 @@ void saveSettings() {
         settings.missingSeeThrough = projection::getMissingSeeThrough();
         settings.experimentalConsent = experimentalConsentGiven();
         settings.materialHudEnabled = materialHudEnabled();
+        settings.stickToolEnabled = stickToolEnabled();
+        settings.hudAlwaysVisible = hudAlwaysVisible();
         settings.materialHudPosition = materialHudPosition();
         settings.placementRadius = place::getPlacementRadius();
         settings.autoPlacementBreakCooldownSeconds
@@ -785,6 +804,9 @@ void saveSettings() {
         settings.loadProjectionHotkeyModifiers = loadProjectionHotkey.modifiers;
         settings.closeProjectionHotkey = closeProjectionHotkey.key;
         settings.closeProjectionHotkeyModifiers = closeProjectionHotkey.modifiers;
+        auto const scrollMoveHotkey = uiState().hotkey(kScrollMoveHotkeyIndex);
+        settings.scrollMoveHotkey = scrollMoveHotkey.key;
+        settings.scrollMoveHotkeyModifiers = scrollMoveHotkey.modifiers;
         settings.hasSavedProjection = sessionSnapshot.saved.available;
         settings.savedAnchorX = sessionSnapshot.saved.anchorX;
         settings.savedAnchorY = sessionSnapshot.saved.anchorY;
@@ -826,6 +848,56 @@ int getLayerAxis() { return detail::StructureSession::getInstance().transform().
 void recordProjectionAnchor(int x, int y, int z) {
     detail::StructureSession::getInstance().recordProjectionAnchor(x, y, z);
     saveSettings();
+}
+
+namespace {
+std::atomic_int  gPendingFacingScroll{0};
+// "Stick tool" mode (JE-style): when on, the Alt+wheel projection nudge only
+// works while holding a stick, and the info HUD shows only while holding one
+// (unless it is pinned always-on). gHoldingStick is refreshed each tick.
+std::atomic_bool gStickToolEnabled{false};
+std::atomic_bool gHudAlwaysVisible{false};
+std::atomic_bool gHoldingStick{false};
+}
+
+bool stickToolEnabled() { return gStickToolEnabled.load(std::memory_order_acquire); }
+void setStickToolEnabled(bool enabled) {
+    gStickToolEnabled.store(enabled, std::memory_order_release);
+}
+bool hudAlwaysVisible() { return gHudAlwaysVisible.load(std::memory_order_acquire); }
+void setHudAlwaysVisible(bool enabled) {
+    gHudAlwaysVisible.store(enabled, std::memory_order_release);
+}
+bool holdingStick() { return gHoldingStick.load(std::memory_order_acquire); }
+void setHoldingStick(bool holding) {
+    gHoldingStick.store(holding, std::memory_order_release);
+}
+
+bool scrollLockActive() {
+    if (!getLoaded()) return false;  // nothing to move; let the wheel scroll the hotbar
+    if (stickToolEnabled() && !holdingStick()) return false;  // needs a stick in hand
+    return true;
+}
+
+bool scrollModifierHeld() { return uiState().scrollModifierHeld(); }
+
+bool queueFacingScroll(int notches) {
+    if (!scrollLockActive()) return false;
+    gPendingFacingScroll.fetch_add(notches, std::memory_order_acq_rel);
+    return true;
+}
+
+void applyFacingScroll(float viewX, float viewY, float viewZ) {
+    int const notches = gPendingFacingScroll.exchange(0, std::memory_order_acq_rel);
+    if (notches == 0) return;
+    // Move along the dominant look axis, in the direction the player faces:
+    // scroll forward (notches > 0) pushes the projection away along that axis.
+    float const ax = std::abs(viewX), ay = std::abs(viewY), az = std::abs(viewZ);
+    int dx = 0, dy = 0, dz = 0;
+    if (ax >= ay && ax >= az)  dx = (viewX >= 0.0f ? 1 : -1) * notches;
+    else if (ay >= az)         dy = (viewY >= 0.0f ? 1 : -1) * notches;
+    else                       dz = (viewZ >= 0.0f ? 1 : -1) * notches;
+    detail::StructureSession::getInstance().adjustOffsets(dx, dy, dz);
 }
 
 void restoreSavedProjection() {

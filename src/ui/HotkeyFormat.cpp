@@ -69,11 +69,17 @@ std::string hotkeyName(unsigned int key) {
 }
 
 std::string hotkeyChordName(unsigned int modifiers, unsigned int key) {
-    if (key == 0) return "未设置";
     std::string result;
     if ((modifiers & kHotkeyModifierControl) != 0) result += "Ctrl + ";
     if ((modifiers & kHotkeyModifierAlt) != 0) result += "Alt + ";
     if ((modifiers & kHotkeyModifierShift) != 0) result += "Shift + ";
+    if (key == 0) {
+        // A modifier-only binding (e.g. the default Alt for projection scroll)
+        // has no main key; show just the modifier(s) instead of "未设置".
+        if (result.empty()) return "未设置";
+        result.erase(result.size() - 3);  // drop the trailing " + "
+        return result;
+    }
     result += hotkeyName(key);
     return result;
 }
