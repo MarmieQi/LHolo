@@ -357,3 +357,64 @@ SDK 已声明 `mce::Mesh::operator dragon::mesh::Mesh() const`。这是保留现
   `inflateDepthBias=0`、体积角点=分区世界包围盒；单立方体实测后校准。
 
 尚未完成以上准入；不能把研究地址和伪代码直接包装成已验证实现。
+
+## 9. 跨平台研究偏差（2026-09-09 补充）
+
+**教育版 IDB 为 macOS 构建**（Mach-O 格式，System V ABI，Itanium 符号），Windows 版为 PE
+（Microsoft x64 ABI，MSVC 符号）。两者编译器不同，struct padding 和寄存器分配不同。
+
+本文件 §2-§3A 中标注为教育版分析的结论，其偏移和代码模式**不可直接套用到 Windows 版**。
+Windows 版消费者（`sub_146BFFDA0`）的字段偏移是从 Windows IDB 独立读取的，可信。
+但教育版内部的 `makeMaterialFilter`（五着色器白名单、MeshFallback 材质路由）等分析
+基于 macOS EDU，对 Windows 版仅为方向性参考。
+
+后续研究如需精确字段偏移和代码逻辑，必须在 Windows IDB（`Minecraft.Windows.exe.i64`）
+中进行。教育版仅用于确认共享设施存在性和接口签名格式。
+
+---
+
+## 10. 编辑器路线最终状态（2026-09-09 结案）
+
+编辑器方块体积描述路径经历了完整的"研究→实现→部署→实测→诊断→分析"闭环。
+以下为最终状态记录。
+
+### 10.1 已实现并确认可工作的部分
+
+- 描述布局镜像（400B）通过 Windows 消费者函数逐字段确认。
+- 转换运算符（MCAPI）成功将 mce::Mesh 转为 dragon::mesh::Mesh。
+- 持久缓存持有转换结果，每帧字节拷贝进描述槽位。
+- `renderDragonFrameBuilder()->_insert()` 虚调用成功执行，无崩溃。
+- 诊断确认：`inserts=1, convertedCache=2, validFills=1, validOutlines=1`。
+
+### 10.2 不可逾越的障碍
+
+**编辑器描述在普通（非 Editor）游戏会话中被管线静默丢弃。**
+
+全链路诊断确认：
+- 转换运算符正常执行（convertedCache 有值）。
+- 字节拷贝进描述槽位正常。
+- `FrameBuilder::_insert` 虚调用无崩溃。
+- Windows 版消费者门控仅有存在标志 + `areBuffersValid`，无编辑器模式检查。
+- **但屏幕无输出**。
+
+最合理解释：编辑器渲染 pass（`EditorBlockVolumeHull`/`Wireframe` 材质对应的 pass bucket）
+在普通游戏会话中不被创建或激活。这是游戏管线架构设计，非 mod 可修。
+
+### 10.3 已否决的子方案
+
+| 子方案 | 否决原因 |
+| --- | --- |
+| 按值持有 + 显式调 `~Mesh()` | `~Mesh` 为 MCNAPI，导入库无此符号（LNK2019），运行时按修饰名解析返回空 |
+| 字节复刻 `~Mesh` 逻辑 | EDU（macOS/clang）机器码不可安全映射到 Windows（MSVC）；涉及 shared_ptr 控制块和 MemoryTracker 分配链 |
+| 直接调 `makeMeshFilter` | 需 `dragon::mesh::Mesh const&` 参数，仍回到持有/析构问题 |
+| 修改 `MeshFallbackPosUVNormalColor` 材质 blend state | 材质状态改写是否被异步帧消费不可控（研究文档 §5 明确警告） |
+
+### 10.4 复活条件
+
+当以下任一条件满足时，编辑器路线可复活（实现代码已在 git 历史中）：
+
+1. LiteLDev 上游将 `dragon::mesh::Mesh::~Mesh` 加入 Windows 符号表（mcapi-requests）。
+2. 找到 Windows 版 `~Mesh` 的稳定运行时定位方式（签名扫描 + 多版本门禁验证）。
+3. 确认编辑器渲染 pass 的激活条件并从 mod 侧启用。
+
+在此之前，生产使用 currentShaderColor 立即绘制路径。
