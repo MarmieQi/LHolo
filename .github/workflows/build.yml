@@ -9,6 +9,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # LeviLamina 26.32 forces the clang-cl toolchain in its own xmake.lua,
+      # and the runner's preinstalled clang (20.x) fails on its headers with
+      # the new MSVC 14.51 STL (eagerly instantiated unique_ptr members of
+      # forward-declared command types). LeviLamina's own CI validates
+      # against LLVM 22, so match it exactly.
+      - name: Setup LLVM
+        uses: ZhongRuoyu/setup-llvm@v0
+        with:
+          llvm-version: 22
+
       - uses: xmake-io/github-action-setup-xmake@v1
         # with:
         #   xmake-version: branch@master

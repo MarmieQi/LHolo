@@ -17,6 +17,12 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
+      # LeviLamina 26.32 forces the clang-cl toolchain; see build.yml.
+      - name: Setup LLVM
+        uses: ZhongRuoyu/setup-llvm@v0
+        with:
+          llvm-version: 22
+
       - uses: xmake-io/github-action-setup-xmake@v1
         # with:
         #   xmake-version: branch@master
