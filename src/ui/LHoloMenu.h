@@ -77,8 +77,6 @@ struct MenuModel {
     std::string       captureStatus;
 
     bool structureBoundsEnabled{};
-    bool correctionSeeThrough{};
-    bool missingSeeThrough{};
     bool easyPlaceEnabled{};
     bool manualPlace{};
     bool rangeEnabled{};

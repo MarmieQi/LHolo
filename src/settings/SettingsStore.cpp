@@ -22,8 +22,6 @@ bool loadSettingsFile(std::filesystem::path const& path, Settings& out) {
     out.correctionFillOpacity = json.value("correctionFillOpacity", out.correctionFillOpacity);
     out.correctionOutlineOpacity = json.value("correctionOutlineOpacity", out.correctionOutlineOpacity);
     out.structureBoundsEnabled = json.value("structureBoundsEnabled", out.structureBoundsEnabled);
-    out.correctionSeeThrough = json.value("correctionSeeThrough", out.correctionSeeThrough);
-    out.missingSeeThrough = json.value("missingSeeThrough", out.missingSeeThrough);
     out.experimentalConsent = json.value("experimentalConsent", out.experimentalConsent);
     out.materialHudEnabled = json.value("materialHudEnabled", out.materialHudEnabled);
     out.materialHudPosition = json.value("materialHudPosition", out.materialHudPosition);
@@ -104,15 +102,13 @@ void saveSettingsFile(std::filesystem::path const& path, Settings const& setting
     if (error) throw std::runtime_error(error.message());
 
     nlohmann::ordered_json const json{
-        {"version", 10},
+        {"version", 12},
         {"lastStructurePath", settings.lastStructurePath},
         {"uiScale", settings.uiScale},
         {"opacity", settings.opacity},
         {"correctionFillOpacity", settings.correctionFillOpacity},
         {"correctionOutlineOpacity", settings.correctionOutlineOpacity},
         {"structureBoundsEnabled", settings.structureBoundsEnabled},
-        {"correctionSeeThrough", settings.correctionSeeThrough},
-        {"missingSeeThrough", settings.missingSeeThrough},
         {"experimentalConsent", settings.experimentalConsent},
         {"materialHudEnabled", settings.materialHudEnabled},
         {"materialHudPosition", settings.materialHudPosition},

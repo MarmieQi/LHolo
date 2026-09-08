@@ -32,7 +32,11 @@ ItemStack makePlacementItem(Block const& block) {
     std::string const blockName{placeableBaseName(block.getTypeName())};
     char const* const itemName = placingItemName(blockName);
     std::string_view const name = itemName ? std::string_view{itemName} : std::string_view{blockName};
-    return ItemStack(name, 1, 0, nullptr);
+    // The (name, count, aux, userData) constructor was inlined out of the
+    // 26.32 SDK; the same initialization is reachable through reinit().
+    ItemStack stack;
+    stack.reinit(name, 1, 0);
+    return stack;
 }
 
 std::string stripMinecraftFormatting(std::string_view text) {

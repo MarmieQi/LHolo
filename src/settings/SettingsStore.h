@@ -21,8 +21,6 @@ struct Settings {
     float correctionFillOpacity{0.15f};
     float correctionOutlineOpacity{1.0f};
     bool structureBoundsEnabled{true};
-    bool correctionSeeThrough{false};
-    bool missingSeeThrough{false};
     bool experimentalConsent{false};
     bool materialHudEnabled{false};
     int materialHudPosition{3};

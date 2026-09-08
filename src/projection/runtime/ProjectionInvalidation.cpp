@@ -138,10 +138,12 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         for (auto& sectionState : state.sections) {
             for (auto& mesh : sectionState.meshes) mesh.reset();
         }
-        for (auto& mesh : state.warningFillSectionMeshes) mesh.reset();
-        for (auto& mesh : state.correctionOutlineSectionMeshes) mesh.reset();
-        for (auto& mesh : state.wrongFillSectionMeshes) mesh.reset();
-        for (auto& mesh : state.wrongOutlineSectionMeshes) mesh.reset();
+        for (auto& fills : state.correctionFillSectionMeshes) {
+            for (auto& mesh : fills) mesh.reset();
+        }
+        for (auto& outlines : state.correctionOutlineSectionMeshes) {
+            for (auto& mesh : outlines) mesh.reset();
+        }
         for (auto& mesh : state.liquidProxySectionMeshes) mesh.reset();
         for (auto& mesh : state.blockEntityPlaceholderSectionMeshes) mesh.reset();
         state.structureBoundsMesh.reset();

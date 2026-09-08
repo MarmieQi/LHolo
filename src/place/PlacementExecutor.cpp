@@ -32,6 +32,7 @@
 #include "mc/deps/core/math/Vec3.h"
 #include "mc/network/PacketSender.h"
 #include "mc/network/packet/InventoryTransactionPacket.h"
+#include "mc/network/packet/InventoryTransactionPacketPayload.h"
 #include "mc/world/Facing.h"
 #include "mc/world/gamemode/GameMode.h"
 #include "mc/world/ContainerID.h"
@@ -153,6 +154,16 @@ struct ItemFind {
     ItemStack const* item;
 };
 
+// BlockPos::neighbor() and Facing::getOpposite() were inlined out of the
+// 26.32 SDK; the public facing-offset table replaces them.
+BlockPos neighborOf(BlockPos const& pos, uchar face) {
+    return pos + Facing::DIRECTION()[face];
+}
+
+uchar oppositeFace(uchar face) {
+    return Facing::OPPOSITE_FACING()[face];
+}
+
 PlacementContext makePlacementContext(Vec3 const& eye, Vec3 const& view, float reach) {
     auto const quantize = [](float value, float scale) {
         return static_cast<int>(std::lround(value * scale));
@@ -177,7 +188,9 @@ FailedPlanKey makeFailedPlanKey(
 ) {
     return {
         packBlockPos(cell),
-        block.getRuntimeId(),
+        // Block::getRuntimeId() was inlined out of the 26.32 SDK; the network
+        // (palette) id member it returned is still the per-state identity.
+        block.mNetworkId,
         itemAux,
         context.eyeX,
         context.eyeY,
@@ -199,20 +212,22 @@ void cacheFailedPlan(FailedPlanKey const& key, std::uint64_t now) {
 // Find an inventory slot holding the item that places `block`. Match on item +
 // aux only (ignoring block/placement data): a plain inventory comparator or
 // redstone item carries no placement state, so the stricter
-// sameItemAndAuxAndBlockData never matched a ghost that does.
+// sameItemAndAuxAndBlockData check never matched a ghost that does.
+// sameItemAndAux() was inlined out of the 26.32 SDK; it compared the same
+// official combined item/aux key that getIdAux() returns.
 ItemFind findItemSlot(Player& player, Block const& block) {
     ItemStack const want = block::makePlacementItem(block);
     auto& inventory = player.getInventory();
     for (int slot = 0; slot < kInventorySlots; ++slot) {
         auto const& item = inventory.getItem(slot);
-        if (item.sameItemAndAux(want)) return {slot, &item};
+        if (item.getIdAux() == want.getIdAux()) return {slot, &item};
     }
     return {-1, nullptr};
 }
 
 // Range placement may inspect hundreds of cells in one tick. Index the 36
 // inventory slots once by the official combined item/aux key, then verify the
-// final match with sameItemAndAux so hash collisions cannot select a wrong item.
+// final match by the same key so hash collisions cannot select a wrong item.
 using InventorySnapshot = std::unordered_multimap<int, ItemFind>;
 
 InventorySnapshot snapshotInventory(Player& player) {
@@ -230,7 +245,7 @@ ItemFind findItemSlot(InventorySnapshot const& snapshot, Block const& block) {
     ItemStack const want = block::makePlacementItem(block);
     auto const [first, last] = snapshot.equal_range(want.getIdAux());
     for (auto it = first; it != last; ++it) {
-        if (it->second.item->sameItemAndAux(want)) return it->second;
+        if (it->second.item->getIdAux() == want.getIdAux()) return it->second;
     }
     return {-1, nullptr};
 }
@@ -250,8 +265,14 @@ void sendInventorySwap(LocalPlayer& player, int fromSlot, int toSlot, ItemStack 
     };
     invTx.addAction(InventoryAction{source, static_cast<uint>(fromSlot), fromItem, toItem});
     invTx.addAction(InventoryAction{source, static_cast<uint>(toSlot), toItem, fromItem});
-    InventoryTransactionPacket packet(std::move(transaction), true);
-    player.getClientInstance().getPacketSender().sendToServer(packet);
+    InventoryTransactionPacket packet(
+        InventoryTransactionPacketPayload(std::move(transaction), true)
+    );
+    // LocalPlayer::getClientInstance() was inlined out of the 26.32 SDK; the
+    // service accessor resolves the same single client instance.
+    auto client = ll::service::getClientInstance();
+    if (!client) return;
+    client->getPacketSender().sendToServer(packet);
 }
 
 // Pick which hotbar slot a backpack item should swap into. Prefer an empty slot
@@ -301,7 +322,7 @@ ProjectionTarget selectPlacementTarget(BlockSource& region, BlockPos const& cell
     uchar bestFace = std::numeric_limits<uchar>::max();
     float bestScore = std::numeric_limits<float>::lowest();
     for (uchar face = 0; face < 6; ++face) {
-        BlockPos const at = cell.neighbor(face);
+        BlockPos const at = neighborOf(cell, face);
         if (region.getBlock(at).isAir()) continue;
         float const offX = static_cast<float>(at.x - cell.x);
         float const offY = static_cast<float>(at.y - cell.y);
@@ -316,9 +337,9 @@ ProjectionTarget selectPlacementTarget(BlockSource& region, BlockPos const& cell
         // No real support nearby. The server places the block AT an air mPos
         // (instead of mPos.neighbor(mFace) for a solid mPos), so point mPos at
         // the ghost cell itself to make the block land there.
-        return ProjectionTarget{cell, cell, Facing::getOpposite(faceToward({-approachDir.x, -approachDir.y, -approachDir.z})), block};
+        return ProjectionTarget{cell, cell, oppositeFace(faceToward({-approachDir.x, -approachDir.y, -approachDir.z})), block};
     }
-    return ProjectionTarget{cell, cell.neighbor(bestFace), Facing::getOpposite(bestFace), block};
+    return ProjectionTarget{cell, neighborOf(cell, bestFace), oppositeFace(bestFace), block};
 }
 
 // Voxel raycast (Amanatides & Woo) against the real world plus the projection's
@@ -374,7 +395,7 @@ std::optional<ProjectionTarget> findProjectionTarget(
             // A real block blocks the ray. Placing into the camera-side cell
             // (the vanilla placement position) fills an adjacent ghost. Never
             // target the cell the camera itself is standing in.
-            BlockPos const neighbor = cell.neighbor(entryFace);
+            BlockPos const neighbor = neighborOf(cell, entryFace);
             auto const query = projection::queryProjection(player, neighbor);
             if (neighbor != originCell && query.block && query.missing) {
                 return ProjectionTarget{neighbor, cell, entryFace, query.block};
@@ -400,7 +421,14 @@ bool placeBlock(LocalPlayer& player, ProjectionTarget const& target, int slot, I
     // single-player, the network sender on a real server). GameMode::useItemOn
     // only predicts locally and Player::sendNetworkPacket does not reach the
     // integrated server, so neither persists.
-    ItemUseInventoryTransaction transaction;
+    // 26.32: the default constructor was inlined out of the SDK; the
+    // complex-transaction factory creates the same derived-type instance with
+    // mType already set.
+    auto transactionPtr = ComplexInventoryTransaction::fromType(
+        ComplexInventoryTransaction::Type::ItemUseTransaction
+    );
+    if (!transactionPtr) return false;
+    auto& transaction = *static_cast<ItemUseInventoryTransaction*>(transactionPtr.get());
     transaction.mType = ComplexInventoryTransaction::Type::ItemUseTransaction;
     transaction.mActionType = ItemUseInventoryTransaction::ActionType::Place;
     transaction.mTriggerType = ItemUseInventoryTransaction::TriggerType::PlayerInput;
@@ -424,19 +452,24 @@ bool placeBlock(LocalPlayer& player, ProjectionTarget const& target, int slot, I
     };
     transaction.mClientPredictedResult = ItemUseInventoryTransaction::PredictedResult::Success;
     transaction.mClientCooldownState = ItemUseInventoryTransaction::ClientCooldownState::Off;
-    transaction.setTargetBlock(region.getBlock(target.at));
+    // setTargetBlock() was inlined out of the 26.32 SDK; it only copied the
+    // clicked block's network (palette) id into mTargetBlockId.
+    transaction.mTargetBlockId = region.getBlock(target.at).mNetworkId;
     transaction.setSelectedItem(item);
     // The server's stack-net-id system expects the item descriptor to carry
     // the stack net id. With the flag off the writer omits the net id bytes,
     // the server misaligns the stream while reading and silently drops the
     // packet before the transaction is ever validated.
-    transaction.mItem.get().setIncludeNetIds(true);
+    transaction.mItem.get().mIncludeNetIds = true;
 
     InventoryTransactionPacket packet(
-        std::make_unique<ItemUseInventoryTransaction>(transaction),
-        true
+        InventoryTransactionPacketPayload(std::move(transactionPtr), true)
     );
-    player.getClientInstance().getPacketSender().sendToServer(packet);
+    // LocalPlayer::getClientInstance() was inlined out of the 26.32 SDK; the
+    // service accessor resolves the same single client instance.
+    auto client = ll::service::getClientInstance();
+    if (!client) return false;
+    client->getPacketSender().sendToServer(packet);
     placementState().setNextPlaceAt(GetTickCount64() + kMinSendIntervalMs);
     return true;
 }
@@ -480,7 +513,7 @@ bool isWithinPlacementReach(PlacementContext const& context, Vec3 const& clickPo
 // Empty means the state is absent (all relevant numeric/string values below are
 // non-empty, including zero as "0").
 std::string serializedState(Block const& block, char const* key) {
-    for (auto const& [rootKey, rootValue] : block.getSerializationId()) {
+    for (auto const& [rootKey, rootValue] : block.mSerializationId.get()) {
         if (rootKey != "states") continue;
         if (!rootValue.hold<::CompoundTag>()) break;
         for (auto const& [stateKey, stateValue] : rootValue.get<::CompoundTag>()) {
@@ -506,15 +539,23 @@ bool isTwoBlockDoor(Block const& block) {
     return block.getBlockType().isDoorBlock() && !serializedState(block, "upper_block_bit").empty();
 }
 
+// SlabBlock::isDoubleSlab() was inlined out of the 26.32 SDK; double slabs
+// are the *DoubleSlab registry ids of the same slab family.
+bool isDoubleSlab(Block const& block) {
+    return block.getTypeName().find("double") != std::string_view::npos;
+}
+
 bool wouldMergeClickedSlab(Block const& ghost, Block const& support) {
-    if (!ghost.isSlabBlock() || !support.isSlabBlock()
-        || SlabBlock::isDoubleSlab(ghost) || SlabBlock::isDoubleSlab(support)) {
+    if (!ghost.getBlockType().isSlabBlock() || !support.getBlockType().isSlabBlock()
+        || isDoubleSlab(ghost) || isDoubleSlab(support)) {
         return false;
     }
 
     ItemInstance const ghostItem = ghost.getBlockType().asItemInstance(ghost, nullptr);
     ItemInstance const supportItem = support.getBlockType().asItemInstance(support, nullptr);
-    return ghostItem.sameItemAndAux(supportItem);
+    // sameItemAndAux() was inlined out of the 26.32 SDK; it compared the same
+    // official combined item/aux key that getIdAux() returns.
+    return ghostItem.getIdAux() == supportItem.getIdAux();
 }
 
 // RuntimeId is intentionally retained for ordinary blocks. For the three
@@ -539,7 +580,7 @@ bool placementPredictionMatches(
     // click candidate) can satisfy a top-slab ghost and place the wrong half.
     // Newer versions store the half as minecraft:vertical_half, older ones as
     // top_slot_bit; a double slab has neither and stays on the strict compare.
-    if (ghost.isSlabBlock() && !SlabBlock::isDoubleSlab(ghost)) {
+    if (ghost.getBlockType().isSlabBlock() && !isDoubleSlab(ghost)) {
         if (!serializedState(ghost, "minecraft:vertical_half").empty())
             return sameSerializedState(predicted, ghost, "minecraft:vertical_half");
         if (!serializedState(ghost, "top_slot_bit").empty())
@@ -593,9 +634,13 @@ bool placementPredictionMatches(
     // Bedrock owns neighbour-derived placement-state tolerance (walls, fences,
     // panes, bars and future equivalents). Keep specialized player-controlled
     // states above strict, then defer all remaining exceptions to the official
-    // API instead of maintaining block-name suffix lists.
-    if (ghost.allowStateMismatchOnPlacement(predicted)) return true;
-    return predicted.getRuntimeId() == ghost.getRuntimeId();
+    // API instead of maintaining block-name suffix lists. Block's one-argument
+    // allowStateMismatchOnPlacement() was inlined out of the 26.32 SDK; it
+    // forwarded to the block type with (client-predicted, server-target).
+    if (ghost.getBlockType().allowStateMismatchOnPlacement(predicted, ghost)) return true;
+    // getRuntimeId() equality was the old strict state identity; Block equality
+    // now compares the game's own serialization-id hash.
+    return predicted == ghost;
 }
 
 bool resolveOrientedPlacement(
@@ -614,7 +659,7 @@ bool resolveOrientedPlacement(
         // The upper projected half is never an independent placement target.
         // One DoorItem use on the lower cell creates both halves.
         if (serializedState(ghost, "upper_block_bit") != "0") return false;
-        BlockPos const upperCell = cell.neighbor(static_cast<uchar>(Facing::Name::Up));
+        BlockPos const upperCell = neighborOf(cell, static_cast<uchar>(Facing::Name::Up));
         // The upper cell must be free for the door's second half.
         if (!region.getBlock(upperCell).isAir()) return false;
         // When the upper half is visible we use its hinge to verify the placement
@@ -629,7 +674,10 @@ bool resolveOrientedPlacement(
         // DoorBlock::mayPlace is the official two-cell/support validation. It is
         // intentionally used only for doors; treating it as a universal gate
         // previously rejected valid stairs and wall-mounted blocks.
-        if (!ghost.mayPlace(region, cell)) return false;
+        // The two-argument mayPlace() overload was inlined out of the 26.32
+        // SDK; doors place on top of the support, so the up face is the
+        // representative one for the shared validation gate.
+        if (!ghost.mayPlace(region, cell, static_cast<uchar>(Facing::Name::Up))) return false;
     }
 
     // Only accept a real support and a click point for which the official
@@ -652,7 +700,10 @@ bool resolveOrientedPlacement(
         // BlockItem first converts the clicked support position to the target
         // placement cell, then asks the block for its permutation. Feed the same
         // target position and relative hit vector used by the item-use path.
-        Block const& predicted = ghost.getPlacementBlock(player, cell, face, relativeClick, itemAux);
+        // getPlacementBlock() was inlined out of Block; the block type owns
+        // the virtual now.
+        Block const& predicted
+            = ghost.getBlockType().getPlacementBlock(player, cell, face, relativeClick, itemAux);
         if (!placementPredictionMatches(predicted, ghost, expectedDoorUpper)) return false;
 
         result = ProjectionTarget{cell, at, face, &ghost, clickPos};
@@ -663,7 +714,7 @@ bool resolveOrientedPlacement(
         uchar const firstSupport = isDoor ? static_cast<uchar>(Facing::Name::Down) : 0;
         uchar const supportEnd   = isDoor ? firstSupport + 1 : 6;
         for (uchar sf = firstSupport; sf < supportEnd; ++sf) {
-            BlockPos const at = cell.neighbor(sf);
+            BlockPos const at = neighborOf(cell, sf);
             Block const& support = region.getBlock(at);
             // A matching slab only merges into a double slab when clicked from
             // below/above; a side slab is a valid support that places into the
@@ -672,7 +723,7 @@ bool resolveOrientedPlacement(
                 || sf == static_cast<uchar>(Facing::Name::Up);
             if (support.isAir() || (verticalSupport && wouldMergeClickedSlab(ghost, support))) continue;
 
-            uchar const face = Facing::getOpposite(sf);
+            uchar const face = oppositeFace(sf);
             bool matched = false;
             forEachClickCandidate(cell, sf, [&](Vec3 const& clickPos) {
                 if (!matched && tryPlacement(at, face, clickPos, result)) matched = true;
@@ -693,7 +744,7 @@ bool resolveOrientedPlacement(
         // slab passes the predictor yet the server places the bottom half). Slabs
         // place through a real support above/beside (handled above); skip the
         // fallback so a wrong-half slab is never sent.
-        if (ghost.isSlabBlock()) return false;
+        if (ghost.getBlockType().isSlabBlock()) return false;
 
         float const cx = static_cast<float>(cell.x);
         float const cy = static_cast<float>(cell.y);

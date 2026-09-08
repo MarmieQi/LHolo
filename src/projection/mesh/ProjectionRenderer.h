@@ -32,9 +32,7 @@ void submitProjectionMeshPass(
     Vec3 const&             camera,
     float                   structureOpacity,
     bool                    renderAlphaLayer,
-    bool                    structureBoundsEnabled,
-    bool                    correctionSeeThrough,
-    bool                    missingSeeThrough
+    bool                    structureBoundsEnabled
 );
 
 } // namespace lholo::projection::detail

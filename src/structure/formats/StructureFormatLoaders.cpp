@@ -472,7 +472,9 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
         error = "原版 StructureTemplate 无法加载该结构";
         return nullptr;
     }
-    auto const nativeSize = nativeStructure->getSize();
+    // 26.32: getSize()/getBlockIndices()/getExtraBlockIndices() were inlined
+    // out; the public members replace them.
+    auto const& nativeSize = nativeStructure->mStructureTemplateData.get().mSize.get();
     if (nativeSize.x != loaded->sizeX || nativeSize.y != loaded->sizeY || nativeSize.z != loaded->sizeZ) {
         error = "原版 StructureTemplate 返回的尺寸与文件不一致";
         return nullptr;
@@ -483,8 +485,8 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
         error = "原版 StructureTemplate 缺少 default palette";
         return nullptr;
     }
-    auto const& nativePrimary = nativeData.getBlockIndices();
-    auto const& nativeSecondary = nativeData.getExtraBlockIndices();
+    auto const& nativePrimary = nativeData.mBlockIndices.get();
+    auto const& nativeSecondary = nativeData.mExtraBlockIndices.get();
     if (nativePrimary.size() != loaded->volume || nativeSecondary.size() != loaded->volume) {
         error = "原版 StructureTemplate 的方块索引数量与结构体积不一致";
         return nullptr;
@@ -506,7 +508,7 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
         Block const* liquid{};
         auto const assign = [&](Block const* value) {
             if (!value) return;
-            if (value->getMaterial().isLiquid()) liquid = value;
+            if (value->getBlockType().mMaterial.mLiquid) liquid = value;
             else if (!block) block = value;
         };
         assign(primary);

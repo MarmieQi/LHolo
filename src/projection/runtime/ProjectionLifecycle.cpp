@@ -22,6 +22,7 @@
 #include "mc/client/renderer/BaseActorRenderContext.h"
 #include "mc/client/renderer/block/BlockTessellator.h"
 #include "mc/client/renderer/game/LevelRenderer.h"
+#include "mc/deps/minecraft_renderer/renderer/BedrockTextureData.h"
 #include "mc/deps/minecraft_renderer/renderer/IsMissingTexture.h"
 #include "mc/world/actor/Actor.h"
 
@@ -52,7 +53,10 @@ bool resolveTerrainTexture(IClientInstance& client, ProjectionState& state) {
     auto* levelRenderer = client.getLevelRenderer();
     if (!levelRenderer) return false;
     auto const& atlasTexture = levelRenderer->mAtlasTexture.get();
-    if (!atlasTexture || atlasTexture.isMissingTexture() == IsMissingTexture::Yes) return false;
+    // 26.32: TexturePtr's operator bool and isMissingTexture() were inlined
+    // out; the same state stays on the public members.
+    auto const& clientTexture = atlasTexture.mClientTexture.get();
+    if (!clientTexture || clientTexture->mIsMissingTexture == IsMissingTexture::Yes) return false;
     state.terrainTexture.emplace(atlasTexture);
     state.terrainTextureVariant.emplace(*state.terrainTexture);
     return true;
@@ -65,14 +69,15 @@ bool prepareProjectionState(
     BaseActorRenderContext&                       renderContext,
     std::shared_ptr<structure::LoadedStructure const> loaded
 ) {
-    auto& client = renderContext.getClient();
+    auto& client = renderContext.mClientInstance;
     auto* player = client.getLocalPlayer();
     if (!player || !loaded || loaded->renderBlocks.empty()) return false;
 
     state.client = &client;
     state.level = &player->getLevel();
     state.dimension = &player->getDimension();
-    state.dimensionId = player->getDimensionId().value();
+    // 26.32: getDimensionId() returns the DimensionType wrapper itself.
+    state.dimensionId = player->getDimensionId().mValue;
     state.structure = std::move(loaded);
     state.structureGeneration = state.structure->generation;
     state.activationGeneration = sProjectionActivationGeneration.fetch_add(
@@ -114,10 +119,12 @@ bool prepareProjectionState(
         state.sectionBlockIndices[found->second].push_back(index);
     }
     initializeSectionStates(state.sections, centers);
-    state.warningFillSectionMeshes.resize(state.sectionBlockIndices.size());
-    state.correctionOutlineSectionMeshes.resize(state.sectionBlockIndices.size());
-    state.wrongFillSectionMeshes.resize(state.sectionBlockIndices.size());
-    state.wrongOutlineSectionMeshes.resize(state.sectionBlockIndices.size());
+    for (auto& fills : state.correctionFillSectionMeshes) {
+        fills.resize(state.sectionBlockIndices.size());
+    }
+    for (auto& outlines : state.correctionOutlineSectionMeshes) {
+        outlines.resize(state.sectionBlockIndices.size());
+    }
     state.liquidProxySectionMeshes.resize(state.sectionBlockIndices.size());
     state.blockEntityPlaceholderSectionMeshes.resize(state.sectionBlockIndices.size());
     state.sectionExtraBlockPositions.resize(state.sectionBlockIndices.size());

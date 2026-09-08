@@ -65,11 +65,6 @@ public:
     void setCorrectionOutlineOpacity(float opacity);
     [[nodiscard]] bool structureBoundsEnabled() const;
     void setStructureBoundsEnabled(bool enabled);
-    // Independent X-ray controls for wrong-state and missing-block markers.
-    [[nodiscard]] bool correctionSeeThrough() const;
-    void setCorrectionSeeThrough(bool enabled);
-    [[nodiscard]] bool missingSeeThrough() const;
-    void setMissingSeeThrough(bool enabled);
     [[nodiscard]] std::optional<ProjectionAnchor> consumeAnchor();
     void requestAnchor(int x, int y, int z);
     void cancelAnchorRequest();
@@ -94,8 +89,6 @@ private:
     std::atomic<float> mCorrectionFillOpacity{0.15f};
     std::atomic<float> mCorrectionOutlineOpacity{1.0f};
     std::atomic_bool   mStructureBoundsEnabled{true};
-    std::atomic_bool   mCorrectionSeeThrough{false};
-    std::atomic_bool   mMissingSeeThrough{false};
     std::atomic_bool   mPendingAnchor{false};
     std::atomic_int    mPendingAnchorX{0};
     std::atomic_int    mPendingAnchorY{0};

@@ -32,7 +32,9 @@
 #include "mc/world/level/block/BlockType.h"
 #include "mc/world/level/block/actor/BlockActor.h"
 #include "mc/world/level/block/actor/BlockActorType.h"
+#include "mc/dataloadhelper/DataLoadHelper.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
+#include "mc/world/level/block/actor/VanillaBlockActorFactory.h"
 #include "mc/world/level/levelgen/structure/LegacyStructureSettings.h"
 
 namespace lholo::projection::detail {
@@ -50,9 +52,11 @@ void pairProjectedChests(BlockSource& region, ProjectionState& state) {
         *state.expectedWorldBlocks, *state.expectedWorldBlockActors
     };
     for (auto const& [key, actor] : *state.expectedWorldBlockActors) {
-        if (!actor->isType(BlockActorType::Chest)) continue;
+        // 26.32: BlockActor::isType()/ChestBlockActor::isLargeChest() were
+        // inlined out; the same state stays on public members.
+        if (actor->mType != BlockActorType::Chest) continue;
         auto* chest = static_cast<ChestBlockActor*>(actor.get());
-        if (chest->isLargeChest()) continue;
+        if (chest->mLargeChestPaired != nullptr) continue;
 
         auto const [x, y, z] = key;
         for (auto const [dx, dz] : horizontalNeighbors) {
@@ -61,15 +65,44 @@ void pairProjectedChests(BlockSource& region, ProjectionState& state) {
                 std::tuple{neighbor.x, neighbor.y, neighbor.z}
             );
             if (found == state.expectedWorldBlockActors->end()
-                || !found->second->isType(BlockActorType::Chest)) {
+                || found->second->mType != BlockActorType::Chest) {
                 continue;
             }
 
             chest->_tryToPairWith(region, neighbor);
-            if (chest->isLargeChest()) break;
+            if (chest->mLargeChestPaired != nullptr) break;
         }
     }
 }
+
+// NewUniqueIdsDataLoadHelper() was inlined out of the 26.32 SDK. Display
+// actors only need identity NBT translation, so a pass-through helper
+// replaces it (no actor unique ids are remapped).
+class DisplayDataLoadHelper final : public DataLoadHelper {
+public:
+    ::Vec3  loadPosition(::Vec3 const& position) override { return position; }
+    ::BlockPos loadBlockPosition(::BlockPos const& blockPos) override { return blockPos; }
+    ::BlockPos loadBlockPositionOffset(::BlockPos const& blockPosOffset) override { return blockPosOffset; }
+    float   loadRotationDegreesX(float x) override { return x; }
+    float   loadRotationDegreesY(float y) override { return y; }
+    float   loadRotationRadiansX(float x) override { return x; }
+    float   loadRotationRadiansY(float y) override { return y; }
+    uchar   loadFacingID(uchar facing) override { return facing; }
+    ::Vec3  loadDirection(::Vec3 const& direction) override { return direction; }
+    ::Direction::Type loadDirection(::Direction::Type direction) override { return direction; }
+    ::Rotation loadRotation(::Rotation rotation) override { return rotation; }
+    ::Mirror loadMirror(::Mirror mirror) override { return mirror; }
+    ::ActorUniqueID loadActorUniqueID(::ActorUniqueID id) override { return id; }
+    ::ActorUniqueID loadOwnerID(::ActorUniqueID id) override { return id; }
+    ::InternalComponentRegistry::ComponentInfo const* loadActorInternalComponentInfo(
+        ::std::unordered_map<::HashedString, ::InternalComponentRegistry::ComponentInfo> const&,
+        ::std::string const&
+    ) override {
+        return nullptr;
+    }
+    ::DataLoadHelperType getType() const override { return ::DataLoadHelperType::Default; }
+    bool  shouldResetTime() override { return false; }
+};
 
 } // namespace
 
@@ -125,18 +158,26 @@ void rebuildProjectionPlacement(
         if (transformedBlock) {
             state.expectedWorldBlocks->emplace(worldKey, transformedBlock);
             if (transformedBlock->getBlockEntityType() != BlockActorType::Undefined) {
-                auto blockActor = transformedBlock->getBlockType().newBlockEntity(
-                    worldPosition, *transformedBlock
+                // BlockType::newBlockEntity() was inlined out of the 26.32
+                // SDK; the vanilla factory creates the same actor.
+                auto blockActor = VanillaBlockActorFactory::createBlockActor(
+                    worldPosition, transformedBlock->getBlockType()
                 );
                 if (blockActor) {
                     if (entry.blockEntityNbt) {
-                        NewUniqueIdsDataLoadHelper dataLoadHelper{*state.level};
+                        // NewUniqueIdsDataLoadHelper() was inlined out of the
+                        // 26.32 SDK. Display actors only need identity NBT
+                        // translation, so a pass-through helper replaces it.
+                        DisplayDataLoadHelper dataLoadHelper{};
                         blockActor->load(*state.level, *entry.blockEntityNbt, dataLoadHelper);
-                        blockActor->moveTo(worldPosition);
+                        // 26.32: moveTo() was inlined out; the position member stays public.
+                        blockActor->mPosition.get() = worldPosition;
                     }
                     auto* actor = blockActor.get();
                     state.expectedWorldBlockActors->emplace(worldKey, std::move(blockActor));
-                    if (dispatcher.getRenderer(*actor)) {
+                    // 26.32: getRenderer() was inlined out of the dispatcher;
+                    // an actor with a render component is renderable.
+                    if (actor->_getRenderComponent() != nullptr) {
                         state.projectedBlockActors.push_back({
                             worldPosition, transformedBlock, actor, index
                         });

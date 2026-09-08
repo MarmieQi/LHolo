@@ -101,14 +101,20 @@ void uploadCompletedProjectionMeshes(ProjectionState& state, Tessellator& tessel
                 for (std::size_t bucket = 0; bucket < uploadedMeshes.size(); ++bucket) {
                     uploadedMeshes[bucket] = uploadCpuMesh(std::move(result.sectionMeshes[bucket]), bucketNames[bucket]);
                 }
-                auto warningFill = uploadCpuMesh(std::move(result.warningFillMesh), "LHoloWarningFill");
-                auto correctionOutline = uploadCpuMesh(
-                    std::move(result.correctionOutlineMesh), "LHoloCorrectionOutline"
-                );
-                auto wrongFill = uploadCpuMesh(std::move(result.wrongFillMesh), "LHoloWrongFill");
-                auto wrongOutline = uploadCpuMesh(
-                    std::move(result.wrongOutlineMesh), "LHoloWrongOutline"
-                );
+                constexpr std::array<std::string_view, static_cast<std::size_t>(CorrectionColor::Count)>
+                    fillNames{"LHoloFillMissing", "LHoloFillWrongType", "LHoloFillWrongState",
+                              "LHoloFillExtra"};
+                constexpr std::array<std::string_view, static_cast<std::size_t>(CorrectionColor::Count)>
+                    outlineNames{"LHoloOutlineMissing", "LHoloOutlineWrongType",
+                                 "LHoloOutlineWrongState", "LHoloOutlineExtra"};
+                for (std::size_t color = 0; color < fillNames.size(); ++color) {
+                    state.correctionFillSectionMeshes[color][section] = uploadCpuMesh(
+                        std::move(result.correctionFillMeshes[color]), fillNames[color]
+                    );
+                    state.correctionOutlineSectionMeshes[color][section] = uploadCpuMesh(
+                        std::move(result.correctionOutlineMeshes[color]), outlineNames[color]
+                    );
+                }
                 auto liquidProxy = uploadCpuMesh(std::move(result.liquidProxyMesh), "LHoloLiquidProxy");
                 auto blockEntityPlaceholder = uploadCpuMesh(
                     std::move(result.blockEntityPlaceholderMesh), "LHoloBlockEntityPlaceholder"
@@ -117,10 +123,6 @@ void uploadCompletedProjectionMeshes(ProjectionState& state, Tessellator& tessel
                 for (std::size_t bucket = 0; bucket < uploadedMeshes.size(); ++bucket) {
                     state.sections[section].meshes[bucket] = std::move(uploadedMeshes[bucket]);
                 }
-                state.warningFillSectionMeshes[section] = std::move(warningFill);
-                state.correctionOutlineSectionMeshes[section] = std::move(correctionOutline);
-                state.wrongFillSectionMeshes[section] = std::move(wrongFill);
-                state.wrongOutlineSectionMeshes[section] = std::move(wrongOutline);
                 state.liquidProxySectionMeshes[section] = std::move(liquidProxy);
                 state.blockEntityPlaceholderSectionMeshes[section] = std::move(blockEntityPlaceholder);
                 state.sections[section].uploadedRevision = result.revision;

@@ -160,7 +160,7 @@ Block const*                                      gWaterSource{};
 
 StatePairs readBlockStates(Block const& block) {
     StatePairs states;
-    for (auto const& [key, value] : block.getSerializationId()) {
+    for (auto const& [key, value] : block.mSerializationId.get()) {
         if (key != "states" || !value.hold<::CompoundTag>()) continue;
         for (auto const& [stateKey, stateValue] : value.get<::CompoundTag>()) {
             switch (stateValue.getId()) {
@@ -184,17 +184,27 @@ StatePairs readBlockStates(Block const& block) {
     return states;
 }
 
+// Caller must hold gCacheMutex: both the cache lookup and the emplace below
+// are unsynchronized, matching waterSource() and every other helper here.
+// The lock lives on the public entry points (resolveJavaBlockState /
+// resetJavaBlockMappingCache) so the whole resolution stays atomic.
 PermutationTable const& permutationsFor(std::string const& name) {
     auto const cached = gPermutationCache.find(name);
     if (cached != gPermutationCache.end()) return cached->second;
 
     PermutationTable table;
-    auto const& defaultBlock = BlockTypeRegistry::get().getDefaultBlockState(HashedString(name), false);
-    if (defaultBlock.getTypeName() == name) {
-        defaultBlock.getBlockType().forEachBlockPermutation([&](Block const& permutation) {
-            table.permutations.emplace_back(readBlockStates(permutation), &permutation);
-            return true;
-        });
+    // 26.32: BlockTypeRegistry::get().getDefaultBlockState() and
+    // forEachBlockPermutation() were inlined out; tryGetFromRegistry resolves
+    // the default state and the block type stores every permutation.
+    // The 26.32 permutation vectors contain null slots (unregistered
+    // permutation ids); the old forEachBlockPermutation callback never saw
+    // them, so skip nulls here instead of dereferencing them.
+    auto const defaultBlock = Block::tryGetFromRegistry(HashedString(name));
+    if (defaultBlock && defaultBlock->getTypeName() == name) {
+        for (auto const& permutation : defaultBlock->getBlockType().mBlockPermutations.get()) {
+            if (!permutation) continue;
+            table.permutations.emplace_back(readBlockStates(*permutation), permutation.get());
+        }
     }
     return gPermutationCache.emplace(name, std::move(table)).first->second;
 }
@@ -209,22 +219,19 @@ Block const* resolvePermutation(PermutationTable const& table, StatePairs const&
     return nullptr;
 }
 
+// Caller must hold gCacheMutex (see permutationsFor above).
 Block const* waterSource() {
     if (!gWaterSource) {
-        auto const& water = BlockTypeRegistry::get().getDefaultBlockState(
-            HashedString("minecraft:water"), false
-        );
-        if (!water.isAir()) gWaterSource = &water;
+        auto const water = Block::tryGetFromRegistry(HashedString("minecraft:water"));
+        if (water && !water->isAir()) gWaterSource = &*water;
     }
     return gWaterSource;
 }
 
 Block const* resolveExactBedrockBlock(std::string const& bedrockName) {
     if (bedrockName.empty()) return nullptr;
-    auto const& block = BlockTypeRegistry::get().getDefaultBlockState(
-        HashedString(bedrockName), false
-    );
-    if (block.getTypeName() == bedrockName && !block.isAir()) return &block;
+    auto const block = Block::tryGetFromRegistry(HashedString(bedrockName));
+    if (block && block->getTypeName() == bedrockName && !block->isAir()) return &*block;
     return nullptr;
 }
 
@@ -242,7 +249,7 @@ ResolvedJavaBlock resolveJavaBlockState(
         if (!resolved || resolved->isAir()) return {};
 
         ResolvedJavaBlock result{.mapped = true};
-        if (resolved->getMaterial().isLiquid()) {
+        if (resolved->getBlockType().mMaterial.mLiquid) {
             result.liquid = resolved;
         } else {
             result.block = resolved;
@@ -261,7 +268,7 @@ ResolvedJavaBlock resolveJavaBlockState(
     if (!resolved || resolved->isAir()) return {};
 
     ResolvedJavaBlock result{.mapped = true};
-    if (resolved->getMaterial().isLiquid()) {
+    if (resolved->getBlockType().mMaterial.mLiquid) {
         result.liquid = resolved;
     } else {
         result.block = resolved;

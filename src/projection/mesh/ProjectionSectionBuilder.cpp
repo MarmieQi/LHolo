@@ -8,6 +8,9 @@
 
 #include "projection/mesh/ProjectionSectionBuilder.h"
 
+#include "plugin/LHolo.h"
+#include "ll/api/mod/NativeMod.h"
+
 #include "projection/core/ProjectionInternalTypes.h"
 #include "projection/core/ProjectionRules.h"
 #include "projection/core/ProjectionState.h"
@@ -25,6 +28,7 @@
 #include <tuple>
 #include <vector>
 
+#include "mc/client/renderer/SupplementaryFieldAutoGenerationMode.h"
 #include "mc/client/renderer/block/BlockGraphics.h"
 #include "mc/client/renderer/block/BlockTessellator.h"
 #include "mc/client/renderer/texture/TextureUVCoordinateSet.h"
@@ -46,14 +50,31 @@ namespace lholo::projection::detail {
 namespace {
 
 // Litematica's default schematic overlay palette, converted from ARGB to the
-// ABGR byte order expected by Tessellator::colorABGR().
-constexpr std::uint32_t MissingColorAbgrRgb    = 0x00E6B333U; // #33B3E6
-constexpr std::uint32_t ExtraColorAbgrRgb      = 0x00E64CFFU; // #FF4CE6
-constexpr std::uint32_t WrongBlockColorAbgrRgb = 0x003333FFU; // #FF3333
-constexpr std::uint32_t WrongStateColorAbgrRgb = 0x001090FFU; // #FF9010
+// ABGR byte order of the vertex color buffer (the byte order the old
+// Tessellator::colorABGR() seeded).
+// 26.32: the packed-int color setters (color(int)/colorABGR(int)) were
+// inlined out. Feed the color as floats in LHolo's ABGR constant order
+// (r = low byte, a = high byte); the game packs the vertex color itself.
+void setColorAbgr(Tessellator& tessellator, std::uint32_t colorAbgr) {
+    tessellator.color(
+        static_cast<float>((colorAbgr >> 0) & 0xFF) / 255.0f,
+        static_cast<float>((colorAbgr >> 8) & 0xFF) / 255.0f,
+        static_cast<float>((colorAbgr >> 16) & 0xFF) / 255.0f,
+        static_cast<float>((colorAbgr >> 24) & 0xFF) / 255.0f
+    );
+}
 
 constexpr std::uint32_t LiquidWaterTintAbgrRgb = 0x00E4763FU; // #3F76E4
 constexpr std::uint32_t LiquidLavaTintAbgrRgb  = 0x00FFFFFFU; // white
+
+// mce::Color::toABGR() was inlined out of the 26.32 SDK; pack the same
+// 0xAABBGGRR byte order locally.
+std::uint32_t toABGR(mce::Color const& color) {
+    auto const toByte = [](float component) {
+        return static_cast<std::uint32_t>(std::lround(255.0f * std::clamp(component, 0.0f, 1.0f)));
+    };
+    return (toByte(color.a) << 24) | (toByte(color.b) << 16) | (toByte(color.g) << 8) | toByte(color.r);
+}
 
 std::uint32_t withAlpha(std::uint32_t colorAbgrRgb, float opacity) {
     auto const alpha = static_cast<std::uint32_t>(
@@ -129,9 +150,14 @@ void buildProjectionSection(
     auto const offsetZ                  = sectionBuildSettings.offsetZ;
     auto const structureOpacity         = sectionBuildSettings.structureOpacity;
     auto const identityTransform        = sectionBuildSettings.identityTransform;
-    LegacyStructureSettings sectionTransformSettings;
-    sectionTransformSettings.setMirror(mirror);
-    sectionTransformSettings.setRotation(rotation);
+    // The default constructor and setMirror()/setRotation() were inlined out
+    // of the 26.32 SDK; the surviving constructor takes them directly.
+    LegacyStructureSettings sectionTransformSettings{
+        mirror,
+        rotation,
+        nullptr,
+        BoundingBox{}
+    };
     struct LayeredBlock {
         Block const*                  block{};
         BlockPos                      position{};
@@ -173,7 +199,7 @@ void buildProjectionSection(
             auto const* graphics = BlockGraphics::getForBlock(*transformedBlock);
             auto const layer = graphics
                 ? graphics->getRenderLayer(region, position)
-                : (transformedBlock->isOpaqueFullBlock()
+                : (transformedBlock->getBlockType().mIsOpaqueFullBlock
                     ? BlockRenderLayer::RenderlayerOpaque
                     : BlockRenderLayer::RenderlayerAlphatest);
             layeredBlocks.push_back({transformedBlock, position, layer, renderBucketFor(layer), index});
@@ -199,9 +225,9 @@ void buildProjectionSection(
     for (std::size_t bucketIndex = 0;
          bucketIndex < static_cast<std::size_t>(RenderBucket::Count);
          ++bucketIndex) {
-        tessellator.cancel();
         tessellator.begin(
             Tessellator::DebugContextCallback{},
+            mce::PrimitiveMode::QuadList,
             std::max(128, static_cast<int>(layeredBlocks.size() * 24)),
             false
         );
@@ -209,32 +235,25 @@ void buildProjectionSection(
         auto const bucket = static_cast<RenderBucket>(bucketIndex);
         for (auto const& layered : layeredBlocks) {
             if (layered.bucket != bucket) continue;
-            blockTessellator.setRenderLayer(static_cast<int>(layered.layer));
-            auto const tintMethod = layered.block->getTintMethod();
-            auto const usesBiomeTint = tintMethod == TintMethod::Grass
-                || tintMethod == TintMethod::DefaultFoliage
-                || tintMethod == TintMethod::BirchFoliage
-                || tintMethod == TintMethod::EvergreenFoliage
-                || tintMethod == TintMethod::DryFoliage;
-            // A task owns a fresh BlockTessellator. Populate its biome
-            // weights for every biome-tinted block so grass never reads
-            // an empty or previous-position tint cache on the first build.
-            if (usesBiomeTint) blockTessellator.buildBiomeWeights(layered.position);
+            // setRenderLayer() was inlined out of the 26.32 SDK; it wrote this member.
+            blockTessellator.mRenderingLayer = static_cast<int>(layered.layer);
+            // getTintMethod() was inlined out of the 26.32 SDK; the member moved to the block type.
+            auto const tintMethod = layered.block->getBlockType().mTintMethod;
+            // A task owns a fresh BlockTessellator. buildBiomeWeights() was
+            // inlined out of the 26.32 SDK; the tessellation pipeline is
+            // expected to refresh the weights itself now (verified in game).
             std::optional<std::uint32_t> foliageTint;
             if (tintMethod == TintMethod::DefaultFoliage
                 || tintMethod == TintMethod::BirchFoliage
                 || tintMethod == TintMethod::EvergreenFoliage
                 || tintMethod == TintMethod::DryFoliage) {
-                foliageTint = static_cast<std::uint32_t>(
-                    BiomeColorSampling::getTessellationPolicy(tintMethod)
-                        .get(
-                            *layered.block,
-                            region,
-                            layered.position,
-                            &blockTessellator.getBiomeTintCache()
-                        )
-                        .toABGR()
-                );
+                foliageTint = toABGR(BiomeColorSampling::getTessellationPolicy(tintMethod).get(
+                    *layered.block,
+                    region,
+                    layered.position,
+                    // getBiomeTintCache() was inlined out of the 26.32 SDK; the member is public.
+                    &blockTessellator.mBiomeWeights.get()
+                ));
             }
             auto const firstPosition = tessellator.mMeshData->mPositions.get().size();
             auto const firstColor = tessellator.mMeshData->mColors.get().size();
@@ -268,7 +287,13 @@ void buildProjectionSection(
         }
         auto& destination = state.sections[section].meshes[bucketIndex];
         if (!bucketTessellated) {
-            tessellator.cancel();
+            // cancel() was inlined out of the 26.32 SDK; an empty session is
+            // closed with a never-uploaded mesh instead.
+            tessellator.end(
+                Tessellator::UploadMode::Never,
+                meshNames[bucketIndex],
+                SupplementaryFieldAutoGenerationMode{0}  // None
+            );
             destination.reset();
             continue;
         }
@@ -280,7 +305,7 @@ void buildProjectionSection(
         destination = std::make_unique<mce::Mesh>(tessellator.end(
             uploadMode,
             meshNames[bucketIndex],
-            Tessellator::SupplementaryFieldAutoGenerationMode::NormalsAndTangents
+            SupplementaryFieldAutoGenerationMode{1}  // NormalsAndTangents
         ));
     }
 
@@ -301,7 +326,8 @@ void buildProjectionSection(
     detail::buildStructureBoundsMesh(
         state, tessellator, uploadMode, sectionBuildSettings
     );
-    if (tessellator.isTessellating()) tessellator.cancel();
+    // 26.32: isTessellating()/cancel() were inlined out; every begin()/end()
+    // pair in this module is scoped, so no session can leak past this point.
 }
 
 void buildLiquidProxySectionMesh(
@@ -318,9 +344,14 @@ void buildLiquidProxySectionMesh(
     auto const offsetZ           = settings.offsetZ;
     auto const structureOpacity  = settings.structureOpacity;
     auto const identityTransform = settings.identityTransform;
-    LegacyStructureSettings sectionTransformSettings;
-    sectionTransformSettings.setMirror(settings.mirror);
-    sectionTransformSettings.setRotation(settings.rotation);
+    // The default constructor and setMirror()/setRotation() were inlined out
+    // of the 26.32 SDK; the surviving constructor takes them directly.
+    LegacyStructureSettings sectionTransformSettings{
+        settings.mirror,
+        settings.rotation,
+        nullptr,
+        BoundingBox{}
+    };
     // Textured liquid proxy hulls. LHolo never lies to the vanilla
     // world or chunk pipeline (that leaks into gameplay), so missing
     // liquids draw as translucent hulls here. The hulls reuse the
@@ -375,7 +406,7 @@ void buildLiquidProxySectionMesh(
             // a surface that slopes downhill, showing the flow direction.
             constexpr float surface = 8.0f / 9.0f;
             auto const liquidDepth = [](Block const& block) -> int {
-                for (auto const& [key, value] : block.getSerializationId()) {
+                for (auto const& [key, value] : block.mSerializationId.get()) {
                     if (key != "states" || !value.hold<::CompoundTag>()) continue;
                     for (auto const& [stateKey, stateValue] : value.get<::CompoundTag>()) {
                         if (stateKey == "liquid_depth" && stateValue.getId() == ::Tag::Type::Int)
@@ -414,7 +445,9 @@ void buildLiquidProxySectionMesh(
                 if (best >= surface) return best;  // a source/full column keeps it high
                 return count > 0 ? sum / static_cast<float>(count) : surface;
             };
-            auto const tint = expectedLiquid->getMaterial().isSuperHot()
+            // getMaterial()/isSuperHot() were inlined out of the 26.32 SDK;
+            // the material reference and its flag member stay public.
+            auto const tint = expectedLiquid->getBlockType().mMaterial.mSuperHot
                 ? (LiquidLavaTintAbgrRgb | (alpha << 24U))
                 : (LiquidWaterTintAbgrRgb | (alpha << 24U));
             float const x0 = static_cast<float>(p.x);
@@ -436,11 +469,11 @@ void buildLiquidProxySectionMesh(
             auto addLiquidFace = [&](
                 Vec3 const& a, Vec3 const& b, Vec3 const& c, Vec3 const& d
             ) {
-                tessellator.colorABGR(static_cast<int>(tint));
-                tessellator.vertexUV(a.x, a.y, a.z, u0, v0);
-                tessellator.vertexUV(b.x, b.y, b.z, u0, v1);
-                tessellator.vertexUV(c.x, c.y, c.z, u1, v1);
-                tessellator.vertexUV(d.x, d.y, d.z, u1, v0);
+                setColorAbgr(tessellator, tint);
+                tessellator.tex2({u0, v0}); tessellator.vertex(a.x, a.y, a.z);
+                tessellator.tex2({u0, v1}); tessellator.vertex(b.x, b.y, b.z);
+                tessellator.tex2({u1, v1}); tessellator.vertex(c.x, c.y, c.z);
+                tessellator.tex2({u1, v0}); tessellator.vertex(d.x, d.y, d.z);
             };
             if (!neighborEntry(0, -1, 0))
                 addLiquidFace({x0,y0,z1}, {x0,y0,z0}, {x1,y0,z0}, {x1,y0,z1});
@@ -458,7 +491,7 @@ void buildLiquidProxySectionMesh(
         state.liquidProxySectionMeshes[section] = std::make_unique<mce::Mesh>(tessellator.end(
             uploadMode,
             "LHoloLiquidProxy",
-            Tessellator::SupplementaryFieldAutoGenerationMode::None
+            SupplementaryFieldAutoGenerationMode{0}  // None
         ));
     } else {
         state.liquidProxySectionMeshes[section].reset();
@@ -478,9 +511,14 @@ void buildBlockEntityPlaceholderSectionMesh(
     auto const rotationTurns     = settings.rotationTurns;
     auto const structureOpacity  = settings.structureOpacity;
     auto const identityTransform = settings.identityTransform;
-    LegacyStructureSettings sectionTransformSettings;
-    sectionTransformSettings.setMirror(settings.mirror);
-    sectionTransformSettings.setRotation(settings.rotation);
+    // The default constructor and setMirror()/setRotation() were inlined out
+    // of the 26.32 SDK; the surviving constructor takes them directly.
+    LegacyStructureSettings sectionTransformSettings{
+        settings.mirror,
+        settings.rotation,
+        nullptr,
+        BoundingBox{}
+    };
     // Blocks that tessellated to nothing (block-entity blocks such as
     // chests and signs) get a textured placeholder hull from their
     // BlockGraphics tile so the projection still shows them. Blocks
@@ -543,11 +581,11 @@ void buildBlockEntityPlaceholderSectionMesh(
                 Vec3 const& a, Vec3 const& b, Vec3 const& c, Vec3 const& d, bool isFront
             ) {
                 auto const color = isFront ? frontColor : dimColor;
-                tessellator.colorABGR(static_cast<int>(color));
-                tessellator.vertexUV(a.x, a.y, a.z, u0, v0);
-                tessellator.vertexUV(b.x, b.y, b.z, u0, v1);
-                tessellator.vertexUV(c.x, c.y, c.z, u1, v1);
-                tessellator.vertexUV(d.x, d.y, d.z, u1, v0);
+                setColorAbgr(tessellator, color);
+                tessellator.tex2({u0, v0}); tessellator.vertex(a.x, a.y, a.z);
+                tessellator.tex2({u0, v1}); tessellator.vertex(b.x, b.y, b.z);
+                tessellator.tex2({u1, v1}); tessellator.vertex(c.x, c.y, c.z);
+                tessellator.tex2({u1, v0}); tessellator.vertex(d.x, d.y, d.z);
             };
             bool const northFront = frontFace == static_cast<int>(Facing::Name::North);
             bool const southFront = frontFace == static_cast<int>(Facing::Name::South);
@@ -563,7 +601,7 @@ void buildBlockEntityPlaceholderSectionMesh(
         state.blockEntityPlaceholderSectionMeshes[section] = std::make_unique<mce::Mesh>(tessellator.end(
             uploadMode,
             "LHoloBlockEntityPlaceholder",
-            Tessellator::SupplementaryFieldAutoGenerationMode::None
+            SupplementaryFieldAutoGenerationMode{0}  // None
         ));
     } else {
         state.blockEntityPlaceholderSectionMeshes[section].reset();
@@ -578,37 +616,49 @@ void buildCorrectionSectionMeshes(
     Tessellator::UploadMode               uploadMode,
     ProjectionSectionBuildSettings const& settings
 ) {
-    // Split the correction geometry into "missing" and "wrong" (WrongType +
-    // WrongState) so the see-through option can X-ray only the wrong markers,
-    // never the many "missing" outlines.
-    auto const isWrongState = [](CorrectionState correction) {
-        return correction == CorrectionState::WrongType
-            || correction == CorrectionState::WrongState;
+    constexpr auto                      colorCount = static_cast<std::size_t>(CorrectionColor::Count);
+    std::array<std::size_t, colorCount> colorCounts{};
+    auto const colorOf = [](CorrectionState correction) -> std::optional<CorrectionColor> {
+        switch (correction) {
+            case CorrectionState::Missing:    return CorrectionColor::Missing;
+            case CorrectionState::WrongType:  return CorrectionColor::WrongType;
+            case CorrectionState::WrongState: return CorrectionColor::WrongState;
+            default: return std::nullopt;
+        }
     };
-    std::size_t missingCount{};
-    std::size_t wrongCount{};
     for (auto const index : state.sectionBlockIndices[section]) {
-        auto const correction = state.correctionStates[index];
-        if (isWrongState(correction)) ++wrongCount;
-        else if (correction == CorrectionState::Missing) ++missingCount;
+        if (auto const color = colorOf(state.correctionStates[index])) {
+            ++colorCounts[static_cast<std::size_t>(*color)];
+        }
     }
-    wrongCount += state.sectionExtraBlockPositions[section].size();
-    if (missingCount == 0 && wrongCount == 0) {
-        state.warningFillSectionMeshes[section].reset();
-        state.correctionOutlineSectionMeshes[section].reset();
-        state.wrongFillSectionMeshes[section].reset();
-        state.wrongOutlineSectionMeshes[section].reset();
+    colorCounts[static_cast<std::size_t>(CorrectionColor::Extra)]
+        += state.sectionExtraBlockPositions[section].size();
+    if (std::all_of(colorCounts.begin(), colorCounts.end(), [](std::size_t count) {
+            return count == 0;
+        })) {
+        for (std::size_t color = 0; color < colorCount; ++color) {
+            state.correctionFillSectionMeshes[color][section].reset();
+            state.correctionOutlineSectionMeshes[color][section].reset();
+        }
         return;
     }
 
-    constexpr float outlineInset  = 0.0f;
-    constexpr float outlineExtent = 1.0f;
+    // The editor block-volume pipeline colors geometry through a per-draw
+    // uniform, so vertices carry no color. A neutral UV keeps the TEXCOORD
+    // stream present for the hull/wireframe vertex layouts.
+    Vec2 const neutralUv{0.0f, 0.0f};
+
+    // Lines on the cell boundary depth-fight with adjacent block faces;
+    // grow the wireframe 2mm outside the cell (vanilla outline does the same).
+    constexpr float outlineInset  = -0.002f;
+    constexpr float outlineExtent = 1.002f;
     auto addOutlineEdge = [&](Vec3 const& first, Vec3 const& second) {
-        tessellator.vertex(first);
-        tessellator.vertex(second);
+        tessellator.tex2(neutralUv);
+        tessellator.vertex(first.x, first.y, first.z);
+        tessellator.tex2(neutralUv);
+        tessellator.vertex(second.x, second.y, second.z);
     };
-    // Use true LineList geometry rendered with the vanilla outline material.
-    auto buildOutline = [&](bool wantWrong, std::size_t count) -> std::unique_ptr<mce::Mesh> {
+    auto buildOutline = [&](CorrectionColor color, std::size_t count) -> std::unique_ptr<mce::Mesh> {
         if (count == 0) return nullptr;
         tessellator.begin(
             Tessellator::DebugContextCallback{},
@@ -616,78 +666,71 @@ void buildCorrectionSectionMeshes(
             static_cast<int>(count * 24),
             false
         );
-        for (auto const index : state.sectionBlockIndices[section]) {
-            auto const correction = state.correctionStates[index];
-            auto const priority = correctionPriority(correction);
-            if (priority == 0) continue;
-            if (isWrongState(correction) != wantWrong) continue;
-            auto const& entry = state.structure->renderBlocks[index];
-            // A missing pure-liquid cell is already communicated by its blue
-            // translucent proxy hull; skip the duplicate outline.
-            if (correction == CorrectionState::Missing && !entry.block && entry.liquid) continue;
-            auto const p = transformStructurePosition(
-                entry, *state.structure, settings.mirrorMode, settings.rotationTurns
-            );
-            auto const outlineColor = correction == CorrectionState::Missing
-                ? withAlpha(MissingColorAbgrRgb, settings.correctionOutlineOpacity)
-                : correction == CorrectionState::WrongState
-                    ? withAlpha(WrongStateColorAbgrRgb, settings.correctionOutlineOpacity)
-                    : withAlpha(WrongBlockColorAbgrRgb, settings.correctionOutlineOpacity);
+        auto const emitCell = [&](BlockPos const& p) {
             float const x0 = static_cast<float>(p.x) + outlineInset;
             float const y0 = static_cast<float>(p.y) + outlineInset;
             float const z0 = static_cast<float>(p.z) + outlineInset;
             float const x1 = static_cast<float>(p.x) + outlineExtent;
             float const y1 = static_cast<float>(p.y) + outlineExtent;
             float const z1 = static_cast<float>(p.z) + outlineExtent;
-            tessellator.colorABGR(static_cast<int>(outlineColor));
             addOutlineEdge({x0,y0,z0},{x1,y0,z0}); addOutlineEdge({x1,y0,z0},{x1,y1,z0});
             addOutlineEdge({x1,y1,z0},{x0,y1,z0}); addOutlineEdge({x0,y1,z0},{x0,y0,z0});
             addOutlineEdge({x0,y0,z1},{x1,y0,z1}); addOutlineEdge({x1,y0,z1},{x1,y1,z1});
             addOutlineEdge({x1,y1,z1},{x0,y1,z1}); addOutlineEdge({x0,y1,z1},{x0,y0,z1});
             addOutlineEdge({x0,y0,z0},{x0,y0,z1}); addOutlineEdge({x1,y0,z0},{x1,y0,z1});
             addOutlineEdge({x1,y1,z0},{x1,y1,z1}); addOutlineEdge({x0,y1,z0},{x0,y1,z1});
-        }
-        if (wantWrong) {
-            tessellator.colorABGR(static_cast<int>(withAlpha(
-                ExtraColorAbgrRgb, settings.correctionOutlineOpacity
-            )));
+        };
+        if (color == CorrectionColor::Extra) {
             for (auto const& [x, y, z] : state.sectionExtraBlockPositions[section]) {
-                auto const p = transformStructurePosition(
+                emitCell(transformStructurePosition(
                     BlockPos{x, y, z}, *state.structure,
                     settings.mirrorMode, settings.rotationTurns
-                );
-                float const x0 = static_cast<float>(p.x) + outlineInset;
-                float const y0 = static_cast<float>(p.y) + outlineInset;
-                float const z0 = static_cast<float>(p.z) + outlineInset;
-                float const x1 = static_cast<float>(p.x) + outlineExtent;
-                float const y1 = static_cast<float>(p.y) + outlineExtent;
-                float const z1 = static_cast<float>(p.z) + outlineExtent;
-                addOutlineEdge({x0,y0,z0},{x1,y0,z0}); addOutlineEdge({x1,y0,z0},{x1,y1,z0});
-                addOutlineEdge({x1,y1,z0},{x0,y1,z0}); addOutlineEdge({x0,y1,z0},{x0,y0,z0});
-                addOutlineEdge({x0,y0,z1},{x1,y0,z1}); addOutlineEdge({x1,y0,z1},{x1,y1,z1});
-                addOutlineEdge({x1,y1,z1},{x0,y1,z1}); addOutlineEdge({x0,y1,z1},{x0,y0,z1});
-                addOutlineEdge({x0,y0,z0},{x0,y0,z1}); addOutlineEdge({x1,y0,z0},{x1,y0,z1});
-                addOutlineEdge({x1,y1,z0},{x1,y1,z1}); addOutlineEdge({x0,y1,z0},{x0,y1,z1});
+                ));
             }
+        } else {
+            for (auto const index : state.sectionBlockIndices[section]) {
+                auto const cellColor = colorOf(state.correctionStates[index]);
+                if (!cellColor || *cellColor != color) continue;
+                auto const& entry = state.structure->renderBlocks[index];
+                // A missing pure-liquid cell is already communicated by its blue
+                // translucent proxy hull; skip the duplicate outline.
+                if (color == CorrectionColor::Missing && !entry.block && entry.liquid) continue;
+                emitCell(transformStructurePosition(
+                    entry, *state.structure, settings.mirrorMode, settings.rotationTurns
+                ));
+            }
+        }
+        if (tessellator.mMeshData->mPositions.get().empty()) {
+            // A fully interior batch legitimately has no exposed lines; close
+            // the session without uploading and draw nothing.
+            tessellator.end(
+                Tessellator::UploadMode::Never,
+                "LHoloCorrectionOutline",
+                SupplementaryFieldAutoGenerationMode{1}  // NormalsAndTangents
+            );
+            return nullptr;
         }
         return std::make_unique<mce::Mesh>(tessellator.end(
             uploadMode,
             "LHoloCorrectionOutline",
-            Tessellator::SupplementaryFieldAutoGenerationMode::None
+            SupplementaryFieldAutoGenerationMode{1}  // NormalsAndTangents
         ));
     };
-    state.correctionOutlineSectionMeshes[section] = buildOutline(false, missingCount);
-    state.wrongOutlineSectionMeshes[section] = buildOutline(true, wrongCount);
 
-    // Litematica-style correction fill: an exact untextured 1x1x1 cell overlay.
-    // Rasterizer bias supplies depth separation at submission time.
+    // Litematica-style correction fill: an exact 1x1x1 cell overlay with global
+    // face culling; the rasterizer bias at submission handles depth separation.
+    constexpr float fillInset = 0.002f;
     auto addFillFace = [&](Vec3 const& a, Vec3 const& b, Vec3 const& c, Vec3 const& d) {
-        tessellator.vertex(a);
-        tessellator.vertex(b);
-        tessellator.vertex(c);
-        tessellator.vertex(d);
+        tessellator.tex2(neutralUv);
+        tessellator.vertex(a.x, a.y, a.z);
+        tessellator.tex2(neutralUv);
+        tessellator.vertex(b.x, b.y, b.z);
+        tessellator.tex2(neutralUv);
+        tessellator.vertex(c.x, c.y, c.z);
+        tessellator.tex2(neutralUv);
+        tessellator.vertex(d.x, d.y, d.z);
     };
-    auto buildFill = [&](bool wantWrong, std::size_t count) -> std::unique_ptr<mce::Mesh> {
+    auto buildFill = [&](CorrectionColor color, std::size_t count) -> std::unique_ptr<mce::Mesh> {
         if (count == 0) return nullptr;
         tessellator.begin(
             Tessellator::DebugContextCallback{},
@@ -719,69 +762,69 @@ void buildCorrectionSectionMeshes(
             }
             return priority;
         };
-        for (auto const index : state.sectionBlockIndices[section]) {
-            auto const correction = state.correctionStates[index];
-            auto const priority = correctionPriority(correction);
-            if (priority == 0) continue;
-            if (isWrongState(correction) != wantWrong) continue;
-            auto const& entry = state.structure->renderBlocks[index];
-            if (correction == CorrectionState::Missing && !entry.block && entry.liquid) continue;
-            auto const p = transformStructurePosition(
-                entry, *state.structure, settings.mirrorMode, settings.rotationTurns
-            );
+        auto const emitCell = [&](BlockPos const& p, int priority) {
             // Face-culling stays global across categories so a wrong cell next
             // to a missing cell still hides the lower-priority shared face.
-            float const x0 = static_cast<float>(p.x);
-            float const y0 = static_cast<float>(p.y);
-            float const z0 = static_cast<float>(p.z);
-            float const x1 = static_cast<float>(p.x + 1);
-            float const y1 = static_cast<float>(p.y + 1);
-            float const z1 = static_cast<float>(p.z + 1);
-            auto const fillColor = correction == CorrectionState::Missing
-                ? withAlpha(MissingColorAbgrRgb, settings.correctionFillOpacity)
-                : correction == CorrectionState::WrongState
-                    ? withAlpha(WrongStateColorAbgrRgb, settings.correctionFillOpacity)
-                    : withAlpha(WrongBlockColorAbgrRgb, settings.correctionFillOpacity);
-            tessellator.colorABGR(static_cast<int>(fillColor));
+            // Fill faces sit exactly on cell boundaries and would depth-fight
+            // with adjacent real or placed block surfaces, so inset 2mm.
+            float const x0 = static_cast<float>(p.x) + fillInset;
+            float const y0 = static_cast<float>(p.y) + fillInset;
+            float const z0 = static_cast<float>(p.z) + fillInset;
+            float const x1 = static_cast<float>(p.x + 1) - fillInset;
+            float const y1 = static_cast<float>(p.y + 1) - fillInset;
+            float const z1 = static_cast<float>(p.z + 1) - fillInset;
             if (priority > neighborPriority(p, 0, 0, -1)) addFillFace({x0,y0,z0}, {x0,y1,z0}, {x1,y1,z0}, {x1,y0,z0});
             if (priority > neighborPriority(p, 0, 0, 1))  addFillFace({x1,y0,z1}, {x1,y1,z1}, {x0,y1,z1}, {x0,y0,z1});
             if (priority > neighborPriority(p, -1, 0, 0)) addFillFace({x0,y0,z1}, {x0,y1,z1}, {x0,y1,z0}, {x0,y0,z0});
             if (priority > neighborPriority(p, 1, 0, 0))  addFillFace({x1,y0,z0}, {x1,y1,z0}, {x1,y1,z1}, {x1,y0,z1});
             if (priority > neighborPriority(p, 0, -1, 0)) addFillFace({x0,y0,z1}, {x0,y0,z0}, {x1,y0,z0}, {x1,y0,z1});
             if (priority > neighborPriority(p, 0, 1, 0))  addFillFace({x0,y1,z0}, {x0,y1,z1}, {x1,y1,z1}, {x1,y1,z0});
-        }
-        if (wantWrong) {
+        };
+        if (color == CorrectionColor::Extra) {
             constexpr int priority = 2;
-            tessellator.colorABGR(static_cast<int>(withAlpha(
-                ExtraColorAbgrRgb, settings.correctionFillOpacity
-            )));
             for (auto const& [x, y, z] : state.sectionExtraBlockPositions[section]) {
                 auto const p = transformStructurePosition(
                     BlockPos{x, y, z}, *state.structure,
                     settings.mirrorMode, settings.rotationTurns
                 );
-                float const x0 = static_cast<float>(p.x);
-                float const y0 = static_cast<float>(p.y);
-                float const z0 = static_cast<float>(p.z);
-                float const x1 = static_cast<float>(p.x + 1);
-                float const y1 = static_cast<float>(p.y + 1);
-                float const z1 = static_cast<float>(p.z + 1);
-                if (priority > neighborPriority(p, 0, 0, -1)) addFillFace({x0,y0,z0}, {x0,y1,z0}, {x1,y1,z0}, {x1,y0,z0});
-                if (priority > neighborPriority(p, 0, 0, 1))  addFillFace({x1,y0,z1}, {x1,y1,z1}, {x0,y1,z1}, {x0,y0,z1});
-                if (priority > neighborPriority(p, -1, 0, 0)) addFillFace({x0,y0,z1}, {x0,y1,z1}, {x0,y1,z0}, {x0,y0,z0});
-                if (priority > neighborPriority(p, 1, 0, 0))  addFillFace({x1,y0,z0}, {x1,y1,z0}, {x1,y1,z1}, {x1,y0,z1});
-                if (priority > neighborPriority(p, 0, -1, 0)) addFillFace({x0,y0,z1}, {x0,y0,z0}, {x1,y0,z0}, {x1,y0,z1});
-                if (priority > neighborPriority(p, 0, 1, 0))  addFillFace({x0,y1,z0}, {x0,y1,z1}, {x1,y1,z1}, {x1,y1,z0});
+                emitCell(p, priority);
             }
+        } else {
+            for (auto const index : state.sectionBlockIndices[section]) {
+                auto const cellColor = colorOf(state.correctionStates[index]);
+                if (!cellColor || *cellColor != color) continue;
+                auto const& entry = state.structure->renderBlocks[index];
+                if (color == CorrectionColor::Missing && !entry.block && entry.liquid) continue;
+                auto const p = transformStructurePosition(
+                    entry, *state.structure, settings.mirrorMode, settings.rotationTurns
+                );
+                emitCell(p, correctionPriority(state.correctionStates[index]));
+            }
+        }
+        if (tessellator.mMeshData->mPositions.get().empty()) {
+            // A fully interior section legitimately has no exposed faces;
+            // close the session without uploading and draw nothing.
+            tessellator.end(
+                Tessellator::UploadMode::Never,
+                "LHoloCorrectionFill",
+                SupplementaryFieldAutoGenerationMode{1}  // NormalsAndTangents
+            );
+            return nullptr;
         }
         return std::make_unique<mce::Mesh>(tessellator.end(
             uploadMode,
-            "LHoloWarningFill",
-            Tessellator::SupplementaryFieldAutoGenerationMode::None
+            "LHoloCorrectionFill",
+            SupplementaryFieldAutoGenerationMode{1}  // NormalsAndTangents
         ));
     };
-    state.warningFillSectionMeshes[section] = buildFill(false, missingCount);
-    state.wrongFillSectionMeshes[section] = buildFill(true, wrongCount);
+    for (std::size_t color = 0; color < colorCount; ++color) {
+        auto const correctionColor = static_cast<CorrectionColor>(color);
+        state.correctionOutlineSectionMeshes[color][section]
+            = buildOutline(correctionColor, colorCounts[color]);
+        state.correctionFillSectionMeshes[color][section]
+            = buildFill(correctionColor, colorCounts[color]);
+    }
+
 }
 
 void buildStructureBoundsMesh(
@@ -803,10 +846,10 @@ void buildStructureBoundsMesh(
     tessellator.begin(
         Tessellator::DebugContextCallback{}, mce::PrimitiveMode::LineList, 24, false
     );
-    tessellator.colorABGR(static_cast<int>(0xFFFFD633U));
+    setColorAbgr(tessellator, 0xFFFFD633U);
     auto addBoundsEdge = [&](Vec3 const& a, Vec3 const& b) {
-        tessellator.vertex(a);
-        tessellator.vertex(b);
+        tessellator.vertex(a.x, a.y, a.z);
+        tessellator.vertex(b.x, b.y, b.z);
     };
     addBoundsEdge({x0,y0,z0},{x1,y0,z0}); addBoundsEdge({x1,y0,z0},{x1,y1,z0});
     addBoundsEdge({x1,y1,z0},{x0,y1,z0}); addBoundsEdge({x0,y1,z0},{x0,y0,z0});
@@ -817,7 +860,7 @@ void buildStructureBoundsMesh(
     state.structureBoundsMesh = std::make_unique<mce::Mesh>(tessellator.end(
         uploadMode,
         "LHoloStructureBounds",
-        Tessellator::SupplementaryFieldAutoGenerationMode::None
+        SupplementaryFieldAutoGenerationMode{0}  // None
     ));
 }
 

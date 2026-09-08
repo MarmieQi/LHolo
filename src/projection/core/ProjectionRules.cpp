@@ -25,7 +25,9 @@ namespace lholo::projection::detail {
 namespace {
 
 CompoundTag const* serializedBlockStates(Block const& block) {
-    for (auto const& [key, value] : block.getSerializationId()) {
+    // getSerializationId() was inlined out of the 26.32 SDK; the member it
+    // returned is public.
+    for (auto const& [key, value] : block.mSerializationId.get()) {
         if (key == "states" && value.hold<CompoundTag>()) return &value.get<CompoundTag>();
     }
     return nullptr;
@@ -68,8 +70,10 @@ Block const* transformExpectedBlock(
     // aux-data mapper does not cover every modern state (notably
     // rail_direction), while this path owns the complete rotation/mirror
     // handling used by current blocks.
+    // getRotation()/getMirror() were inlined out of the 26.32 SDK; the members
+    // they returned are public.
     return VanillaBlockStateTransformUtils::transformBlock(
-        *block, settings.getRotation(), settings.getMirror()
+        *block, settings.mRotation, settings.mMirror
     );
 }
 
@@ -125,7 +129,9 @@ bool projectionStatesMatch(Block const& expected, Block const& actual) {
 // minecraft:cardinal_direction, so both are handled. Returns -1 when the block
 // has no horizontal facing.
 int blockFrontFace(Block const& block) {
-    for (auto const& [key, value] : block.getSerializationId()) {
+    // getSerializationId() was inlined out of the 26.32 SDK; the member it
+    // returned is public.
+    for (auto const& [key, value] : block.mSerializationId.get()) {
         if (key != "states") continue;
         if (!value.hold<CompoundTag>()) break;
         for (auto const& [stateKey, stateValue] : value.get<CompoundTag>()) {

@@ -1,5 +1,26 @@
 # Changelog
 
+## [26.32.0] - 2026-09-08
+
+### Changed
+
+- 适配 LeviLamina `26.32.0` / Minecraft 基岩 Windows `1.26.32`；依赖约束升级为 `26.32.*`。全部功能行为与 26.20.8 保持一致。
+- 26.32 SDK 将大量成员函数内联并停止导出符号，全部调用改写为等价的公开成员、虚函数、工厂函数或 LeviLamina 服务访问器，不改任何逻辑（完整替换表见 DEVELOPMENT.md §11.1）。
+- 菜单命令过滤改用 `TextPacket::mBody` variant（26.32 文本包载荷结构变化），仍只匹配类型为 Chat 且内容恰为 `lholo` 的本地聊天。
+- 辅助放置的 `ItemUseInventoryTransaction` 改经 `ComplexInventoryTransaction::fromType` 工厂创建（默认构造不再导出）；`mTargetBlockId`/`mIncludeNetIds` 直接写公开成员，发包经 `InventoryTransactionPacketPayload` 包装。
+- 投影渲染的相机位置与世界矩阵改由 `ScreenContext` 的渲染相机提供（`BaseActorRenderContext` 的对应访问器被内联移除）；外层每帧立即式 Tessellator 会话取消（它本就被无条件中止）；空 section 会话以 `UploadMode::Never` 收尾。
+- Java→基岩映射的方块枚举改用 `Block::tryGetFromRegistry` + `BlockType::mBlockPermutations`；投影方块实体创建改用 `VanillaBlockActorFactory::createBlockActor`，NBT 载入使用本地直通 `DataLoadHelper`（26.32 起原 unique-id 助手构造不再导出，展示用方块实体无需重映射）。
+
+### Fixed
+
+- 修复加载 `.litematic` 闪退：26.32 方块类型的 permutation 数组存在空槽位（旧版 `forEachBlockPermutation` 不会回调这些项），直接解引用导致对空指针读取崩溃；现在跳过空槽位。
+- 修复投影网格/边框提交时向 `renderMesh` 传入不透明类型 `OffscreenCaptureDescription` 的 1 字节临时对象，导致游戏按真实 48 字节对象读取栈垃圾并崩溃的问题（进入世界渲染投影即触发）。现在传入全零 48 字节缓冲，等价旧版“无捕获”状态。
+- 修复投影方块位置错误、看似固定在视角前无法靠近的问题：26.32 渲染相机的世界矩阵栈不再经由 `BaseActorRenderContext` 访问器，改经 `IClientInstance::getCamera()` 获取活动渲染相机（screen-context 相机为空闲实例）。
+- 修复大型结构加载后纠错外壳持续闪烁的问题：内部 section 的填充面按优先级互相剔除后产生零顶点空网格，被网格校验判为 worker 失败并连续回退同步构建，扫描期间每次格子翻转都同步换网格。现在空网格以 `UploadMode::Never` 正常关闭会话并跳过绘制，worker 保持异步路径（旧网格保留到新网格就绪）。
+- 纠错外壳（填充+描边）重写：几何按颜色（未放置蓝/类型红/状态黄/多余品红）与样式分批、顶点不带颜色；填充与描边分别经 `selectionBlockEntityOverlayColorMaterial`/`mOutlineSelectionMaterial` 立即绘制，颜色由每次绘制前写入的 `MeshContext::currentShaderColor` 驱动（26.32 `makeMeshFallback` 将其为旧版颜色着色器绑定为 `CurrentColor` uniform），pass 结束恢复原值。闪烁/变色的根因即此前从未设置该全局颜色。此前借用 selection/`debug` 材质的方案不可用（`debug` 材质不存在，按名解析得到空材质导致外壳完全不绘制）。编辑器体积描述路线已实现并验证到链接与运行时符号层，因 `dragon::mesh::Mesh::~Mesh` 无法解析而搁置，研究证据保留在 `docs/rendering/EditorCorrectionResearch.md`。
+- 修复纠错外壳与相邻已放置方块表面共面导致的深度闪烁：填充外壳向单元格内收缩 2mm，线框外扩 2mm（与原版选框做法一致）。
+- 移除纠错标记的穿透显示（X 光）功能与 `correctionSeeThrough`/`missingSeeThrough` 配置项、菜单开关；编辑器体积管线不提供等价控制，纠错标记始终按深度测试绘制。配置版本升级到 12，旧配置中的对应键被忽略。
+
 ## [26.20.8] - 2026-09-01
 
 ### Added
