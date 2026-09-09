@@ -89,9 +89,9 @@ struct ProjectionState {
     int                             cachedOffsetX{};
     int                             cachedOffsetY{};
     int                             cachedOffsetZ{};
-    int                             cachedLayerDisplayMode{-1};
+    std::optional<structure::LayerDisplayMode> cachedLayerDisplayMode;
     int                             cachedDisplayLayer{-1};
-    int                             cachedLayerAxis{-1};
+    std::optional<structure::LayerAxis> cachedLayerAxis;
     float                           cachedOpacity{-1.0f};
     float                           cachedCorrectionFillOpacity{-1.0f};
     float                           cachedCorrectionOutlineOpacity{-1.0f};

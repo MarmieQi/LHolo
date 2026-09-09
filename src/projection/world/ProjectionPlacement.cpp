@@ -101,7 +101,7 @@ void rebuildProjectionPlacement(
     for (std::size_t index = 0; index < state.structure->renderBlocks.size(); ++index) {
         auto const& entry = state.structure->renderBlocks[index];
         if (!isLayerVisible(
-                settings.layerAxis == 1 ? entry.x : entry.y,
+                settings.layerAxis == structure::LayerAxis::X ? entry.x : entry.y,
                 settings.layerDisplayMode,
                 settings.displayLayer,
                 entry.materialIndex,

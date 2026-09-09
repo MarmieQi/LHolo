@@ -156,10 +156,11 @@ bool handleGuiHotkeyKeyDown(unsigned int virtualKey) {
         return true;
     }
 
-    // The projection-offset trigger is the fixed Alt key. Its held state lives
-    // in the modifier flags tracked above; consume the bare keydown so
-    // Minecraft never reacts to Alt alone.
-    if (virtualKey == VK_MENU || virtualKey == VK_LMENU || virtualKey == VK_RMENU) {
+    // The projection-offset trigger is the fixed Alt key. Only claim the bare
+    // key while an active projection can actually consume its wheel gesture;
+    // otherwise preserve Minecraft and system Alt handling unchanged.
+    if ((virtualKey == VK_MENU || virtualKey == VK_LMENU || virtualKey == VK_RMENU)
+        && detail::StructureSession::getInstance().hasLoaded()) {
         return true;
     }
 
@@ -282,7 +283,8 @@ void processPendingActions() {
 
     auto& session = detail::StructureSession::getInstance();
     auto const pending = uiState().consumePendingHotkeyActions();
-    auto const layerActionEnabled = pending.layerDelta != 0 && session.transform().layerDisplayMode != 0;
+    auto const layerActionEnabled = pending.layerDelta != 0
+        && session.transform().layerDisplayMode != LayerDisplayMode::All;
     bool changed = pending.offsetX != 0 || pending.offsetY != 0 || pending.offsetZ != 0 || layerActionEnabled;
     session.adjustOffsets(pending.offsetX, pending.offsetY, pending.offsetZ);
     if (layerActionEnabled) session.adjustDisplayLayer(pending.layerDelta);
@@ -434,9 +436,9 @@ void renderHud() {
     auto const fileName = detail::pathToUtf8(sessionSnapshot.loaded->sourcePath.filename());
     auto const layerAxis = sessionSnapshot.transform.layerAxis;
     auto const layerMode = sessionSnapshot.transform.layerDisplayMode;
-    auto const maxLayer = layerAxis == 2
+    auto const maxLayer = layerAxis == LayerAxis::Material
         ? std::max(0, static_cast<int>(sessionSnapshot.loaded->materialCount) - 1)
-        : (layerAxis == 1 ? sessionSnapshot.maxLayerX : sessionSnapshot.maxLayerY);
+        : (layerAxis == LayerAxis::X ? sessionSnapshot.maxLayerX : sessionSnapshot.maxLayerY);
 
     auto const displaySize = ImGui::GetIO().DisplaySize;
     auto uiScale = hud.uiScale;
@@ -480,37 +482,45 @@ void renderHud() {
         | ImGuiWindowFlags_NoInputs;
     if (ImGui::Begin("##LHoloHud", nullptr, flags)) {
         if (showFileName) ImGui::Text("投影：%s", fileName.c_str());
-        if (showLayer && layerAxis == 2) {
-            if (layerMode == 0) {
-                ImGui::TextUnformatted("显示范围：完整材料清单");
-            } else if (layerMode == 1) {
-                ImGui::Text("当前材料：%d / %d", currentLayer, maxLayer);
-            } else if (layerMode == 2) {
-                ImGui::Text("显示材料：第 0～%d", currentLayer);
+        if (showLayer && layerAxis == LayerAxis::Material) {
+            if (layerMode == LayerDisplayMode::All) {
+                ImGui::TextUnformatted("材料筛选：全部");
+            } else if (layerMode == LayerDisplayMode::Single) {
+                ImGui::Text(
+                    "材料筛选：第 %d 种（共 %d 种）",
+                    currentLayer + 1,
+                    maxLayer + 1
+                );
+            } else if (layerMode == LayerDisplayMode::UpToCurrent) {
+                ImGui::Text("材料筛选：前 %d 种", currentLayer + 1);
             } else {
-                ImGui::Text("显示材料：第 %d～%d", currentLayer, maxLayer);
+                ImGui::Text(
+                    "材料筛选：第 %d～%d 种",
+                    currentLayer + 1,
+                    maxLayer + 1
+                );
             }
-        } else if (showLayer && layerMode == 0) {
+        } else if (showLayer && layerMode == LayerDisplayMode::All) {
             ImGui::TextUnformatted("显示范围：完整结构");
-        } else if (showLayer && layerMode == 1) {
+        } else if (showLayer && layerMode == LayerDisplayMode::Single) {
             ImGui::Text(
                 "当前层：%d / %d（%s 轴）",
                 currentLayer,
                 maxLayer,
-                layerAxis == 1 ? "X" : "Y"
+                layerAxis == LayerAxis::X ? "X" : "Y"
             );
-        } else if (showLayer && layerMode == 2) {
+        } else if (showLayer && layerMode == LayerDisplayMode::UpToCurrent) {
             ImGui::Text(
                 "显示范围：第 0～%d 层（%s 轴）",
                 currentLayer,
-                layerAxis == 1 ? "X" : "Y"
+                layerAxis == LayerAxis::X ? "X" : "Y"
             );
         } else if (showLayer) {
             ImGui::Text(
                 "显示范围：第 %d～%d 层（%s 轴）",
                 currentLayer,
                 maxLayer,
-                layerAxis == 1 ? "X" : "Y"
+                layerAxis == LayerAxis::X ? "X" : "Y"
             );
         }
         auto const showAnyProgress = showOverallProgress || showProgress || showWrongState
@@ -650,7 +660,7 @@ void renderMaterialHud() {
             ImGui::TextDisabled("正在统计当前显示范围…");
         } else if (missing.empty()) {
             ImGui::TextColored(
-                ImVec4(0.55f, 0.85f, 0.40f, 1.0f), "当前显示范围材料已备齐 ✓"
+                ImVec4(0.55f, 0.85f, 0.40f, 1.0f), "当前显示范围材料已备齐"
             );
         } else {
             constexpr std::size_t kMaxRows = 14;
@@ -764,9 +774,9 @@ void loadSettings() {
                 settings.savedOffsetX,
                 settings.savedOffsetY,
                 settings.savedOffsetZ,
-                settings.savedLayerDisplayMode,
+                layerDisplayModeFromInt(settings.savedLayerDisplayMode),
                 settings.savedDisplayLayer,
-                std::clamp(settings.savedLayerAxis, 0, 2)
+                layerAxisFromInt(settings.savedLayerAxis)
             },
             settings.savedStructurePath
         });
@@ -841,9 +851,9 @@ void saveSettings() {
         settings.savedOffsetX = sessionSnapshot.saved.transform.offsetX;
         settings.savedOffsetY = sessionSnapshot.saved.transform.offsetY;
         settings.savedOffsetZ = sessionSnapshot.saved.transform.offsetZ;
-        settings.savedLayerDisplayMode = sessionSnapshot.saved.transform.layerDisplayMode;
+        settings.savedLayerDisplayMode = toInt(sessionSnapshot.saved.transform.layerDisplayMode);
         settings.savedDisplayLayer = sessionSnapshot.saved.transform.displayLayer;
-        settings.savedLayerAxis = sessionSnapshot.saved.transform.layerAxis;
+        settings.savedLayerAxis = toInt(sessionSnapshot.saved.transform.layerAxis);
         settings.savedStructurePath = sessionSnapshot.saved.structurePath;
         lholo::settings::saveSettingsFile(path, settings);
     } catch (std::exception const& exception) {
@@ -866,9 +876,11 @@ int getMirrorMode() {
 int getOffsetX() { return detail::StructureSession::getInstance().transform().offsetX; }
 int getOffsetY() { return detail::StructureSession::getInstance().transform().offsetY; }
 int getOffsetZ() { return detail::StructureSession::getInstance().transform().offsetZ; }
-int getLayerDisplayMode() { return detail::StructureSession::getInstance().transform().layerDisplayMode; }
+LayerDisplayMode getLayerDisplayMode() {
+    return detail::StructureSession::getInstance().transform().layerDisplayMode;
+}
 int getDisplayLayer() { return detail::StructureSession::getInstance().transform().displayLayer; }
-int getLayerAxis() { return detail::StructureSession::getInstance().transform().layerAxis; }
+LayerAxis getLayerAxis() { return detail::StructureSession::getInstance().transform().layerAxis; }
 
 void recordProjectionAnchor(int x, int y, int z) {
     detail::StructureSession::getInstance().recordProjectionAnchor(x, y, z);
@@ -880,8 +892,7 @@ void recordProjectionAnchor(int x, int y, int z) {
 // reads the same event-tracked Alt state the wheel handler uses, so the lock
 // and the projection move engage under exactly the same condition and cost
 // nothing while idle. The selectSlot hook (place/) consults this to suppress
-// wheel-driven hotbar changes; the mod's own slot swaps are exempt via
-// ModSlotSelectGuard.
+// wheel-driven hotbar changes at the Bedrock mouse-input boundary.
 bool scrollLockActive() {
     return getLoaded() != nullptr && uiState().altHeld();
 }

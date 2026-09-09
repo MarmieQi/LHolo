@@ -38,20 +38,4 @@ ManualTargetStatus manualTargetStatusUnderCrosshair();
 
 void tickRangePlace(LocalPlayer& player, PlacementContext const& context);
 
-// True while the mod itself is changing the held hotbar slot (its placement
-// item swap). The PlayerInventory::selectSlot hook consults this so it only
-// suppresses wheel-driven hotbar changes, never the mod's own slot swaps.
-bool modSlotSelectActive();
-
-// RAII marker set around the mod's own setSelectedSlot calls.
-struct ModSlotSelectGuard {
-    ModSlotSelectGuard();
-    ~ModSlotSelectGuard();
-    ModSlotSelectGuard(ModSlotSelectGuard const&)            = delete;
-    ModSlotSelectGuard& operator=(ModSlotSelectGuard const&) = delete;
-
-private:
-    bool mPrev;
-};
-
 } // namespace lholo::place::detail

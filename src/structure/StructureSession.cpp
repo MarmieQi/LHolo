@@ -36,9 +36,9 @@ StructureTransformSnapshot StructureSession::transformRelaxed() const {
         mOffsetX.load(std::memory_order_relaxed),
         mOffsetY.load(std::memory_order_relaxed),
         mOffsetZ.load(std::memory_order_relaxed),
-        mLayerDisplayMode.load(std::memory_order_relaxed),
+        layerDisplayModeFromInt(mLayerDisplayMode.load(std::memory_order_relaxed)),
         mDisplayLayer.load(std::memory_order_relaxed),
-        mLayerAxis.load(std::memory_order_relaxed)
+        layerAxisFromInt(mLayerAxis.load(std::memory_order_relaxed))
     };
 }
 
@@ -54,9 +54,9 @@ SavedProjectionSnapshot StructureSession::savedProjectionLocked() const {
             mSavedOffsetX.load(std::memory_order_relaxed),
             mSavedOffsetY.load(std::memory_order_relaxed),
             mSavedOffsetZ.load(std::memory_order_relaxed),
-            mSavedLayerDisplayMode.load(std::memory_order_relaxed),
+            layerDisplayModeFromInt(mSavedLayerDisplayMode.load(std::memory_order_relaxed)),
             mSavedDisplayLayer.load(std::memory_order_relaxed),
-            mSavedLayerAxis.load(std::memory_order_relaxed)
+            layerAxisFromInt(mSavedLayerAxis.load(std::memory_order_relaxed))
         },
         mSavedStructurePath
     };
@@ -71,8 +71,8 @@ StructureSessionSnapshot StructureSession::snapshot() const {
     result.transform = transformRelaxed();
     result.saved     = savedProjectionLocked();
     if (mLoaded) {
-        result.maxLayerY = maxLayerFor(*mLoaded, 0);
-        result.maxLayerX = maxLayerFor(*mLoaded, 1);
+        result.maxLayerY = maxLayerFor(*mLoaded, LayerAxis::Y);
+        result.maxLayerX = maxLayerFor(*mLoaded, LayerAxis::X);
     }
     return result;
 }
@@ -127,7 +127,8 @@ void StructureSession::clearLoaded(std::string status) {
 StructureTransformSnapshot StructureSession::transform() const { return transformRelaxed(); }
 
 bool StructureSession::layerDisplayEnabled() const {
-    return mLayerDisplayMode.load(std::memory_order_acquire) != 0;
+    return layerDisplayModeFromInt(mLayerDisplayMode.load(std::memory_order_acquire))
+        != LayerDisplayMode::All;
 }
 
 void StructureSession::resetTransform() {
@@ -146,9 +147,13 @@ bool StructureSession::setMirror(int value) { return exchangeIfChanged(mMirrorMo
 bool StructureSession::setOffsetX(int value) { return exchangeIfChanged(mOffsetX, value); }
 bool StructureSession::setOffsetY(int value) { return exchangeIfChanged(mOffsetY, value); }
 bool StructureSession::setOffsetZ(int value) { return exchangeIfChanged(mOffsetZ, value); }
-bool StructureSession::setLayerDisplayMode(int value) { return exchangeIfChanged(mLayerDisplayMode, value); }
+bool StructureSession::setLayerDisplayMode(LayerDisplayMode value) {
+    return exchangeIfChanged(mLayerDisplayMode, toInt(value));
+}
 bool StructureSession::setDisplayLayer(int value) { return exchangeIfChanged(mDisplayLayer, value); }
-bool StructureSession::setLayerAxis(int value) { return exchangeIfChanged(mLayerAxis, value); }
+bool StructureSession::setLayerAxis(LayerAxis value) {
+    return exchangeIfChanged(mLayerAxis, toInt(value));
+}
 
 void StructureSession::adjustOffsets(int deltaX, int deltaY, int deltaZ) {
     if (deltaX != 0) setOffsetX(addClamped(mOffsetX.load(std::memory_order_relaxed), deltaX));
@@ -157,13 +162,14 @@ void StructureSession::adjustOffsets(int deltaX, int deltaY, int deltaZ) {
 }
 
 bool StructureSession::adjustDisplayLayer(int delta) {
-    if (delta == 0 || mLayerDisplayMode.load(std::memory_order_relaxed) == 0) return false;
-    auto const axis = mLayerAxis.load(std::memory_order_relaxed);
+    if (delta == 0 || layerDisplayModeFromInt(mLayerDisplayMode.load(std::memory_order_relaxed))
+        == LayerDisplayMode::All) return false;
+    auto const axis = layerAxisFromInt(mLayerAxis.load(std::memory_order_relaxed));
     auto       maxLayer = 0;
     {
         std::lock_guard lock(mMutex);
         if (mLoaded) {
-            maxLayer = axis == 2
+            maxLayer = axis == LayerAxis::Material
                 ? static_cast<int>(mLoaded->materialCount)
                 : maxLayerFor(*mLoaded, axis);
             if (maxLayer > 0) --maxLayer;
@@ -191,9 +197,9 @@ void StructureSession::setSavedProjection(SavedProjectionSnapshot const& saved) 
     mSavedOffsetX.store(saved.transform.offsetX, std::memory_order_relaxed);
     mSavedOffsetY.store(saved.transform.offsetY, std::memory_order_relaxed);
     mSavedOffsetZ.store(saved.transform.offsetZ, std::memory_order_relaxed);
-    mSavedLayerDisplayMode.store(saved.transform.layerDisplayMode, std::memory_order_relaxed);
+    mSavedLayerDisplayMode.store(toInt(saved.transform.layerDisplayMode), std::memory_order_relaxed);
     mSavedDisplayLayer.store(saved.transform.displayLayer, std::memory_order_relaxed);
-    mSavedLayerAxis.store(saved.transform.layerAxis, std::memory_order_relaxed);
+    mSavedLayerAxis.store(toInt(saved.transform.layerAxis), std::memory_order_relaxed);
     mSavedStructurePath = saved.structurePath;
     mHasSavedProjection.store(saved.available, std::memory_order_release);
 }
@@ -211,9 +217,9 @@ void StructureSession::refreshSavedTransformLocked() {
     mSavedOffsetX.store(current.offsetX, std::memory_order_relaxed);
     mSavedOffsetY.store(current.offsetY, std::memory_order_relaxed);
     mSavedOffsetZ.store(current.offsetZ, std::memory_order_relaxed);
-    mSavedLayerDisplayMode.store(current.layerDisplayMode, std::memory_order_relaxed);
+    mSavedLayerDisplayMode.store(toInt(current.layerDisplayMode), std::memory_order_relaxed);
     mSavedDisplayLayer.store(current.displayLayer, std::memory_order_relaxed);
-    mSavedLayerAxis.store(current.layerAxis, std::memory_order_relaxed);
+    mSavedLayerAxis.store(toInt(current.layerAxis), std::memory_order_relaxed);
 }
 
 void StructureSession::recordProjectionAnchor(int x, int y, int z) {
@@ -228,15 +234,15 @@ void StructureSession::recordProjectionAnchor(int x, int y, int z) {
     mSavedOffsetX.store(current.offsetX, std::memory_order_relaxed);
     mSavedOffsetY.store(current.offsetY, std::memory_order_relaxed);
     mSavedOffsetZ.store(current.offsetZ, std::memory_order_relaxed);
-    mSavedLayerDisplayMode.store(current.layerDisplayMode, std::memory_order_relaxed);
+    mSavedLayerDisplayMode.store(toInt(current.layerDisplayMode), std::memory_order_relaxed);
     mSavedDisplayLayer.store(current.displayLayer, std::memory_order_relaxed);
-    mSavedLayerAxis.store(current.layerAxis, std::memory_order_relaxed);
+    mSavedLayerAxis.store(toInt(current.layerAxis), std::memory_order_relaxed);
     mSavedStructurePath = mLastPath;
     mHasSavedProjection.store(true, std::memory_order_release);
 }
 
-int maxLayerFor(LoadedStructure const& structure, int axis) {
-    return std::max(0, (axis == 1 ? structure.sizeX : structure.sizeY) - 1);
+int maxLayerFor(LoadedStructure const& structure, LayerAxis axis) {
+    return std::max(0, (axis == LayerAxis::X ? structure.sizeX : structure.sizeY) - 1);
 }
 
 } // namespace lholo::structure::detail

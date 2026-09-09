@@ -64,41 +64,19 @@ constexpr std::uintmax_t kMaximumStructureFileSize = 512ull * 1024ull * 1024ull;
 constexpr std::size_t    kMaximumInflatedFileSize  = 1024ull * 1024ull * 1024ull;
 std::atomic_uint64_t     gGeneration{0};
 
-std::string materialKey(Block const* block) {
-    if (!block) return {};
-    auto const typeName = std::string{block->getTypeName()};
-    if (typeName == "minecraft:bubble_column"
-        || typeName == "minecraft:piston_arm_collision"
-        || typeName == "minecraft:sticky_piston_arm_collision"
-        || typeName == "minecraft:moving_block") return {};
-    if (typeName == "minecraft:water" || typeName == "minecraft:flowing_water") {
-        return "minecraft:water";
-    }
-    if (typeName == "minecraft:lava" || typeName == "minecraft:flowing_lava") {
-        return "minecraft:lava";
-    }
-    auto const baseName = std::string{block::placeableBaseName(typeName)};
-    if (baseName == "minecraft:redstone_wire") return "item:minecraft:redstone";
-    if (baseName == "minecraft:unpowered_comparator"
-        || baseName == "minecraft:powered_comparator") {
-        return "item:minecraft:comparator";
-    }
-    if (baseName == "minecraft:unpowered_repeater"
-        || baseName == "minecraft:powered_repeater") {
-        return "item:minecraft:repeater";
-    }
-    if (baseName == "minecraft:unlit_redstone_torch") {
-        return "item:minecraft:redstone_torch";
-    }
-    return "item:" + baseName;
-}
-
 void assignMaterialIndices(LoadedStructure& loaded) {
     std::map<std::string, std::uint64_t> bodyCounts;
     std::map<std::string, std::uint64_t> liquidCounts;
+    std::unordered_map<Block const*, std::string> cachedKeys;
+    std::string const emptyKey;
+    auto const keyFor = [&](Block const* value) -> std::string const& {
+        if (!value) return emptyKey;
+        return cachedKeys.try_emplace(value, block::materialKey(value->getTypeName()))
+            .first->second;
+    };
     for (auto const& entry : loaded.renderBlocks) {
-        auto const body = materialKey(entry.block);
-        auto const liquid = materialKey(entry.liquid);
+        auto const& body = keyFor(entry.block);
+        auto const& liquid = keyFor(entry.liquid);
         if (!body.empty()) ++bodyCounts[body];
         if (!liquid.empty()) ++liquidCounts[liquid];
     }
@@ -127,10 +105,10 @@ void assignMaterialIndices(LoadedStructure& loaded) {
         );
     }
     for (auto& entry : loaded.renderBlocks) {
-        if (auto const found = bodyIndices.find(materialKey(entry.block)); found != bodyIndices.end()) {
+        if (auto const found = bodyIndices.find(keyFor(entry.block)); found != bodyIndices.end()) {
             entry.materialIndex = found->second;
         }
-        if (auto const found = liquidIndices.find(materialKey(entry.liquid)); found != liquidIndices.end()) {
+        if (auto const found = liquidIndices.find(keyFor(entry.liquid)); found != liquidIndices.end()) {
             entry.liquidMaterialIndex = found->second;
         }
     }

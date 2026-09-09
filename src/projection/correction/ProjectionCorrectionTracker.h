@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "structure/LayerDisplayTypes.h"
+
 class BlockSource;
 class LegacyStructureSettings;
 
@@ -30,9 +32,9 @@ CorrectionProgressChanges updateCorrectionTracker(
     int                             offsetX,
     int                             offsetY,
     int                             offsetZ,
-    int                             layerDisplayMode,
+    structure::LayerDisplayMode     layerDisplayMode,
     int                             displayLayer,
-    int                             layerAxis
+    structure::LayerAxis            layerAxis
 );
 
 } // namespace lholo::projection::detail

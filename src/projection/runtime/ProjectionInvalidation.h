@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "structure/LayerDisplayTypes.h"
+
 namespace lholo::projection::detail {
 
 struct ProjectionState;
@@ -16,9 +18,9 @@ struct ProjectionInvalidationSettings {
     int   offsetX{};
     int   offsetY{};
     int   offsetZ{};
-    int   layerDisplayMode{};
+    structure::LayerDisplayMode layerDisplayMode{structure::LayerDisplayMode::All};
     int   displayLayer{};
-    int   layerAxis{};
+    structure::LayerAxis layerAxis{structure::LayerAxis::Y};
     float structureOpacity{};
     float correctionFillOpacity{};
     float correctionOutlineOpacity{};

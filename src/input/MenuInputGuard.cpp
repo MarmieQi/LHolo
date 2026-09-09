@@ -8,6 +8,7 @@
 #include "ll/api/memory/Hook.h"
 
 #include "mc/deps/input/Keyboard.h"
+#include "mc/deps/input/MouseAction.h"
 #include "mc/deps/input/MouseDevice.h"
 #include "mc/deps/input/win/HIDControllerGameCoreDesktop.h"
 
@@ -21,6 +22,10 @@ thread_local std::uint32_t gInputHandoffDepth{};
 
 bool menuOwnsGameInput() {
     return gInputHandoffDepth == 0 && structure::isMenuInputCaptured();
+}
+
+bool projectionOwnsMouseWheel(char actionButtonId) {
+    return actionButtonId == MouseAction::ActionWheel && structure::scrollLockActive();
 }
 
 LL_TYPE_INSTANCE_HOOK(
@@ -37,7 +42,7 @@ LL_TYPE_INSTANCE_HOOK(
     short dy,
     bool  forceMotionlessPointer
 ) {
-    if (menuOwnsGameInput()) return;
+    if (menuOwnsGameInput() || projectionOwnsMouseWheel(actionButtonId)) return;
     origin(actionButtonId, buttonData, x, y, dx, dy, forceMotionlessPointer);
 }
 

@@ -76,6 +76,7 @@ LHolo/
 │  │  │  └─ StructureFormatLoaders.* `.mcstructure`/`.litematic` 解析为 LoadedStructure
 │  │  ├─ java_to_bedrock/       Java 方块状态映射、文本组件与方块实体到 Bedrock 的转换
 │  │  ├─ StructurePaths.*       UTF-8 路径转换
+│  │  ├─ LayerDisplayTypes.h    分层轴/显示范围枚举与持久化整数边界转换
 │  │  ├─ MaterialTracker.*      材料需求聚合、物品标识缓存与游戏线程背包快照
 │  │  ├─ StructureSession.*    结构会话状态（已加载结构、变换/分层、恢复快照、状态文案）
 │  │  ├─ StructureUiState.*     UI 会话状态（GUI、热键、HUD、待处理动作、材料清单）
@@ -167,8 +168,9 @@ LHolo/
   方块实体由独立转换器生成原生 Bedrock NBT；不得让 Java NBT 字段泄漏到 `projection`。
 - `settings/SettingsStore` 只负责 `config.json` 的读写与字段映射，不持有运行状态；应用到全局状态由
   `StructureLoader` 完成，配置默认值与钳制语义保持不变。
-- `block/BlockPlacementRules` 集中维护运行态方块到可放置基础方块的身份规则，并通过 Bedrock 原生
-  `Block`/`ItemStack` 转换解析实际放置物品；`place`、材料统计和投影纠错不得各自复制名称映射。
+- `block/BlockPlacementRules` 集中维护运行态方块到可放置基础方块的身份规则和稳定材料 key，并通过
+  Bedrock 原生 `Block`/`ItemStack` 转换解析实际放置物品；材料清单与材料分层必须共用该 key 和排序规则，
+  `place`、格式加载、材料统计和投影纠错不得各自复制名称映射。
 - `structure/MaterialTracker` 只在本地玩家 tick 线程聚合材料需求和扫描背包；同一投影的材料清单只计算
   一次，先按唯一方块状态累计数量、再解析并缓存 `itemId`，避免大型结构逐格访问物品注册表。HUD/菜单
   关闭且没有消费者时停止刷新，渲染线程只读取 `StructureUiState` 的一致快照。
@@ -177,6 +179,8 @@ LHolo/
   `StructureLoader`，菜单线程专属的路径输入缓冲和当前页面由 `MenuController` 私有持有。
 - `structure/StructureSession` 持有结构会话状态：已加载结构、变换/分层值、恢复快照与状态文案；
   mutex、原子量、字符串和容器均不向调用者暴露，菜单/HUD 通过一致快照读取，变更通过具体操作完成。
+- 分层轴与显示范围在运行时统一使用 `LayerAxis`/`LayerDisplayMode`；只有 JSON 持久化和 Dear ImGui 控件边界
+  使用稳定整数编码并立即转换，禁止在投影、纠错或放置逻辑中用 `0/1/2/3` 表达分层语义。
   关闭活动投影时必须先把当前变换/分层冻结到恢复快照，再释放 `LoadedStructure`；空会话将显示层钳到
   0 的临时 UI 值不得覆盖恢复记录。
 - `ui/HotkeyFormat` 只根据显式参数生成按键名与和弦字符串，不读取会话状态；快捷键交互仍由
@@ -246,10 +250,11 @@ LHolo/
   `ProjectionFramePipeline`/`ProjectionCorrectionTracker` 负责。
 - `overlay` 负责“外部 GUI 如何安全进入游戏图形链”，不解析结构或扫描世界方块。
 - `place` 负责轻松、手动和范围放置：调用 projection 查询接口，在完整背包中查找物品，必要时交换到快捷栏，并发送 `InventoryTransactionPacket`；不碰渲染与配置。
-- `place/PlacementState` 持有放置会话状态：开关、手动/范围定时、近期放置格、失败计划缓存与准心投影方块名称；
+- `place/PlacementState` 持有放置会话状态：开关、幂等的手动按下/释放状态、手动/范围定时、近期放置格、失败计划缓存与准心投影方块名称；
   atomic、mutex、字符串和容器均不向调用者暴露，`PlaceHelper`/`PlacementExecutor` 只通过具体操作读写。
 - `place/PlacementExecutor` 承载轻松/手动/范围放置的规划与执行（背包查找、交换、放置事务、
-  点击候选与预测匹配）；游戏 Hook 留在 `PlaceHelper`，只调用 `tickEasyPlace`/`tickRangePlace`。
+  点击候选与预测匹配），不直接读取操作系统物理输入；游戏 Hook 和右键物理状态边界留在 `PlaceHelper`，
+  只向 `PlacementState` 提交状态转换并调用 `tickEasyPlace`/`tickRangePlace`。
 - `input` 负责菜单期间的 Minecraft 输入边界：在 `MouseDevice`/`HIDControllerGameCoreDesktop` 输入源阻断游戏与原生页面输入；是否捕获统一读取 `StructureLoader::isMenuInputCaptured()`，不得在各输入入口分别组合 GUI 与过渡状态。
 - `plugin` 只把生命周期委托给 `app/AppKernel`，不承载业务逻辑。
 
@@ -315,7 +320,7 @@ LHolo/
 - `paletteEntries`：调色板项数量。
 - `generation`：每次成功加载递增，用于通知投影替换结构。
 - `renderBlocks`：仅包含至少一个可解析实体方块或液体的坐标。
-- `RenderBlock{x,y,z,block,liquid,blockEntityNbt}`：归一化局部坐标、可空实体方块指针、可空液体指针和可选的原生 Bedrock 方块实体 NBT。同一坐标可同时具有实体与液体，用于含水方块；`.mcstructure` 直接保留原生 NBT，`.litematic` 仅为已有明确转换规则的方块实体生成 NBT。
+- `RenderBlock{x,y,z,block,liquid,blockEntityNbt,materialIndex,liquidMaterialIndex}`：归一化局部坐标、可空实体方块指针、可空液体指针、可选的原生 Bedrock 方块实体 NBT，以及与材料清单稳定排序一致的实体/液体材料索引。同一坐标可同时具有实体与液体，用于含水方块；`.mcstructure` 直接保留原生 NBT，`.litematic` 仅为已有明确转换规则的方块实体生成 NBT。
 
 ### 4.2 `.mcstructure`
 
@@ -340,6 +345,7 @@ LHolo/
 - 水和岩浆使用贴图 proxy 单元壳，完全由 LHolo 自绘，不与原版世界或区块管线交互：仅 Missing（未放置）状态的液体格绘制半透明截顶外壳，最上层液体格顶面固定为原版源液体高度 8/9（`getHeightFromDepth()` 在 1.26 上对源液体的返回值不可靠，不再使用；逐格流动深度不参与视觉，只参与纠错比较），上方有同液体时侧壁满格；相邻同种液体剔除共享面；UV 取自 `BlockGraphics::getForBlock(liquid)->getTexture(0, 0)` 的 terrain atlas 水/岩浆贴图；水顶点色为原版蓝 #3F76E4（atlas 水贴图无色），岩浆白色顶点色保留贴图原色；alpha 跟随投影透明度；经 `liquidProxySectionMeshes` 独立网格在 alpha pass 用 `mMatBlendBlock` + terrain atlas 提交（与玻璃同路径），按 section 距离排序。静态贴图无波浪动画是已知限制。纯液体格的 Missing 不再叠加蓝色纠错面/描边（proxy 本身即提示），WrongType/WrongState 仍保留红/黄纠错面。`.litematic` 加载时液体路由到 `RenderBlock::liquid` 字段，与 `.mcstructure` 语义一致。
 - `.litematic` 加载时把 `getMaterial().isLiquid()` 的方块路由到 `RenderBlock::liquid` 字段，与 `.mcstructure` 语义一致。
 - 纠错分别比较 `BlockSource::getBlock()` 与 `getLiquidBlock()`。缺少液体判为“未放置”，液体类型错误判为“类型错误”，液体深度等状态不同判为“状态错误”。
+- 材料轴的完整视图仍显示没有材料索引的 Extra 世界方块；选择具体材料或材料范围时，Extra 因无法归属某项材料而隐藏。
 - 投影进度仍以结构坐标计数，而不是把同一坐标的实体层和液体层重复计数。
 
 不要重新引入 `tessellateLiquidInWorld()` 自行提交或把虚拟液体注入 `BlockSource`/区块管线的方案。前者已出现黑块、过曝和未知方块纹理，后者会让游戏逻辑读取到虚拟液体，污染客户端世界认知。当前唯一正式方案是上述 `liquidProxySectionMeshes` 贴图 proxy：它只进入 LHolo 自己的网格和渲染提交，不触发区块重建，也不修改世界。
@@ -611,7 +617,7 @@ HUD 每帧只读取原子计数，不查询世界、不遍历结构。
 
 ### 8.7 菜单输入保护开销
 
-`input/MenuInputGuard.cpp` 只 Hook 鼠标输入源和键盘按下/释放三个入口。菜单关闭时读取 `StructureLoader::isMenuInputCaptured()` 后立即进入原函数；不扫描方块、不分配内存、不加锁、不查询玩家、不写逐次日志。
+`input/MenuInputGuard.cpp` 只 Hook 鼠标输入源和键盘按下/释放三个入口。菜单关闭时只额外判断当前事件是否为投影已取得所有权的滚轮输入，随后立即进入原函数；不扫描方块、不分配内存、不加锁、不查询玩家、不写逐次日志。
 
 ---
 
@@ -642,7 +648,7 @@ GUI 是全屏 ImGui 窗口，不是切换 Minecraft 窗口模式。
 
 WndProc/Raw Input 只覆盖 Windows 消息边界，不能作为阻止 Minecraft 原生 UI 和游戏动作的唯一保证。当前在 Bedrock 输入源增加第二道边界：
 
-- `MouseDevice::feed` 与 `HIDControllerGameCoreDesktop::$onKeyDown/$onKeyUp` 是主路径；菜单可见或关闭过渡期间直接停止向原生 UI 分发，F11 例外并继续交给 Minecraft 的全屏切换生命周期。
+- `MouseDevice::feed` 与 `HIDControllerGameCoreDesktop::$onKeyDown/$onKeyUp` 是主路径；菜单可见或关闭过渡期间直接停止向原生 UI 分发，F11 例外并继续交给 Minecraft 的全屏切换生命周期。只有存在活动投影时才取得 Alt 按键所有权，按住 Alt 后也仅 `MouseAction::ActionWheel` 由投影移动取得所有权；没有投影时的 Alt，以及数字键、手柄和其他选槽路径均不受影响。
 - 打开菜单前向 Minecraft 补发的释放消息由 `MenuInputHandoffScope` 临时放行；禁止把所有 key-up/button-up 长期放行，否则原生按钮通常会在释放边沿触发，重新产生穿透。
 - 三个 Hook 的安装状态由 `MenuInputGuardStatus` 分别返回；单个 Hook 冲突不得伪装成整体成功，也不得导致菜单模块无法启用。
 - PreLoader/LeviLamina Hook 返回值是 0 成功、非 0 失败，禁止用 `< 0` 判断安装结果。
@@ -752,7 +758,10 @@ LeviLamina Hook：
 - `LocalPlayer::$tickWorld`（`place` 模块）：轻松、手动和范围放置的每 tick 驱动。
 - `GameMode::$startBuildBlock` / `$buildBlock` / `$stopBuildBlock`（`place` 模块）：手动模式命中真实方块时的右键按下、持续、释放状态及原版重复放置抑制。
 - `GameMode::$useItem`（`place` 模块）：手动模式指向空气时创建单次放置请求，使浮空投影方块也能进入放置链路。
-- `MouseDevice::feed` 与 `HIDControllerGameCoreDesktop::$onKeyDown/$onKeyUp`（`input` 模块）：菜单期间在 Bedrock 输入源阻止游戏和原生 UI 接收输入。
+- `MouseDevice::feed` 与 `HIDControllerGameCoreDesktop::$onKeyDown/$onKeyUp`（`input` 模块）：菜单期间在 Bedrock 输入源阻止游戏和原生 UI 接收输入；Alt 投影移动期间只阻止对应的滚轮动作进入原生热栏路径。
+
+`PlaceHelper` 分别记录上述放置 Hook 的安装结果，并且卸载时只逆序卸载成功安装的入口。Hook 返回值按
+PreLoader/LeviLamina 的约定处理：`0` 表示成功，任何非 `0` 值都表示失败；不得用 `< 0` 判断。
 
 新版本最容易变化的是成员函数符号、签名、调用层次和 render pass 时序，必须逐一验证，不能只以“Hook 安装成功”判断适配完成。
 
@@ -765,14 +774,14 @@ LeviLamina Hook：
 菜单“投影”页提供三种互斥模式：
 
 - 轻松放置：准心指向投影中的蓝色缺块位置（`correctionStates == Missing`）时自动放置。
-- 手动放置：准心定位规则相同，但只有按下/按住右键时才放置；命中真实方块时，首次按下立即尝试，持续按住经过 150 ms 初始延迟后每 120 ms 重复；指向空气中的浮空投影时，空气右键入口创建单次请求，避免缺少释放回调而遗留长按状态。
+- 手动放置：准心定位规则相同，但只有按下/按住右键时才放置；命中真实方块时，首次按下立即尝试，持续按住经过 150 ms 初始延迟后每 120 ms 重复；指向空气中的浮空投影时，空气右键入口创建同一幂等按下请求，重复 `$useItem` 回调不会重置初始延迟或重复首击。
 - 范围放置：每 tick 查询玩家周围配置半径（1～4）内的缺块，按距离从近到远选择一个满足触及距离、物品和原版放置预测的候选。
 
 三种模式都会在完整 36 格玩家背包中寻找对应物品；背包栏命中时先通过服务端同步的普通背包事务与当前快捷栏槽位交换，下一 tick 再放置。液体单元与隐藏层不参与放置。
 
 ### 12.2 实现要点
 
-- 驱动：直接 Hook `LocalPlayer::$tickWorld`，模拟线程每 tick 一次，不使用 LL 事件系统（与全项目 Hook 风格一致）。手动模式另外 Hook `GameMode::$startBuildBlock`、`$buildBlock` 和 `$stopBuildBlock` 获取命中真实方块时的右键按下、持续与释放状态，并阻止同一次操作被原版重复放置；指向空气时 Bedrock 不进入 build 链路，因此通过官方 `GameMode::$useItem(ItemStack&)` 入口创建单次请求。
+- 驱动：直接 Hook `LocalPlayer::$tickWorld`，模拟线程每 tick 一次，不使用 LL 事件系统（与全项目 Hook 风格一致）。手动模式另外 Hook `GameMode::$startBuildBlock`、`$buildBlock` 和 `$stopBuildBlock` 获取命中真实方块时的右键按下、持续与释放状态，并阻止同一次操作被原版重复放置；指向空气时 Bedrock 不进入 build 链路，因此通过官方 `GameMode::$useItem(ItemStack&)` 入口创建幂等按下请求。浮空路径可能缺少 `$stopBuildBlock`，所以右键物理释放仅在 `PlaceHelper` 的 tick Hook 边界补充检测；`PlacementExecutor` 只消费逻辑状态。
 - 定位：不能使用 `Level::getHitResult()`——那是原版射线，只命中真实世界方块，永远看不到 LHolo 自绘的投影幽灵。改为自身体素 DDA（Amanatides & Woo）射线：原点 `Actor::getEyePos()`、方向 `Actor::getViewVector(1.0f)`、上限 `LocalPlayer::getPickRange()`。逐格判定：真实方块挡住射线（此时检查其相机侧邻居是否为待放幽灵），投影 `Missing` 幽灵格直接作为放置目标；支持面用 `BlockPos::neighbor` + `Facing::getOpposite` 选取朝向相机、且为真实方块的邻居。
 - 投影查表：`Projection::queryProjection()`——一次锁 `gStateMutex` 内同时查 `expectedWorldBlocks`（期望块，液体/隐藏层返回 null）与 `expectedWorldBlockIndices`/`correctionStates`（是否 Missing）。DDA 每格只调一次，避免两次独立加锁；命中结果（含期望块指针）随 `ProjectionTarget` 一并返回，`tickEasyPlace` 不再二次查询。
 - 取物：遍历完整背包（36 格）用 `sameItemAndAux` 匹配。快捷栏命中直接 `Player::setSelectedSlot`；背包命中用 legacy `NormalTransaction`（`ComplexInventoryTransaction::fromType` + 两个 `InventoryAction`）把物品与当前选中格**交换**（服务器同步，不假设目标格为空，避免被 net 管理器回滚）。交换后本 tick 不放置，下一 tick 物品已在选中格、走单包快速路径——同 tick 立即放置会被服务器 net 记账滞后拒绝，再触发格锁反而更慢。服务器只接受选中快捷栏槽位的放置事务。

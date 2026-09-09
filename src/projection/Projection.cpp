@@ -123,7 +123,7 @@ std::optional<MaterialProgressKey> getMaterialProgressKey() {
         [](detail::ProjectionState& state, overlay::BoundsWireframe&)
             -> std::optional<MaterialProgressKey> {
             if (!state.enabled || !state.structure
-                || state.cachedLayerDisplayMode < 0 || state.cachedLayerAxis < 0
+                || !state.cachedLayerDisplayMode || !state.cachedLayerAxis
                 || state.correctionScanCursor != state.structure->renderBlocks.size()) {
                 return std::nullopt;
             }
@@ -131,9 +131,9 @@ std::optional<MaterialProgressKey> getMaterialProgressKey() {
                 state.structureGeneration,
                 state.activationGeneration,
                 state.progressRevision,
-                state.cachedLayerDisplayMode,
+                *state.cachedLayerDisplayMode,
                 state.cachedDisplayLayer,
-                state.cachedLayerAxis,
+                *state.cachedLayerAxis,
             };
         }
     );
@@ -161,11 +161,11 @@ std::optional<MaterialProgressSnapshot> captureMaterialProgress(
 
 bool isLayerVisible(
     int layer,
-    int layerDisplayMode,
+    structure::LayerDisplayMode layerDisplayMode,
     int displayLayer,
     int materialIndex,
     int secondaryMaterialIndex,
-    int layerAxis
+    structure::LayerAxis layerAxis
 ) {
     return detail::isLayerVisible(
         layer, layerDisplayMode, displayLayer,

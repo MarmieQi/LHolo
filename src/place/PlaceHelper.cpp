@@ -30,10 +30,8 @@
 #include "mc/client/game/ClientInstance.h"
 #include "mc/client/game/IClientInstance.h"
 #include "mc/client/player/LocalPlayer.h"
-#include "mc/world/ContainerID.h"
 #include "mc/world/gamemode/GameMode.h"
 #include "mc/world/actor/player/Player.h"
-#include "mc/world/actor/player/PlayerInventory.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
@@ -55,6 +53,16 @@ auto& logger() {
     return LHolo::getInstance().getSelf().getLogger();
 }
 
+struct PlaceHookStatus {
+    bool tick{};
+    bool manualStart{};
+    bool manualUseItem{};
+    bool manualStop{};
+    bool manualBuild{};
+};
+
+PlaceHookStatus gHookStatus;
+
 LL_TYPE_INSTANCE_HOOK(
     LocalPlayerEasyPlaceHook,
     ll::memory::HookPriority::Normal,
@@ -64,34 +72,14 @@ LL_TYPE_INSTANCE_HOOK(
     ::Tick const& currentTick
 ) {
     structure::detail::tickMaterialTracker(*this);
+    // Physical mouse state belongs to the game-input Hook boundary. The
+    // executor consumes only the resulting logical press state.
+    if (placementState().manualMode()
+        && (GetAsyncKeyState(VK_RBUTTON) & 0x8000) == 0) {
+        placementState().releaseManualPress();
+    }
     detail::tickEasyPlace();
     origin(currentTick);
-}
-
-// While the projection-offset hotkey is held, the wheel drives the projection
-// offset, but Bedrock still switches the hotbar through its own input pipeline
-// (not our WndProc). Suppress that change at its source:
-// PlayerInventory::selectSlot. Gated tightly — only the local player's
-// inventory, only while the offset hotkey is held with a projection loaded
-// (structure::scrollLockActive), and never for the mod's own placement slot
-// swaps (guarded by ModSlotSelectGuard).
-LL_TYPE_INSTANCE_HOOK(
-    PlayerInventorySelectSlotHook,
-    ll::memory::HookPriority::Normal,
-    PlayerInventory,
-    &PlayerInventory::selectSlot,
-    bool,
-    int          slot,
-    ::ContainerID containerId
-) {
-    if (!detail::modSlotSelectActive() && structure::scrollLockActive()) {
-        auto client = ll::service::getClientInstance();
-        auto* localPlayer = client ? client->getLocalPlayer() : nullptr;
-        if (localPlayer && this == &localPlayer->getSupplies()) {
-            return false;  // keep the held item; the wheel is driving the projection
-        }
-    }
-    return origin(slot, containerId);
 }
 
 // Returns true when manual mode is on and `gm` belongs to the local player, i.e.
@@ -106,8 +94,7 @@ bool isLocalManualBuild(GameMode& gm) {
 }
 
 void cancelPendingManualPress() {
-    placementState().setManualHeld(false);
-    placementState().setManualPlaceRequested(false);
+    placementState().cancelManualPress();
 }
 
 bool aimedBlockAcceptsRightClick(GameMode& gm, BlockPos const& pos) {
@@ -138,9 +125,7 @@ LL_TYPE_INSTANCE_HOOK(
         }
         auto const targetStatus = detail::manualTargetStatusUnderCrosshair();
         if (targetStatus == detail::ManualTargetStatus::Ready) {
-            placementState().setManualPressAt(GetTickCount64());
-            placementState().setManualHeld(true);
-            placementState().setManualPlaceRequested(true);
+            (void)placementState().beginManualPress(GetTickCount64());
         } else if (targetStatus == detail::ManualTargetStatus::MissingMaterial) {
             cancelPendingManualPress();
             structure::showActionHint("背包中没有对应的投影方块");
@@ -170,16 +155,13 @@ LL_TYPE_INSTANCE_HOOK(
             cancelPendingManualPress();
             return origin(item);
         }
-        placementState().setManualPressAt(GetTickCount64());
         if (targetStatus == detail::ManualTargetStatus::Ready) {
             // Mark the button held so holding right-click over a floating
             // projection keeps placing (the tick's typematic repeat). The tick
             // clears the hold when the right button is actually released.
-            placementState().setManualHeld(true);
-            placementState().setManualPlaceRequested(true);
+            (void)placementState().beginManualPress(GetTickCount64());
         } else {
-            placementState().setManualHeld(false);
-            placementState().setManualPlaceRequested(false);
+            placementState().cancelManualPress();
             structure::showActionHint("背包中没有对应的投影方块");
         }
         return false;
@@ -196,7 +178,7 @@ LL_TYPE_INSTANCE_HOOK(
     void
 ) {
     if (isLocalManualBuild(*this)) {
-        placementState().setManualHeld(false);
+        placementState().releaseManualPress();
     }
     origin();
 }
@@ -270,10 +252,7 @@ void setManualMode(bool manual) {
     if (!manual) {
         // A release hook can be missed while menus or mode switches are active.
         // Never carry a stale press/hold request into the next manual session.
-        placementState().setManualHeld(false);
-        placementState().setManualPlaceRequested(false);
-        placementState().setManualPressAt(0);
-        placementState().setLastManualPlaceAt(0);
+        placementState().resetManualInput();
     }
     placementState().setManualMode(manual);
 }
@@ -295,35 +274,37 @@ void resetWorldSession() {
 }
 
 bool installHook() {
-    if (LocalPlayerEasyPlaceHook::hook() < 0) {
+    gHookStatus.tick = LocalPlayerEasyPlaceHook::hook() == 0;
+    if (!gHookStatus.tick) {
         logger().error("Failed to install easy-place tick hook");
         return false;
     }
-    if (GameModeStartBuildHook::hook() < 0) {
+    gHookStatus.manualStart = GameModeStartBuildHook::hook() == 0;
+    if (!gHookStatus.manualStart) {
         logger().warn("Failed to install manual-place start hook; manual mode will be unavailable");
     }
-    if (GameModeUseItemHook::hook() < 0) {
+    gHookStatus.manualUseItem = GameModeUseItemHook::hook() == 0;
+    if (!gHookStatus.manualUseItem) {
         logger().warn("Failed to install manual-place air-use hook; floating manual placement will be unavailable");
     }
-    if (GameModeStopBuildHook::hook() < 0) {
+    gHookStatus.manualStop = GameModeStopBuildHook::hook() == 0;
+    if (!gHookStatus.manualStop) {
         logger().warn("Failed to install manual-place stop hook; manual mode may keep repeating");
     }
-    if (GameModeBuildBlockHook::hook() < 0) {
+    gHookStatus.manualBuild = GameModeBuildBlockHook::hook() == 0;
+    if (!gHookStatus.manualBuild) {
         logger().warn("Failed to install manual-place build hook; manual mode may double-place");
-    }
-    if (PlayerInventorySelectSlotHook::hook() < 0) {
-        logger().warn("Failed to install selectSlot hook; Alt+wheel may still scroll the hotbar");
     }
     return true;
 }
 
 void uninstallHook() {
-    PlayerInventorySelectSlotHook::unhook();
-    GameModeBuildBlockHook::unhook();
-    GameModeStopBuildHook::unhook();
-    GameModeUseItemHook::unhook();
-    GameModeStartBuildHook::unhook();
-    LocalPlayerEasyPlaceHook::unhook();
+    if (gHookStatus.manualBuild) GameModeBuildBlockHook::unhook();
+    if (gHookStatus.manualStop) GameModeStopBuildHook::unhook();
+    if (gHookStatus.manualUseItem) GameModeUseItemHook::unhook();
+    if (gHookStatus.manualStart) GameModeStartBuildHook::unhook();
+    if (gHookStatus.tick) LocalPlayerEasyPlaceHook::unhook();
+    gHookStatus = {};
 }
 
 } // namespace lholo::place

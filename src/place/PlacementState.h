@@ -70,11 +70,17 @@ public:
     void setAutoPlacementBreakCooldownSeconds(int seconds);
 
     [[nodiscard]] bool manualHeld() const;
-    void setManualHeld(bool held);
+    // Starts one logical right-button press. Repeated Bedrock callbacks while
+    // the same press is held are idempotent and must not reset repeat timing.
+    [[nodiscard]] bool beginManualPress(std::uint64_t time);
+    // A release keeps an unconsumed quick-tap request alive for the tick loop.
+    void releaseManualPress();
+    // Cancels both the held state and any unconsumed first-placement request.
+    void cancelManualPress();
+    void resetManualInput();
     [[nodiscard]] bool manualPlaceRequested() const;
     void setManualPlaceRequested(bool requested);
     [[nodiscard]] std::uint64_t manualPressAt() const;
-    void setManualPressAt(std::uint64_t time);
     [[nodiscard]] std::uint64_t lastManualPlaceAt() const;
     void setLastManualPlaceAt(std::uint64_t time);
 

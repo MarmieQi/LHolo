@@ -7,6 +7,7 @@
 #pragma once
 
 #include "projection/mesh/ProjectionSectionBuilder.h"
+#include "structure/LayerDisplayTypes.h"
 
 class BlockSource;
 class LegacyStructureSettings;
@@ -24,9 +25,9 @@ void processProjectionOpaqueFrame(
     Vec3 const&                           cameraPosition,
     LegacyStructureSettings const&        transformSettings,
     ProjectionSectionBuildSettings const& buildSettings,
-    int                                   layerDisplayMode,
+    structure::LayerDisplayMode           layerDisplayMode,
     int                                   displayLayer,
-    int                                   layerAxis
+    structure::LayerAxis                  layerAxis
 );
 
 } // namespace lholo::projection::detail

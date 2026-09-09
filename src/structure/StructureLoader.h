@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include "structure/LayerDisplayTypes.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -116,14 +118,12 @@ int getMirrorMode();
 int getOffsetX();
 int getOffsetY();
 int getOffsetZ();
-int getLayerDisplayMode();
+LayerDisplayMode getLayerDisplayMode();
 int getDisplayLayer();
-int getLayerAxis();
+LayerAxis getLayerAxis();
 void recordProjectionAnchor(int x, int y, int z);
-// True when the wheel should not switch the hotbar: a projection is loaded and
-// the fixed Alt trigger is held. The selectSlot hook (place/) consults
-// this so the hotbar lock and the projection move engage under exactly the
-// same condition.
+// True when the Bedrock mouse-input boundary should give the wheel to projection
+// movement: a projection is loaded and the fixed Alt trigger is held.
 bool scrollLockActive();
 void clear();
 // Reload the last saved projection at its saved anchor/transform. Standalone so

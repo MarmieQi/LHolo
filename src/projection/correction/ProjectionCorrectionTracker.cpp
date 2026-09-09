@@ -93,9 +93,9 @@ CorrectionProgressChanges updateCorrectionTracker(
     int                             offsetX,
     int                             offsetY,
     int                             offsetZ,
-    int                             layerDisplayMode,
+    structure::LayerDisplayMode     layerDisplayMode,
     int                             displayLayer,
-    int                             layerAxis
+    structure::LayerAxis            layerAxis
 ) {
     CorrectionProgressChanges changes;
     auto const totalBlocks = state.structure->renderBlocks.size();
@@ -108,7 +108,8 @@ CorrectionProgressChanges updateCorrectionTracker(
     auto const updateCorrection = [&](std::size_t index) {
         auto const& entry = state.structure->renderBlocks[index];
         auto const visible = isLayerVisible(
-            layerAxis == 1 ? entry.x : entry.y, layerDisplayMode, displayLayer,
+            layerAxis == structure::LayerAxis::X ? entry.x : entry.y,
+            layerDisplayMode, displayLayer,
             entry.materialIndex, entry.liquidMaterialIndex, layerAxis
         );
         auto const transformed = transformStructurePosition(
@@ -299,7 +300,7 @@ CorrectionProgressChanges updateCorrectionTracker(
         if (isStructureCellCovered(*state.structure, local)
             && !hasExpectedLocalCell(local)) {
             auto const visible = isLayerVisible(
-                layerAxis == 1 ? local.x : local.y,
+                layerAxis == structure::LayerAxis::X ? local.x : local.y,
                 layerDisplayMode,
                 displayLayer,
                 -1,
@@ -347,7 +348,7 @@ CorrectionProgressChanges updateCorrectionTracker(
             box.z + static_cast<int>(z),
         };
         auto const visible = isLayerVisible(
-            layerAxis == 1 ? local.x : local.y,
+            layerAxis == structure::LayerAxis::X ? local.x : local.y,
             layerDisplayMode,
             displayLayer,
             -1,
@@ -399,7 +400,7 @@ CorrectionProgressChanges updateCorrectionTracker(
                         continue;
                     }
                     auto const visible = isLayerVisible(
-                        layerAxis == 1 ? local.x : local.y,
+                        layerAxis == structure::LayerAxis::X ? local.x : local.y,
                         layerDisplayMode,
                         displayLayer,
                         -1,

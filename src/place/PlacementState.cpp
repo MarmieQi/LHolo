@@ -33,7 +33,28 @@ void PlacementState::setAutoPlacementBreakCooldownSeconds(int seconds) {
 }
 
 bool PlacementState::manualHeld() const { return mManualHeld.load(std::memory_order_acquire); }
-void PlacementState::setManualHeld(bool held) { mManualHeld.store(held, std::memory_order_release); }
+
+bool PlacementState::beginManualPress(std::uint64_t time) {
+    if (mManualHeld.exchange(true, std::memory_order_acq_rel)) return false;
+    mManualPressAt.store(time, std::memory_order_relaxed);
+    mManualPlaceRequested.store(true, std::memory_order_release);
+    return true;
+}
+
+void PlacementState::releaseManualPress() {
+    mManualHeld.store(false, std::memory_order_release);
+}
+
+void PlacementState::cancelManualPress() {
+    mManualHeld.store(false, std::memory_order_relaxed);
+    mManualPlaceRequested.store(false, std::memory_order_release);
+}
+
+void PlacementState::resetManualInput() {
+    cancelManualPress();
+    mManualPressAt.store(0, std::memory_order_relaxed);
+    mLastManualPlaceAt.store(0, std::memory_order_release);
+}
 
 bool PlacementState::manualPlaceRequested() const {
     return mManualPlaceRequested.load(std::memory_order_acquire);
@@ -44,9 +65,6 @@ void PlacementState::setManualPlaceRequested(bool requested) {
 
 std::uint64_t PlacementState::manualPressAt() const {
     return mManualPressAt.load(std::memory_order_acquire);
-}
-void PlacementState::setManualPressAt(std::uint64_t time) {
-    mManualPressAt.store(time, std::memory_order_release);
 }
 
 std::uint64_t PlacementState::lastManualPlaceAt() const {
@@ -157,10 +175,7 @@ void PlacementState::setAimedProjectedBlockName(std::string name) {
 }
 
 void PlacementState::resetDimensionSession() {
-    mManualHeld.store(false, std::memory_order_release);
-    mManualPlaceRequested.store(false, std::memory_order_release);
-    mManualPressAt.store(0, std::memory_order_release);
-    mLastManualPlaceAt.store(0, std::memory_order_release);
+    resetManualInput();
     mNextPlaceAt.store(0, std::memory_order_release);
     mNextSwapAt.store(0, std::memory_order_release);
     mNextAutoPlacementSuppressionExpiry.store(0, std::memory_order_release);

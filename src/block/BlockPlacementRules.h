@@ -37,6 +37,46 @@ struct PlacementItem {
     return name;
 }
 
+// Maps a placeable block name to a differently named inventory item. An empty
+// result means the block and its inventory item use the same name.
+[[nodiscard]] inline std::string_view placementItemName(std::string_view blockName) {
+    if (blockName == "minecraft:redstone_wire") return "minecraft:redstone";
+    if (blockName == "minecraft:unpowered_comparator"
+        || blockName == "minecraft:powered_comparator") {
+        return "minecraft:comparator";
+    }
+    if (blockName == "minecraft:unpowered_repeater"
+        || blockName == "minecraft:powered_repeater") {
+        return "minecraft:repeater";
+    }
+    if (blockName == "minecraft:unlit_redstone_torch") return "minecraft:redstone_torch";
+    return {};
+}
+
+// Returns the stable identity used to group a runtime block in material lists
+// and material-layer projection. An empty key means the runtime-only block
+// does not represent a collectible material. This function deliberately uses
+// names only, so structure parsing never has to access the item registry.
+[[nodiscard]] inline std::string materialKey(std::string_view blockName) {
+    if (blockName == "minecraft:bubble_column"
+        || blockName == "minecraft:piston_arm_collision"
+        || blockName == "minecraft:sticky_piston_arm_collision"
+        || blockName == "minecraft:moving_block") {
+        return {};
+    }
+    if (blockName == "minecraft:water" || blockName == "minecraft:flowing_water") {
+        return "minecraft:water";
+    }
+    if (blockName == "minecraft:lava" || blockName == "minecraft:flowing_lava") {
+        return "minecraft:lava";
+    }
+
+    auto const baseName = placeableBaseName(blockName);
+    auto const itemName = placementItemName(baseName);
+    auto const identity = itemName.empty() ? baseName : itemName;
+    return "item:" + std::string{identity};
+}
+
 // Builds the neutral inventory item used to place a block. World orientation
 // states are intentionally not copied into the item stack.
 [[nodiscard]] ItemStack makePlacementItem(Block const& block);

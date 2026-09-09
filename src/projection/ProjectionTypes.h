@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "structure/LayerDisplayTypes.h"
+
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -36,9 +38,9 @@ struct MaterialProgressKey {
     std::uint64_t structureGeneration{};
     std::uint64_t activationGeneration{};
     std::uint64_t progressRevision{};
-    int           layerDisplayMode{};
+    structure::LayerDisplayMode layerDisplayMode{structure::LayerDisplayMode::All};
     int           displayLayer{};
-    int           layerAxis{};
+    structure::LayerAxis        layerAxis{structure::LayerAxis::Y};
 
     bool operator==(MaterialProgressKey const&) const = default;
 };

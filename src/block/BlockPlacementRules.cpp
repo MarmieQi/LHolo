@@ -10,28 +10,11 @@
 #include <cstddef>
 
 namespace lholo::block {
-namespace {
-
-char const* placingItemName(std::string_view blockName) {
-    if (blockName == "minecraft:redstone_wire") return "minecraft:redstone";
-    if (blockName == "minecraft:unpowered_comparator"
-        || blockName == "minecraft:powered_comparator") {
-        return "minecraft:comparator";
-    }
-    if (blockName == "minecraft:unpowered_repeater"
-        || blockName == "minecraft:powered_repeater") {
-        return "minecraft:repeater";
-    }
-    if (blockName == "minecraft:unlit_redstone_torch") return "minecraft:redstone_torch";
-    return nullptr;
-}
-
-} // namespace
 
 ItemStack makePlacementItem(Block const& block) {
     std::string const blockName{placeableBaseName(block.getTypeName())};
-    char const* const itemName = placingItemName(blockName);
-    std::string_view const name = itemName ? std::string_view{itemName} : std::string_view{blockName};
+    auto const itemName = placementItemName(blockName);
+    std::string_view const name = itemName.empty() ? std::string_view{blockName} : itemName;
     return ItemStack(name, 1, 0, nullptr);
 }
 

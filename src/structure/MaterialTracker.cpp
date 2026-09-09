@@ -124,29 +124,19 @@ std::vector<MaterialRequirement> resolveMaterials(
         if (!blockValue || blockCount == 0) return;
 
         std::string const typeName{blockValue->getTypeName()};
-        if (typeName == "minecraft:bubble_column"
-            || typeName == "minecraft:piston_arm_collision"
-            || typeName == "minecraft:sticky_piston_arm_collision"
-            || typeName == "minecraft:moving_block") {
-            return;
-        }
-
-        std::string key;
+        auto const key = block::materialKey(typeName);
+        if (key.empty()) return;
         MaterialRequirement requirement;
         requirement.typeName = typeName;
         if (typeName == "minecraft:water" || typeName == "minecraft:flowing_water") {
-            key = "minecraft:water";
             requirement.displayName = "水";
         } else if (typeName == "minecraft:lava" || typeName == "minecraft:flowing_lava") {
-            key = "minecraft:lava";
             requirement.displayName = "熔岩";
         } else if (auto const item = block::resolvePlacementItem(*blockValue); item.valid) {
-            key = "item:" + item.itemId;
             requirement.displayName = item.displayName;
             requirement.itemId = item.itemId;
             requirement.stackSize = item.stackSize;
         } else {
-            key = typeName;
             requirement.displayName = localizedBlockName(*blockValue, localeCode);
         }
 
@@ -167,18 +157,21 @@ std::vector<MaterialRequirement> resolveMaterials(
     std::vector<MaterialRequirement> materials;
     materials.reserve(byType.size() + byLiquidType.size());
     auto appendSorted = [&materials](auto& source) {
-        std::vector<MaterialRequirement> sorted;
+        std::vector<std::pair<std::string, MaterialRequirement>> sorted;
         sorted.reserve(source.size());
-        for (auto& entry : source) sorted.push_back(std::move(entry.second));
+        for (auto& [key, requirement] : source) {
+            sorted.emplace_back(key, std::move(requirement));
+        }
         std::sort(sorted.begin(), sorted.end(), [](auto const& left, auto const& right) {
-            if (left.count != right.count) return left.count > right.count;
-            return left.typeName < right.typeName;
+            if (left.second.count != right.second.count) {
+                return left.second.count > right.second.count;
+            }
+            return left.first < right.first;
         });
-        materials.insert(
-            materials.end(),
-            std::make_move_iterator(sorted.begin()),
-            std::make_move_iterator(sorted.end())
-        );
+        for (auto& [key, requirement] : sorted) {
+            (void)key;
+            materials.push_back(std::move(requirement));
+        }
     };
     appendSorted(byType);
     appendSorted(byLiquidType);
@@ -209,7 +202,7 @@ MaterialHudResult countMaterialHud(MaterialHudInput input) {
     for (std::size_t index = 0; index < blocks.size(); ++index) {
         if (input.progressCorrect[index] != 0) continue;
         auto const& entry = blocks[index];
-        auto const layer = input.key.layerAxis == 1 ? entry.x : entry.y;
+        auto const layer = input.key.layerAxis == LayerAxis::X ? entry.x : entry.y;
         if (!projection::isLayerVisible(
             layer, input.key.layerDisplayMode, input.key.displayLayer,
                 entry.materialIndex, entry.liquidMaterialIndex, input.key.layerAxis

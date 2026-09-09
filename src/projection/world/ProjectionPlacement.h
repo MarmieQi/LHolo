@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "structure/LayerDisplayTypes.h"
+
 class BlockActorRenderDispatcher;
 class BlockSource;
 class LegacyStructureSettings;
@@ -20,9 +22,9 @@ struct ProjectionPlacementSettings {
     int  offsetX{};
     int  offsetY{};
     int  offsetZ{};
-    int  layerDisplayMode{};
+    structure::LayerDisplayMode layerDisplayMode{structure::LayerDisplayMode::All};
     int  displayLayer{};
-    int  layerAxis{};
+    structure::LayerAxis layerAxis{structure::LayerAxis::Y};
     bool identityTransform{};
 };
 

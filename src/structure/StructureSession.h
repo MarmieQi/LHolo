@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "structure/LayerDisplayTypes.h"
 #include "structure/StructureLoader.h"
 
 #include <atomic>
@@ -22,9 +23,9 @@ struct StructureTransformSnapshot {
     int offsetX{};
     int offsetY{};
     int offsetZ{};
-    int layerDisplayMode{};
+    LayerDisplayMode layerDisplayMode{LayerDisplayMode::All};
     int displayLayer{};
-    int layerAxis{};
+    LayerAxis layerAxis{LayerAxis::Y};
 };
 
 struct SavedProjectionSnapshot {
@@ -73,9 +74,9 @@ public:
     bool setOffsetX(int value);
     bool setOffsetY(int value);
     bool setOffsetZ(int value);
-    bool setLayerDisplayMode(int value);
+    bool setLayerDisplayMode(LayerDisplayMode value);
     bool setDisplayLayer(int value);
-    bool setLayerAxis(int value);
+    bool setLayerAxis(LayerAxis value);
     void adjustOffsets(int deltaX, int deltaY, int deltaZ);
     bool adjustDisplayLayer(int delta);
 
@@ -120,6 +121,6 @@ private:
     std::atomic_int  mSavedLayerAxis{0};
 };
 
-int maxLayerFor(LoadedStructure const& structure, int axis);
+int maxLayerFor(LoadedStructure const& structure, LayerAxis axis);
 
 } // namespace lholo::structure::detail

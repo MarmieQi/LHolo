@@ -100,20 +100,30 @@ void testLayoutRules() {
     LHOLO_CHECK(!isStructureCellCovered(loaded, BlockPos{2, 0, 2}));
     LHOLO_CHECK(!isStructureCellCovered(loaded, BlockPos{4, 0, 4}));
 
-    LHOLO_CHECK(isLayerVisible(3, 0, 0));
-    LHOLO_CHECK(!isLayerVisible(3, 1, 2));
-    LHOLO_CHECK(isLayerVisible(2, 1, 2));
-    LHOLO_CHECK(isLayerVisible(2, 2, 3));
-    LHOLO_CHECK(!isLayerVisible(4, 2, 3));
-    LHOLO_CHECK(isLayerVisible(4, 3, 3));
-    LHOLO_CHECK(!isLayerVisible(2, 3, 3));
-    LHOLO_CHECK(isLayerVisible(0, 0, 0, 2, -1, 2));
-    LHOLO_CHECK(isLayerVisible(0, 1, 2, 2, -1, 2));
-    LHOLO_CHECK(!isLayerVisible(0, 1, 1, 2, -1, 2));
-    LHOLO_CHECK(isLayerVisible(0, 2, 2, 1, 3, 2));
-    LHOLO_CHECK(!isLayerVisible(0, 2, 2, 3, 4, 2));
-    LHOLO_CHECK(isLayerVisible(0, 3, 3, -1, 3, 2));
-    LHOLO_CHECK(!isLayerVisible(0, 3, 2, 1, 1, 2));
+    using lholo::structure::LayerAxis;
+    using lholo::structure::LayerDisplayMode;
+    LHOLO_CHECK(lholo::structure::layerAxisFromInt(-1) == LayerAxis::Y);
+    LHOLO_CHECK(lholo::structure::layerAxisFromInt(99) == LayerAxis::Material);
+    LHOLO_CHECK(lholo::structure::layerDisplayModeFromInt(-1) == LayerDisplayMode::All);
+    LHOLO_CHECK(lholo::structure::layerDisplayModeFromInt(99) == LayerDisplayMode::FromCurrent);
+    LHOLO_CHECK(lholo::structure::toInt(LayerAxis::Material) == 2);
+    LHOLO_CHECK(lholo::structure::toInt(LayerDisplayMode::FromCurrent) == 3);
+    LHOLO_CHECK(isLayerVisible(3, LayerDisplayMode::All, 0));
+    LHOLO_CHECK(!isLayerVisible(3, LayerDisplayMode::Single, 2));
+    LHOLO_CHECK(isLayerVisible(2, LayerDisplayMode::Single, 2));
+    LHOLO_CHECK(isLayerVisible(2, LayerDisplayMode::UpToCurrent, 3));
+    LHOLO_CHECK(!isLayerVisible(4, LayerDisplayMode::UpToCurrent, 3));
+    LHOLO_CHECK(isLayerVisible(4, LayerDisplayMode::FromCurrent, 3));
+    LHOLO_CHECK(!isLayerVisible(2, LayerDisplayMode::FromCurrent, 3));
+    LHOLO_CHECK(isLayerVisible(0, LayerDisplayMode::All, 0, 2, -1, LayerAxis::Material));
+    LHOLO_CHECK(isLayerVisible(0, LayerDisplayMode::Single, 2, 2, -1, LayerAxis::Material));
+    LHOLO_CHECK(!isLayerVisible(0, LayerDisplayMode::Single, 1, 2, -1, LayerAxis::Material));
+    LHOLO_CHECK(isLayerVisible(0, LayerDisplayMode::UpToCurrent, 2, 1, 3, LayerAxis::Material));
+    LHOLO_CHECK(!isLayerVisible(0, LayerDisplayMode::UpToCurrent, 2, 3, 4, LayerAxis::Material));
+    LHOLO_CHECK(isLayerVisible(0, LayerDisplayMode::FromCurrent, 3, -1, 3, LayerAxis::Material));
+    LHOLO_CHECK(!isLayerVisible(0, LayerDisplayMode::FromCurrent, 2, 1, 1, LayerAxis::Material));
+    LHOLO_CHECK(isLayerVisible(0, LayerDisplayMode::All, 0, -1, -1, LayerAxis::Material));
+    LHOLO_CHECK(!isLayerVisible(0, LayerDisplayMode::Single, 0, -1, -1, LayerAxis::Material));
 
     LHOLO_CHECK(renderBucketFor(BlockRenderLayer::RenderlayerOpaque) == RenderBucket::Opaque);
     LHOLO_CHECK(renderBucketFor(BlockRenderLayer::RenderlayerSeasonsOpaque) == RenderBucket::Opaque);
@@ -189,7 +199,7 @@ void testSettingsStore() {
         std::ifstream saved(path);
         std::ostringstream contents;
         contents << saved.rdbuf();
-        LHOLO_CHECK(contents.str().find("\"version\": 10") != std::string::npos);
+        LHOLO_CHECK(contents.str().find("\"version\": 11") != std::string::npos);
         LHOLO_CHECK(contents.str().find("toggleManualHotkey") == std::string::npos);
         LHOLO_CHECK(contents.str().find("toggleEasyHotkey") == std::string::npos);
         LHOLO_CHECK(contents.str().find("toggleRangeHotkey") == std::string::npos);
@@ -233,6 +243,8 @@ void testSettingsStore() {
 }
 
 void testStructureSession() {
+    using lholo::structure::LayerAxis;
+    using lholo::structure::LayerDisplayMode;
     using lholo::structure::detail::SavedProjectionSnapshot;
     using lholo::structure::detail::StructureSession;
 
@@ -259,9 +271,9 @@ void testStructureSession() {
     LHOLO_CHECK(session.setMirror(1));
     LHOLO_CHECK(session.setOffsetX(12));
     LHOLO_CHECK(session.setOffsetY(-4));
-    LHOLO_CHECK(session.setLayerDisplayMode(1));
+    LHOLO_CHECK(session.setLayerDisplayMode(LayerDisplayMode::Single));
     LHOLO_CHECK(session.setDisplayLayer(4));
-    LHOLO_CHECK(session.setLayerAxis(1));
+    LHOLO_CHECK(session.setLayerAxis(LayerAxis::X));
 
     snapshot = session.snapshot();
     LHOLO_CHECK(snapshot.loaded == loaded);
@@ -285,16 +297,16 @@ void testStructureSession() {
     layered->sizeY = 8;
     layered->sizeZ = 4;
     session.replaceLoaded(layered, "layered.mcstructure", "layered");
-    session.setLayerDisplayMode(2);
+    session.setLayerDisplayMode(LayerDisplayMode::UpToCurrent);
     session.setDisplayLayer(7);
-    session.setLayerAxis(0);
+    session.setLayerAxis(LayerAxis::Y);
     session.recordProjectionAnchor(40, 50, 60);
     session.clearLoaded("closed");
     session.setDisplayLayer(0); // Empty-menu clamping must not alter the saved layer.
     auto const layeredSaved = session.savedProjection();
-    LHOLO_CHECK(layeredSaved.transform.layerDisplayMode == 2);
+    LHOLO_CHECK(layeredSaved.transform.layerDisplayMode == LayerDisplayMode::UpToCurrent);
     LHOLO_CHECK(layeredSaved.transform.displayLayer == 7);
-    LHOLO_CHECK(layeredSaved.transform.layerAxis == 0);
+    LHOLO_CHECK(layeredSaved.transform.layerAxis == LayerAxis::Y);
 
     session.setLayerDisplayMode(layeredSaved.transform.layerDisplayMode);
     session.setDisplayLayer(layeredSaved.transform.displayLayer);
@@ -318,10 +330,9 @@ void testPlacementState() {
     state.setManualMode(true);
     state.setRadius(3);
     state.setAutoPlacementBreakCooldownSeconds(12);
-    state.setManualPressAt(100);
+    LHOLO_CHECK(state.beginManualPress(100));
+    LHOLO_CHECK(!state.beginManualPress(120));
     state.setLastManualPlaceAt(80);
-    state.setManualPlaceRequested(true);
-    state.setManualHeld(true);
     state.setNextPlaceAt(140);
     state.setNextSwapAt(150);
 
@@ -336,6 +347,11 @@ void testPlacementState() {
     LHOLO_CHECK(state.manualHeld());
     LHOLO_CHECK(state.nextPlaceAt() == 140);
     LHOLO_CHECK(state.nextSwapAt() == 150);
+    state.releaseManualPress();
+    LHOLO_CHECK(!state.manualHeld());
+    LHOLO_CHECK(state.manualPlaceRequested());
+    state.cancelManualPress();
+    LHOLO_CHECK(!state.manualPlaceRequested());
 
     constexpr std::int64_t recentCell = 0x123456789LL;
     state.recordRecentPlacement(recentCell, 100, 150);
@@ -387,8 +403,7 @@ void testPlacementState() {
     LHOLO_CHECK(state.radius() == 3);
     LHOLO_CHECK(state.autoPlacementBreakCooldownSeconds() == 12);
 
-    state.setManualHeld(true);
-    state.setManualPlaceRequested(true);
+    LHOLO_CHECK(state.beginManualPress(450));
     state.setAimedProjectedBlockName("World projected block");
     state.suppressAutoPlacement(suppressedCell, 500);
     state.resetWorldSession();
@@ -613,9 +628,13 @@ void testHotkeyFormat() {
 
 void testBlockPlacementRules() {
     using lholo::block::placeableBaseName;
+    using lholo::block::materialKey;
     LHOLO_CHECK(placeableBaseName("minecraft:lit_redstone_lamp") == "minecraft:redstone_lamp");
     LHOLO_CHECK(placeableBaseName("minecraft:powered_repeater") == "minecraft:unpowered_repeater");
     LHOLO_CHECK(placeableBaseName("minecraft:stone") == "minecraft:stone");
+    LHOLO_CHECK(materialKey("minecraft:powered_repeater") == "item:minecraft:repeater");
+    LHOLO_CHECK(materialKey("minecraft:flowing_water") == "minecraft:water");
+    LHOLO_CHECK(materialKey("minecraft:moving_block").empty());
 }
 
 void testJavaTextComponents() {

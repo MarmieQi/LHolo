@@ -123,28 +123,32 @@ bool isStructureCellCovered(
 
 bool isLayerVisible(
     int layer,
-    int layerDisplayMode,
+    structure::LayerDisplayMode layerDisplayMode,
     int displayLayer,
     int materialIndex,
     int secondaryMaterialIndex,
-    int layerAxis
+    structure::LayerAxis layerAxis
 ) {
-    if (layerAxis == 2) {
+    if (layerAxis == structure::LayerAxis::Material) {
+        // Full material view is still a full projection view. Extra world
+        // blocks have no schematic material index, but correction must not
+        // disappear merely because the UI grouping is set to materials.
+        if (layerDisplayMode == structure::LayerDisplayMode::All) return true;
         auto const materialVisible = [&](int index) {
             if (index < 0) return false;
             switch (layerDisplayMode) {
-            case 1: return index == displayLayer;
-            case 2: return index <= displayLayer;
-            case 3: return index >= displayLayer;
+            case structure::LayerDisplayMode::Single: return index == displayLayer;
+            case structure::LayerDisplayMode::UpToCurrent: return index <= displayLayer;
+            case structure::LayerDisplayMode::FromCurrent: return index >= displayLayer;
             default: return true;
             }
         };
         return materialVisible(materialIndex) || materialVisible(secondaryMaterialIndex);
     }
     switch (layerDisplayMode) {
-    case 1: return layer == displayLayer;
-    case 2: return layer <= displayLayer;
-    case 3: return layer >= displayLayer;
+    case structure::LayerDisplayMode::Single: return layer == displayLayer;
+    case structure::LayerDisplayMode::UpToCurrent: return layer <= displayLayer;
+    case structure::LayerDisplayMode::FromCurrent: return layer >= displayLayer;
     default: return true;
     }
 }

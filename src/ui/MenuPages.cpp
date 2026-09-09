@@ -2,6 +2,7 @@
 
 #include "ui/MenuPages.h"
 
+#include "structure/LayerDisplayTypes.h"
 #include "ui/MenuWidgets.h"
 
 #include <algorithm>
@@ -59,8 +60,11 @@ bool parseCaptureCoordinate(std::array<char, 16> const& text, int& value) {
 
 
 int maxLayer(MenuModel const& model) {
-    if (model.layerAxis == 2) return std::max(0, model.materialCount - 1);
-    return model.layerAxis == 1 ? model.maxLayerX : model.maxLayerY;
+    if (structure::layerAxisFromInt(model.layerAxis) == structure::LayerAxis::Material) {
+        return std::max(0, model.materialCount - 1);
+    }
+    return structure::layerAxisFromInt(model.layerAxis) == structure::LayerAxis::X
+        ? model.maxLayerX : model.maxLayerY;
 }
 
 void renderPathRow(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics) {
@@ -452,7 +456,10 @@ void renderRenderPage(MenuModel& model, MenuActions const& actions, UiMetrics co
 
     renderSection("##LayerSettings", "分层显示设置", metrics, [&] {
         static char const* axisNames[]{"Y 轴（水平分层）", "X 轴（纵向切片）", "按材料"};
-        static char const* modeNames[]{"完整结构", "单层", "当前层及以下", "当前层及以上"};
+        static char const* layerModeNames[]{"完整结构", "单层", "当前层及以下", "当前层及以上"};
+        static char const* materialModeNames[]{
+            "全部材料", "当前序号", "第 1 项至当前项", "当前项至最后一项"
+        };
         renderValueRow("分层轴", metrics, [&] {
             ImGui::SetNextItemWidth(adaptiveComboWidth(axisNames, 3));
             if (ImGui::Combo("##LayerAxis", &model.layerAxis, axisNames, 3)) {
@@ -460,16 +467,35 @@ void renderRenderPage(MenuModel& model, MenuActions const& actions, UiMetrics co
             }
         });
         renderValueRow("显示范围", metrics, [&] {
+            auto const modeNames = structure::layerAxisFromInt(model.layerAxis)
+                    == structure::LayerAxis::Material
+                ? materialModeNames : layerModeNames;
             ImGui::SetNextItemWidth(adaptiveComboWidth(modeNames, 4));
             ImGui::Combo("##LayerMode", &model.layerDisplayMode, modeNames, 4);
         });
-        renderSteppedInt("DisplayLayer", "当前层", model.displayLayer, 0, maxLayer(model), metrics);
+        if (structure::layerAxisFromInt(model.layerAxis) == structure::LayerAxis::Material) {
+            auto materialNumber = model.displayLayer + 1;
+            renderSteppedInt(
+                "DisplayMaterial", "当前材料序号", materialNumber,
+                1, maxLayer(model) + 1, metrics
+            );
+            model.displayLayer = materialNumber - 1;
+        } else {
+            renderSteppedInt(
+                "DisplayLayer", "当前层", model.displayLayer,
+                0, maxLayer(model), metrics
+            );
+        }
         if (!metrics.compact) ImGui::SameLine(0.0f, metrics.gap * 0.55f);
         ImGui::PushTextWrapPos(-1.0f);
-        if (model.layerAxis == 2) {
-            ImGui::TextDisabled("0 - %d（按材料清单顺序）", maxLayer(model));
+        if (structure::layerAxisFromInt(model.layerAxis) == structure::LayerAxis::Material) {
+            ImGui::TextDisabled("1 - %d（按材料清单顺序）", maxLayer(model) + 1);
         } else {
-            ImGui::TextDisabled("0 - %d（结构 %s 轴起点为 0）", maxLayer(model), model.layerAxis == 1 ? "X" : "Y");
+            ImGui::TextDisabled(
+                "0 - %d（结构 %s 轴起点为 0）",
+                maxLayer(model),
+                structure::layerAxisFromInt(model.layerAxis) == structure::LayerAxis::X ? "X" : "Y"
+            );
         }
         ImGui::PopTextWrapPos();
     });

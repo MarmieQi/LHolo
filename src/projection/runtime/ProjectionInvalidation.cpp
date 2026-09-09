@@ -74,7 +74,7 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
 
     auto const layerIsVisible = [&](structure::LoadedStructure::RenderBlock const& entry) {
         return isLayerVisible(
-            settings.layerAxis == 1 ? entry.x : entry.y,
+            settings.layerAxis == structure::LayerAxis::X ? entry.x : entry.y,
             settings.layerDisplayMode,
             settings.displayLayer,
             entry.materialIndex,
@@ -86,11 +86,12 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
     // visibility crossed the old/new boundary.
     if (result.layerChanged && !result.geometryTransformChanged) {
         auto const oldLayerVisible = [&](structure::LoadedStructure::RenderBlock const& entry) {
-            if (state.cachedLayerDisplayMode < 0 || state.cachedLayerAxis < 0) return false;
-            auto const layer = state.cachedLayerAxis == 1 ? entry.x : entry.y;
+            if (!state.cachedLayerDisplayMode || !state.cachedLayerAxis) return false;
+            auto const layer = *state.cachedLayerAxis == structure::LayerAxis::X
+                ? entry.x : entry.y;
             return isLayerVisible(
-                layer, state.cachedLayerDisplayMode, state.cachedDisplayLayer,
-                entry.materialIndex, entry.liquidMaterialIndex, state.cachedLayerAxis
+                layer, *state.cachedLayerDisplayMode, state.cachedDisplayLayer,
+                entry.materialIndex, entry.liquidMaterialIndex, *state.cachedLayerAxis
             );
         };
         for (std::size_t index = 0; index < state.structure->renderBlocks.size(); ++index) {

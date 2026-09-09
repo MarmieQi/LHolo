@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "structure/LayerDisplayTypes.h"
+
 #include <string_view>
 
 #include "projection/core/ProjectionInternalTypes.h"
@@ -67,11 +69,11 @@ bool isStructureCellCovered(
 
 bool isLayerVisible(
     int layer,
-    int layerDisplayMode,
+    structure::LayerDisplayMode layerDisplayMode,
     int displayLayer,
     int materialIndex = -1,
     int secondaryMaterialIndex = -1,
-    int layerAxis = 0
+    structure::LayerAxis layerAxis = structure::LayerAxis::Y
 );
 
 } // namespace lholo::projection::detail

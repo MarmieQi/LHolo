@@ -71,15 +71,6 @@
 
 namespace lholo::place {
 
-namespace detail {
-namespace {
-thread_local bool tModSlotSelect = false;
-}
-bool modSlotSelectActive() { return tModSlotSelect; }
-ModSlotSelectGuard::ModSlotSelectGuard() : mPrev(tModSlotSelect) { tModSlotSelect = true; }
-ModSlotSelectGuard::~ModSlotSelectGuard() { tModSlotSelect = mPrev; }
-} // namespace detail
-
 namespace {
 
 using detail::FailedPlanKey;
@@ -778,7 +769,7 @@ void tickRangePlaceImpl(LocalPlayer& player, PlacementContext const& placementCo
             placementState().setNextSwapAt(now + kSwapRetryMs);
             return;
         }
-        { detail::ModSlotSelectGuard g; player.setSelectedSlot(found.slot); }
+        player.setSelectedSlot(found.slot);
         if (placeBlock(player, target, found.slot, *found.item)) markPlaced(cell, now);
         return;
     }
@@ -839,18 +830,12 @@ void tickEasyPlaceImpl() {
     }
 
     // Single-crosshair placement: auto (轻松放置) or manual (手动放置), which are
-    // mutually exclusive in the UI. Manual mode places exactly one block per
-    // right-click press: startBuildBlock sets a one-shot request (consumed by
-    // the placement below); the buildBlock hook cancels the vanilla build so
-    // nothing is placed twice.
+    // mutually exclusive in the UI. Manual mode accepts the first block from
+    // the press request, then repeats after the hold delay; the buildBlock hook
+    // cancels vanilla placement so nothing is placed twice.
     bool const manualPlacement = placementState().manualMode();
     if (manualPlacement) {
         auto const nowManual = GetTickCount64();
-        // Reliable release detection: the game's stop hook can be missed for the
-        // air/useItem (floating projection) path, so clear the hold whenever the
-        // right button is physically up. This gates the typematic repeat below.
-        bool const rightHeld = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
-        if (!rightHeld) placementState().setManualHeld(false);
         bool allowed = false;
         // First block of a press: place it even if the button was already
         // released (a quick tap), until the request goes stale.
@@ -864,7 +849,7 @@ void tickEasyPlaceImpl() {
         // While the button stays held, pause for the initial delay and then
         // repeat at a steady rate (typematic), so a held right-click keeps
         // placing along the projection cells the crosshair sweeps over.
-        if (!allowed && placementState().manualHeld() && rightHeld
+        if (!allowed && placementState().manualHeld()
             && nowManual - placementState().manualPressAt() >= kManualInitialDelayMs
             && nowManual - placementState().lastManualPlaceAt() >= kManualRepeatIntervalMs) {
             allowed = true;
@@ -920,7 +905,7 @@ void tickEasyPlaceImpl() {
         placementState().setNextSwapAt(now + kSwapRetryMs);
         return;
     }
-    { detail::ModSlotSelectGuard g; player->setSelectedSlot(found.slot); }
+    player->setSelectedSlot(found.slot);
     if (!placeBlock(*player, placement, found.slot, *found.item)) return;
     markPlaced(placement.cell, now);
     // Manual repeat bookkeeping: record this placement and mark the current
