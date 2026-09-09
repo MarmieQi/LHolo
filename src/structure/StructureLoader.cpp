@@ -575,6 +575,13 @@ void renderHud() {
         if (showProjectedBlockName && !aimedProjectedBlock.empty()) {
             ImGui::Text("投影方块：%s", aimedProjectedBlock.c_str());
         }
+        // Show which assisted-placement mode (if any) is currently on.
+        char const* const placeMode = place::isManualMode() ? "手动放置"
+            : place::isEnabled() ? "轻松放置"
+            : place::isRangeEnabled() ? "范围放置" : nullptr;
+        if (placeMode) {
+            ImGui::TextColored(ImVec4(0.45f, 0.85f, 1.0f, 1.0f), "辅助放置：%s", placeMode);
+        }
         // Record our rect + corner so the material HUD (drawn right after) can
         // stack clear of us when it shares this corner, instead of overlapping.
         gProjectionHudLayout.frame = ImGui::GetFrameCount();
@@ -893,6 +900,17 @@ int getLayerAxis() { return detail::StructureSession::getInstance().transform().
 void recordProjectionAnchor(int x, int y, int z) {
     detail::StructureSession::getInstance().recordProjectionAnchor(x, y, z);
     saveSettings();
+}
+
+// Hotbar lock for the Alt+wheel projection offset: engages only while a
+// projection is loaded AND the projection-offset hotkey is held. Deliberately
+// reads the same event-tracked held state the wheel handler uses, so the lock
+// and the projection move engage under exactly the same condition and cost
+// nothing while idle. The selectSlot hook (place/) consults this to suppress
+// wheel-driven hotbar changes; the mod's own slot swaps are exempt via
+// ModSlotSelectGuard.
+bool scrollLockActive() {
+    return getLoaded() != nullptr && uiState().hotkeyHeld(kProjectionOffsetHotkeyIndex);
 }
 
 void restoreSavedProjection() {

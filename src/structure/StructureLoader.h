@@ -120,6 +120,11 @@ int getLayerDisplayMode();
 int getDisplayLayer();
 int getLayerAxis();
 void recordProjectionAnchor(int x, int y, int z);
+// True when the wheel should not switch the hotbar: a projection is loaded and
+// the projection-offset hotkey is held. The selectSlot hook (place/) consults
+// this so the hotbar lock and the projection move engage under exactly the
+// same condition.
+bool scrollLockActive();
 void clear();
 // Reload the last saved projection at its saved anchor/transform. Standalone so
 // both the menu action and the load hotkey can trigger it.
