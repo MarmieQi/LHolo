@@ -85,9 +85,7 @@ void cancelPendingManualPress() {
 bool aimedBlockAcceptsRightClick(GameMode& gm, BlockPos const& pos) {
     // Defer to Bedrock's official interaction classification so new vanilla and
     // custom interactive blocks do not require an LHolo name allow-list.
-    // isInteractiveBlock() was inlined out of Block; the virtual lives on the
-    // block type.
-    return gm.mPlayer.getDimensionBlockSource().getBlock(pos).getBlockType().isInteractiveBlock();
+    return gm.mPlayer.getDimensionBlockSource().getBlock(pos).isInteractiveBlock();
 }
 
 // Manual-mode press edge. If the aimed block is interactive (chest, repeater,

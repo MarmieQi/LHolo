@@ -12,7 +12,6 @@
 
 #include <memory>
 
-#include "mc/client/renderer/SupplementaryFieldAutoGenerationMode.h"
 #include "mc/client/renderer/Tessellator.h"
 #include "mc/client/renderer/block/BlockTessellator.h"
 #include "mc/world/level/BlockSource.h"
@@ -20,18 +19,6 @@
 
 namespace lholo::projection::detail {
 namespace {
-
-// 26.32: the packed-int color setters (color(int)/colorABGR(int)) were
-// inlined out. Feed the color as floats in LHolo's ABGR constant order
-// (r = low byte, a = high byte); the game packs the vertex color itself.
-void setColorAbgr(Tessellator& tessellator, std::uint32_t colorAbgr) {
-    tessellator.color(
-        static_cast<float>((colorAbgr >> 0) & 0xFF) / 255.0f,
-        static_cast<float>((colorAbgr >> 8) & 0xFF) / 255.0f,
-        static_cast<float>((colorAbgr >> 16) & 0xFF) / 255.0f,
-        static_cast<float>((colorAbgr >> 24) & 0xFF) / 255.0f
-    );
-}
 
 void ensureStructureBoundsMesh(
     ProjectionState& state,
@@ -56,12 +43,10 @@ void ensureStructureBoundsMesh(
     tessellator.begin(
         Tessellator::DebugContextCallback{}, mce::PrimitiveMode::LineList, 24, false
     );
-    // colorABGR() was inlined out of the 26.32 SDK; it only seeded the pending
-    // vertex color that the next vertex() consumes.
-    setColorAbgr(tessellator, 0xFFFFD633U);
+    tessellator.colorABGR(static_cast<int>(0xFFFFD633U));
     auto addBoundsEdge = [&](Vec3 const& first, Vec3 const& second) {
-        tessellator.vertex(first.x, first.y, first.z);
-        tessellator.vertex(second.x, second.y, second.z);
+        tessellator.vertex(first);
+        tessellator.vertex(second);
     };
     addBoundsEdge({x0,y0,z0},{x1,y0,z0}); addBoundsEdge({x1,y0,z0},{x1,y1,z0});
     addBoundsEdge({x1,y1,z0},{x0,y1,z0}); addBoundsEdge({x0,y1,z0},{x0,y0,z0});
@@ -72,8 +57,7 @@ void ensureStructureBoundsMesh(
     state.structureBoundsMesh = std::make_unique<mce::Mesh>(tessellator.end(
         Tessellator::UploadMode::Buffered,
         "LHoloStructureBounds",
-        // SupplementaryFieldAutoGenerationMode::None
-        SupplementaryFieldAutoGenerationMode{0}
+        Tessellator::SupplementaryFieldAutoGenerationMode::None
     ));
 }
 
@@ -120,8 +104,7 @@ void processProjectionOpaqueFrame(
         );
     }
 
-    // 26.32 note: the tessellator session that used to be opened (and aborted)
-    // around this frame is gone; every begin()/end() pair below is scoped.
+    if (tessellator.isTessellating()) tessellator.cancel();
 
     // Consume completed CPU data only in the opaque render pass.
     uploadCompletedProjectionMeshes(state, tessellator);

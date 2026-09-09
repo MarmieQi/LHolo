@@ -104,14 +104,14 @@ struct ProjectionState {
     std::set<SubChunkKey>                 detectedExtraBlockPositions;
     std::set<SubChunkKey>                 extraBlockPositions;
     std::vector<std::set<SubChunkKey>>    sectionExtraBlockPositions;
-    // Correction meshes are batched per overlay color because the editor
-    // block-volume pipeline colors geometry through a per-draw uniform.
-    // Fill meshes use the hull slot, outline meshes the wireframe slot; the
-    // outer index is CorrectionColor, the inner index the section.
-    std::vector<std::unique_ptr<mce::Mesh>>
-        correctionFillSectionMeshes[static_cast<std::size_t>(CorrectionColor::Count)];
-    std::vector<std::unique_ptr<mce::Mesh>>
-        correctionOutlineSectionMeshes[static_cast<std::size_t>(CorrectionColor::Count)];
+    // Correction meshes are split by category so the see-through (X-ray) option
+    // can apply to the wrong-type/wrong-state markers only, never to the many
+    // "missing" outlines. warningFill/correctionOutline hold the MISSING cells;
+    // wrongFill/wrongOutline hold WrongType + WrongState.
+    std::vector<std::unique_ptr<mce::Mesh>> warningFillSectionMeshes;
+    std::vector<std::unique_ptr<mce::Mesh>> correctionOutlineSectionMeshes;
+    std::vector<std::unique_ptr<mce::Mesh>> wrongFillSectionMeshes;
+    std::vector<std::unique_ptr<mce::Mesh>> wrongOutlineSectionMeshes;
     std::vector<std::unique_ptr<mce::Mesh>> liquidProxySectionMeshes;
     std::vector<std::unique_ptr<mce::Mesh>> blockEntityPlaceholderSectionMeshes;
     std::unique_ptr<mce::Mesh>              structureBoundsMesh;

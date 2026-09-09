@@ -100,6 +100,8 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
     model.maxLayerY = sessionSnapshot.maxLayerY;
     model.maxLayerX = sessionSnapshot.maxLayerX;
     model.structureBoundsEnabled = projection::getStructureBoundsEnabled();
+    model.correctionSeeThrough = projection::getCorrectionSeeThrough();
+    model.missingSeeThrough = projection::getMissingSeeThrough();
     model.easyPlaceEnabled = place::isEnabled();
     model.manualPlace = place::isManualMode();
     model.rangeEnabled = place::isRangeEnabled();
@@ -160,6 +162,14 @@ void applyStructureMenuModel(MenuModel const& model, float effectiveUiScale) {
     }
     if (projection::getStructureBoundsEnabled() != model.structureBoundsEnabled) {
         projection::setStructureBoundsEnabled(model.structureBoundsEnabled);
+        changed = true;
+    }
+    if (projection::getCorrectionSeeThrough() != model.correctionSeeThrough) {
+        projection::setCorrectionSeeThrough(model.correctionSeeThrough);
+        changed = true;
+    }
+    if (projection::getMissingSeeThrough() != model.missingSeeThrough) {
+        projection::setMissingSeeThrough(model.missingSeeThrough);
         changed = true;
     }
     // Assisted-placement modes are session-only safety controls. Applying a

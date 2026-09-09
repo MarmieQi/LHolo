@@ -211,8 +211,10 @@ void scheduleProjectionMeshBuild(
     snapshot->expectedWorldBlockActors = state.expectedWorldBlockActors;
     snapshot->expectedWorldBlockIndices = state.expectedWorldBlockIndices;
     snapshot->sections.resize(1);
-    for (auto& fills : snapshot->correctionFillSectionMeshes) fills.resize(1);
-    for (auto& outlines : snapshot->correctionOutlineSectionMeshes) outlines.resize(1);
+    snapshot->warningFillSectionMeshes.resize(1);
+    snapshot->correctionOutlineSectionMeshes.resize(1);
+    snapshot->wrongFillSectionMeshes.resize(1);
+    snapshot->wrongOutlineSectionMeshes.resize(1);
     snapshot->liquidProxySectionMeshes.resize(1);
     snapshot->blockEntityPlaceholderSectionMeshes.resize(1);
 
@@ -295,25 +297,16 @@ void scheduleProjectionMeshBuild(
                 for (std::size_t bucket = 0; bucket < result.sectionMeshes.size(); ++bucket) {
                     result.sectionMeshes[bucket] = std::move(snapshot->sections[0].meshes[bucket]);
                 }
-                constexpr auto colorCount = static_cast<std::size_t>(CorrectionColor::Count);
-                for (std::size_t color = 0; color < colorCount; ++color) {
-                    result.correctionFillMeshes[color]
-                        = std::move(snapshot->correctionFillSectionMeshes[color][0]);
-                    result.correctionOutlineMeshes[color]
-                        = std::move(snapshot->correctionOutlineSectionMeshes[color][0]);
-                }
+                result.warningFillMesh = std::move(snapshot->warningFillSectionMeshes[0]);
+                result.correctionOutlineMesh = std::move(snapshot->correctionOutlineSectionMeshes[0]);
+                result.wrongFillMesh = std::move(snapshot->wrongFillSectionMeshes[0]);
+                result.wrongOutlineMesh = std::move(snapshot->wrongOutlineSectionMeshes[0]);
                 result.liquidProxyMesh = std::move(snapshot->liquidProxySectionMeshes[0]);
                 result.blockEntityPlaceholderMesh
                     = std::move(snapshot->blockEntityPlaceholderSectionMeshes[0]);
 
                 constexpr std::array<std::string_view, 4> meshNames{
                     "opaque", "alpha", "alphaOneSided", "blend"
-                };
-                constexpr std::array<std::string_view, colorCount> fillNames{
-                    "fillMissing", "fillWrongType", "fillWrongState", "fillExtra"
-                };
-                constexpr std::array<std::string_view, colorCount> outlineNames{
-                    "outlineMissing", "outlineWrongType", "outlineWrongState", "outlineExtra"
                 };
                 result.success = true;
                 for (std::size_t bucket = 0; bucket < result.sectionMeshes.size(); ++bucket) {
@@ -322,13 +315,11 @@ void scheduleProjectionMeshBuild(
                         break;
                     }
                 }
-                for (std::size_t color = 0; result.success && color < colorCount; ++color) {
-                    result.success = validateMeshData(result.correctionFillMeshes[color], fillNames[color], result)
-                        && validateMeshData(
-                             result.correctionOutlineMeshes[color], outlineNames[color], result
-                         );
-                }
                 result.success = result.success
+                    && validateMeshData(result.warningFillMesh, "warningFill", result)
+                    && validateMeshData(result.correctionOutlineMesh, "correctionOutline", result)
+                    && validateMeshData(result.wrongFillMesh, "wrongFill", result)
+                    && validateMeshData(result.wrongOutlineMesh, "wrongOutline", result)
                     && validateMeshData(result.liquidProxyMesh, "liquidProxy", result)
                     && validateMeshData(
                         result.blockEntityPlaceholderMesh, "blockEntityPlaceholder", result

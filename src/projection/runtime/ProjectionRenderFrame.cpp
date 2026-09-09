@@ -37,50 +37,20 @@
 #include <utility>
 
 #include "mc/client/game/IClientInstance.h"
-#include "mc/client/gui/screens/ScreenContext.h"
 #include "mc/client/player/LocalPlayer.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
 #include "mc/client/renderer/Tessellator.h"
 #include "mc/client/renderer/game/ItemInHandRenderer.h"
-#include "mc/deps/renderer/Camera.h"
 #include "mc/world/actor/Actor.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/levelgen/structure/LegacyStructureSettings.h"
 
-#include "ll/api/memory/Memory.h"
 #include "ll/api/mod/NativeMod.h"
-
-#include <Windows.h>
-
 
 namespace lholo::projection::detail {
 namespace {
-
-// 26.32 rendering contract (verified against the 1.26.32 binary):
-// Mesh::renderMesh reads its model matrix from the world matrix stack of the
-// camera referenced BY THE MeshContext it receives, and draws happen in
-// camera-relative space. So the stack we push must belong to the screen
-// context's camera, and the camera position comes from
-// BaseActorRenderContext::Impl (offset 0x3C = mCameraPosition, right after
-// mCameraTargetPosition at 0x30 - both verified live; Camera::mPosition is
-// no longer populated in 26.32).
-Vec3 renderCameraPosition(BaseActorRenderContext& renderContext) {
-    auto const* impl = static_cast<std::uint8_t const*>(
-        static_cast<void const*>(renderContext.mImpl.get())
-    );
-    auto const& position = *reinterpret_cast<Vec3 const*>(impl + 0x3C);
-    return Vec3{position.x, position.y, position.z};
-}
-
-auto& renderTessellator(BaseActorRenderContext& renderContext) {
-    return renderContext.mScreenContext.tessellator;
-}
-
-auto& renderWorldMatrixStack(BaseActorRenderContext& renderContext) {
-    return renderContext.mScreenContext.camera.worldMatrixStack.get();
-}
 
 auto& logger() {
     return LHolo::getInstance().getSelf().getLogger();
@@ -93,7 +63,7 @@ bool enableStructureProjection(
 ) {
     ProjectionState next;
     if (!prepareProjectionState(next, renderContext, std::move(loaded))) return false;
-    auto& client = renderContext.mClientInstance;
+    auto& client = renderContext.getClient();
     auto* player = client.getLocalPlayer();
     if (auto const anchor = ProjectionSession::getInstance().consumeAnchor()) {
         next.anchor = BlockPos{anchor->x, anchor->y, anchor->z};
@@ -158,24 +128,24 @@ void renderProjection(
     BaseActorRenderContext&   renderContext,
     bool                      renderAlphaLayer
 ) {
-    auto& client = renderContext.mClientInstance;
+    auto& client = renderContext.getClient();
     auto* player  = client.getLocalPlayer();
 
+    auto& tessellator = renderContext.getTessellator();
+    tessellator.begin(Tessellator::DebugContextCallback{}, 128, false);
 
-    if (!state.blockTessellator) return;
+    if (!state.blockTessellator) {
+        tessellator.cancel();
+        return;
+    }
     if (!renderAlphaLayer) {
         auto const mirrorMode = structure::getMirrorMode();
         auto const rotationTurns = structure::getRotationQuarterTurns();
         auto const mirror = getProjectionMirror(mirrorMode);
         auto const rotation = getProjectionRotation(rotationTurns);
-        // The default constructor and setMirror()/setRotation() were inlined
-        // out of the 26.32 SDK; the surviving constructor takes them directly.
-        LegacyStructureSettings transformSettings{
-            mirror,
-            rotation,
-            nullptr,
-            BoundingBox{}
-        };
+        LegacyStructureSettings transformSettings;
+        transformSettings.setMirror(mirror);
+        transformSettings.setRotation(rotation);
         bool const identityTransform = mirrorMode == 0 && rotationTurns == 0;
         auto const offsetX = structure::getOffsetX();
         auto const offsetY = structure::getOffsetY();
@@ -243,9 +213,9 @@ void renderProjection(
         };
         processProjectionOpaqueFrame(
             state,
-            renderTessellator(renderContext),
+            tessellator,
             player->getDimensionBlockSource(),
-            renderCameraPosition(renderContext),
+            renderContext.getCameraPosition(),
             transformSettings,
             sectionBuildSettings,
             layerDisplayMode,
@@ -263,10 +233,12 @@ void renderProjection(
         state.anchor.z + structure::getOffsetZ()
     };
     auto const structureOpacity = ProjectionSession::getInstance().opacity();
-    Vec3 const camera = renderCameraPosition(renderContext);
-    // The transparent pass only submits meshes built during the preceding
-    // opaque pass; every tessellator session is opened and closed inside the
-    // opaque branch above, so nothing is left active here.
+    auto const& camera = renderContext.getCameraPosition();
+    if (renderAlphaLayer) {
+        // The transparent pass only submits meshes built during the preceding
+        // opaque pass. Do not leave the shared immediate tessellator active.
+        tessellator.cancel();
+    }
 
     submitProjectedBlockActorPass(
         state,
@@ -276,22 +248,22 @@ void renderProjection(
         renderAlphaLayer
     );
 
-    auto matrix = renderWorldMatrixStack(renderContext).push(false);
-    matrix.mat->translate(
+    auto matrix = renderContext.getWorldMatrix().push(false);
+    matrix->translate(
         static_cast<float>(renderOrigin.x) - camera.x,
         static_cast<float>(renderOrigin.y) - camera.y,
         static_cast<float>(renderOrigin.z) - camera.z
     );
 
-    auto& itemRenderer = renderContext.mItemInHandRenderer;
+    auto& itemRenderer = renderContext.getItemInHandRenderer();
     auto const& blendMaterial = itemRenderer.mMatBlendBlock.get();
-    // 26.32: MaterialPtr's operator bool was inlined out; the member it
-    // examined stays public.
-    if (blendMaterial.mRenderMaterialInfoPtr.get() == nullptr) {
+    if (!blendMaterial) {
+        tessellator.cancel();
         return;
     }
 
     if (!state.terrainTextureVariant) {
+        tessellator.cancel();
         logger().error("Projection terrain texture is not available");
         return;
     }
@@ -308,16 +280,14 @@ void renderProjection(
                 if (mesh && mesh->isValid()) ++normalMeshes;
             }
         }
-        std::size_t correctionMeshes{};
-        for (auto const& fills : state.correctionFillSectionMeshes) {
-            correctionMeshes += countValid(fills);
-        }
-        for (auto const& outlines : state.correctionOutlineSectionMeshes) {
-            correctionMeshes += countValid(outlines);
-        }
+        auto const warningMeshes = countValid(state.warningFillSectionMeshes);
+        auto const outlineMeshes = countValid(state.correctionOutlineSectionMeshes);
+        auto const wrongFillMeshes = countValid(state.wrongFillSectionMeshes);
+        auto const wrongOutlineMeshes = countValid(state.wrongOutlineSectionMeshes);
         auto const liquidMeshes = countValid(state.liquidProxySectionMeshes);
         auto const placeholderMeshes = countValid(state.blockEntityPlaceholderSectionMeshes);
-        if (normalMeshes + correctionMeshes + liquidMeshes + placeholderMeshes != 0) {
+        if (normalMeshes + warningMeshes + outlineMeshes + wrongFillMeshes
+            + wrongOutlineMeshes + liquidMeshes + placeholderMeshes != 0) {
             state.meshPreflightDone = true;
         }
     }
@@ -331,14 +301,18 @@ void renderProjection(
             camera,
             structureOpacity,
             renderAlphaLayer,
-            ProjectionSession::getInstance().structureBoundsEnabled()
+            ProjectionSession::getInstance().structureBoundsEnabled(),
+            ProjectionSession::getInstance().correctionSeeThrough(),
+            ProjectionSession::getInstance().missingSeeThrough()
         );
     } catch (std::exception const& exception) {
         logger().error("Projection immediate mesh submission failed: {}", exception.what());
+        tessellator.cancel();
         resetProjectionState(state);
         return;
     } catch (...) {
         logger().error("Projection immediate mesh submission failed with an unknown exception");
+        tessellator.cancel();
         resetProjectionState(state);
         return;
     }
@@ -405,13 +379,13 @@ void renderProjectionFrame(BaseActorRenderContext& renderContext, bool renderAlp
             captureBounds.render(renderContext, renderAlphaLayer);
 
             if (auto loaded = structure::getLoaded(); loaded && loaded->generation != state.structureGeneration) {
-                auto& client = renderContext.mClientInstance;
+                auto& client = renderContext.getClient();
                 auto* player = client.getLocalPlayer();
                 if (!player) return;
                 auto& session = ProjectionSession::getInstance();
                 auto const activationStatus = session.prepareDimensionActivation(
                     loaded->generation,
-                    player->getDimensionId().mValue
+                    player->getDimensionId().value()
                 );
                 if (activationStatus == DimensionActivationStatus::Deferred) {
                     return;
@@ -432,7 +406,7 @@ void renderProjectionFrame(BaseActorRenderContext& renderContext, bool renderAlp
             }
 
             if (!state.enabled) return;
-            auto& client = renderContext.mClientInstance;
+            auto& client = renderContext.getClient();
             auto const contextStatus = classifyProjectionContext(
                 state,
                 client,

@@ -170,6 +170,7 @@ void testSettingsStore() {
     settings.hudShowProjectedBlockName = false;
     settings.hudShowExtraBlocks = false;
     settings.autoPlacementBreakCooldownSeconds = 27;
+    settings.correctionSeeThrough = true;
     settings.materialHudEnabled = true;
     settings.materialHudPosition = 3;
     settings.moveHotkeys[4] = 0x57; // W
@@ -181,7 +182,7 @@ void testSettingsStore() {
         std::ifstream saved(path);
         std::ostringstream contents;
         contents << saved.rdbuf();
-        LHOLO_CHECK(contents.str().find("\"version\": 12") != std::string::npos);
+        LHOLO_CHECK(contents.str().find("\"version\": 10") != std::string::npos);
         LHOLO_CHECK(contents.str().find("toggleManualHotkey") == std::string::npos);
         LHOLO_CHECK(contents.str().find("toggleEasyHotkey") == std::string::npos);
         LHOLO_CHECK(contents.str().find("toggleRangeHotkey") == std::string::npos);
@@ -195,6 +196,7 @@ void testSettingsStore() {
     LHOLO_CHECK(!loaded.hudShowProjectedBlockName);
     LHOLO_CHECK(!loaded.hudShowExtraBlocks);
     LHOLO_CHECK(loaded.autoPlacementBreakCooldownSeconds == 27);
+    LHOLO_CHECK(loaded.correctionSeeThrough);
     LHOLO_CHECK(loaded.materialHudEnabled);
     LHOLO_CHECK(loaded.materialHudPosition == 3);
     LHOLO_CHECK(loaded.moveHotkeys[4] == 0x57);
@@ -213,6 +215,7 @@ void testSettingsStore() {
     LHOLO_CHECK(!migrated.hudShowProjectedBlockName);
     LHOLO_CHECK(migrated.hudShowExtraBlocks);
     LHOLO_CHECK(migrated.autoPlacementBreakCooldownSeconds == 10);
+    LHOLO_CHECK(!migrated.correctionSeeThrough);
     LHOLO_CHECK(!migrated.materialHudEnabled);
     LHOLO_CHECK(migrated.materialHudPosition == 3);
 

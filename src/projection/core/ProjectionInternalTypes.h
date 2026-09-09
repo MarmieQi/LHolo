@@ -24,11 +24,6 @@ using SubChunkKey = std::tuple<int, int, int>;
 enum class CorrectionState : std::uint8_t { Unknown, Missing, Correct, WrongType, WrongState };
 enum class RenderBucket : std::uint8_t { Opaque, Alpha, AlphaOneSided, Blend, Count };
 
-// Correction overlay color categories. The editor block-volume pipeline colors
-// geometry through a per-draw uniform, so each category needs its own mesh
-// batch for both the fill and the outline style.
-enum class CorrectionColor : std::uint8_t { Missing, WrongType, WrongState, Extra, Count };
-
 struct ProjectedBlockActor {
     BlockPos     position{};
     Block const* block{};

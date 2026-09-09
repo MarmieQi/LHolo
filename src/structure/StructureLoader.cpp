@@ -645,6 +645,8 @@ void loadSettings() {
         projection::setCorrectionFillOpacity(settings.correctionFillOpacity);
         projection::setCorrectionOutlineOpacity(settings.correctionOutlineOpacity);
         projection::setStructureBoundsEnabled(settings.structureBoundsEnabled);
+        projection::setCorrectionSeeThrough(settings.correctionSeeThrough);
+        projection::setMissingSeeThrough(settings.missingSeeThrough);
         setExperimentalConsentGiven(settings.experimentalConsent);
         setMaterialHudEnabled(settings.materialHudEnabled);
         setMaterialHudPosition(settings.materialHudPosition);
@@ -745,6 +747,8 @@ void saveSettings() {
         settings.correctionFillOpacity = projection::getCorrectionFillOpacity();
         settings.correctionOutlineOpacity = projection::getCorrectionOutlineOpacity();
         settings.structureBoundsEnabled = projection::getStructureBoundsEnabled();
+        settings.correctionSeeThrough = projection::getCorrectionSeeThrough();
+        settings.missingSeeThrough = projection::getMissingSeeThrough();
         settings.experimentalConsent = experimentalConsentGiven();
         settings.materialHudEnabled = materialHudEnabled();
         settings.materialHudPosition = materialHudPosition();

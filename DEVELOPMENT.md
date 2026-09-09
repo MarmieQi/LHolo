@@ -4,8 +4,8 @@
 
 当前基线：
 
-- Minecraft Bedrock Windows：`1.26.32`
-- LeviLamina：`26.32.0`，目标类型 `client`
+- Minecraft Bedrock Windows：`1.26.20.04`
+- LeviLamina：`26.20.7`，目标类型 `client`
 - 架构：Windows x64
 - 图形接口：Minecraft D3D12 + LHolo D3D11On12 + Dear ImGui DX11 后端
 - 模组名称、DLL、目录和内部命名空间：`LHolo` / `LHolo.dll` / `mods/LHolo` / `lholo`
@@ -28,7 +28,6 @@ LHolo 的投影、纠错、HUD 和菜单都只存在于客户端，不产生碰�
 - 纠错状态：未放置为蓝色、方块类型错误为红色、方向或方块状态错误为黄色；蓝图空气位置存在实体方块时以品红色标记为多余方块，完全正确时隐藏。
 - 纠错提示透明度默认 15%，描边透明度默认 100%；均为 0～100 整数输入、即时生效、持久化保存，可一键恢复默认值。
 - 可选整体结构边框。
-- 纠错外壳不存在穿透显示（X 光）模式：编辑器体积管线按深度测试绘制，相关配置与开关已移除（配置版本 12）。
 - 支持准心轻松放置、按住右键的手动放置，以及半径 1～4 的范围放置；三种模式在 GUI 中互斥。
 - `.mcstructure` 中带 NBT 的方块实体优先使用原版方块实体渲染器；没有可用渲染器或 Tessellation 结果的方块使用贴图占位外壳。
 - HUD 可显示文件名、显示层、建造进度、放置错误数、朝向错误数、多余方块数和准心指向的投影方块名称；支持四角定位和单项关闭，各类错误可分别配置。
@@ -378,7 +377,7 @@ Java→Bedrock 映射不再手工散落维护。`GeneratedChunkerMappings.inc` �
 
 “创建结构”不经过 `LoadedStructure`，也不会自动载入投影。选区端点先按每轴最小值/最大值归一化，两个端点都包含在内；导出前由 `BlockSource::areChunksFullyLoaded(min, max)` 拒绝客户端尚未完整加载的范围。
 
-捕获只使用 LeviLamina 客户端 SDK 头文件确认的原版接口：
+捕获只使用 LeviLamina 26.20.7 客户端头文件确认的原版接口：
 
 1. `ll::service::getClientInstance()` 和 `ClientInstance::getLocalPlayer()` 获取当前客户端玩家。
 2. `Actor::getDimensionBlockSource()` 取得当前维度的 `BlockSource`。
@@ -496,31 +495,20 @@ LHolo 不自制草方块、楼梯等材质模型。它使用：
 
 未放置方块仍显示原版投影模型，并叠加蓝色纠错提示。
 
-### 7.3 纠错面与描边的提交路径（26.32 重写）
+### 7.3 纠错面
 
-- 几何仍使用精确 1×1×1 单元外壳；相邻纠错单元通过优先级和邻居检查剔除内部共享面。
+- 使用精确 1×1×1 单元外壳，不跟随栅栏、玻璃板等非完整碰撞模型。
+- 相邻纠错单元通过优先级和邻居检查剔除内部共享面，避免同一平面绘制两次。
 - 优先级：类型错误 > 状态错误 > 多余方块 > 未放置。
-- 几何按颜色（未放置/类型错误/状态错误/多余）与样式（填充/描边）分批构建；顶点不带颜色。
-- 提交走原版立即绘制路径：填充用 `selectionBlockEntityOverlayColorMaterial`（白色纹理 ×
-  当前着色器颜色的半透明样式），描边用 `mOutlineSelectionMaterial`（纯色样式）。
-- 颜色与透明度经 `MeshContext::currentShaderColor` 逐批次写入（写入后置 dirty，
-  批次间更换颜色，pass 结束恢复原值）。26.32 的 `makeMeshFallback` 对五种旧版颜色
-  着色器（`current_color`/`texture_ccolor`/`texture_blend`/`texture_cutout`/`text`）
-  把该颜色绑定为 `CurrentColor` uniform；原版选框正是用同一机制画黑色描边。
-  26.32 闪烁/变色的根因即此前借用这些材质却从未设置该全局颜色，
-  颜色随全场其他绘制反复变化。
-- 编辑器方块体积描述路径（`EditorBlockVolumeHull`/`Wireframe`）已完成字段级研究并实现过一版，
-  但 `dragon::mesh::Mesh` 的析构既不在导入库也无法运行时按名解析（转换运算符持有
-  需要释放的强引用与堆记录链，字节级释放不安全），该路线搁置；
-  全部证据与准入状态见 `docs/rendering/EditorCorrectionResearch.md`。
-- 描边仍为 12 条边 `LineList`；整体结构边框维持原 outline 材质路径，不受此重写影响。
-- 顶点色字节序历史包袱：旧 `colorABGR` 常量为 ABGR 序，转为浮点 RGB 时不得按字节序直读，
-  否则 R/B 对调（曾导致蓝色外壳显示为红橙色）。
-- **已知待适配**：26.32 上纠错批次的实际屏幕颜色与设定常量存在偏移（同一套立即绘制
-  颜色机制在 26.20 正常）。机制（逐批颜色+恢复）本身已验证工作，偏差出在颜色值的
-  映射环节，怀疑 26.32 回退管线对 `CurrentColor` 附加了 26.20 没有的色彩空间/材质
-  变换。待办：实测标定 `ProjectionCorrectionRenderer.cpp` 中 `correctionRgb` 常量，
-  或定位回退管线对该 uniform 的变换后再补偿（代码内同位置有 KNOWN ISSUE 注释）。
+- RGB 使用固定 Litematica 风格色；alpha 由“纠错提示透明度”动态写入顶点色。
+- 默认 alpha 15%，范围 0～100%。
+
+### 7.4 描边
+
+- 使用真正 `LineList` 的 12 条边，贴合 1×1×1 单元。
+- 默认透明度 100%，范围 0～100%。
+- 使用原版 outline selection material，保证普通和灵动视效路径可见。
+- 整体结构边框是独立网格，不受纠错描边透明度控制。
 
 ### 7.5 准心选中闪烁修复
 
@@ -555,7 +543,7 @@ dirty 分区的 `BlockTessellator` 和全部 CPU 几何生成不在 `$renderBloc
 - 主线程用 `ChunkViewSource::move(..., DontGenerateOnlyGet, ...)` 固定分区加两格 halo 的局部视图。投影虚拟方块/方块实体/世界坐标索引表按 placement generation 发布为共享不可变版本：移动、旋转、镜像或切层时新建一组 Map，in-flight Task 通过 `shared_ptr` 保活旧版本，禁止原地清空或修改已发布版本。Task 只复制会增量变化的纠错字节、方块实体渲染可用性、本 section 索引，以及当前/六邻居 section 的稀疏多余方块坐标；不复制完整多余方块集合，不再扫描/拷贝 halo Map，也不再为每个 Task 构造紧凑 `LoadedStructure`。
 - Worker 独占 `BlockSource`、`BlockTessellator` 和 `Tessellator`，不读取 `gState`、`renderContext` 或渲染线程的活动 Tessellator。
 - Worker 必须用 `Tessellator::end(UploadMode::Never, ...)` 生成 CPU `mce::MeshData`；禁止在 Worker 使用 `Buffered` 或触碰 GPU。
-- `UploadMode::Never` 返回的 CPU-only `mce::Mesh` 尚未设置上传态 vertex count，因此 Worker 不能用 `Mesh::mVertexCount` 校验结果（26.32 起该成员存在但上传前为空；`getMeshVertexCount()` 已被内联移除）。CPU 阶段以 `MeshData::mPositions.size()` 为权威顶点数，并检查所有非空顶点属性数组与它一致。
+- `UploadMode::Never` 返回的 CPU-only `mce::Mesh` 尚未设置上传态 vertex count，因此 Worker 不能用 `Mesh::getMeshVertexCount()` 校验结果（该值在 1.26.20.04 实测为 0）。CPU 阶段以 `MeshData::mPositions.size()` 为权威顶点数，并检查所有非空顶点属性数组与它一致。
 - opaque pass 每帧最多接收两个完成结果，并以 1 ms 为提交预算。提交前同时检查 Worker generation、结构 generation 和 section revision，再用当前 `BufferResourceService` 的官方 `mce::Mesh(service, MeshData&&, false, name)` 构造 GPU Mesh。
 - transparent pass 只提交已完成 Mesh，不调度任务、不消费完成队列、不上传资源。
 - 普通 dirty 更新保留旧 Mesh 直到替换完成；旋转/镜像会立即清除旧方向的几何。
@@ -767,90 +755,6 @@ LeviLamina Hook：
 
 新版本最容易变化的是成员函数符号、签名、调用层次和 render pass 时序，必须逐一验证，不能只以“Hook 安装成功”判断适配完成。
 
-### 11.1 26.32 适配记录：API 等价替换与待实测项
-
-26.32 SDK 的新特征是大量成员函数被游戏编译器内联，符号不再导出；适配原则是不改任何逻辑，只把这些调用改写到仍然存在的等价接口（公开成员、虚函数、工厂函数或 LeviLamina 服务访问器）。以下是本次适配的完整替换表，也是游戏内回归的对照清单（全部对应第 16 节回归矩阵）：
-
-| 断点 | 26.32 等价写法 | 所在文件 | 风险/待实测 |
-| --- | --- | --- | --- |
-| `ItemStack(name, count, aux, userData)` 构造 | 默认构造 + `reinit(name, count, aux)` | BlockPlacementRules | 低（LSE 官方同款写法） |
-| `ItemStackBase::sameItemAndAux()` | `getIdAux()` 相等比较 | PlacementExecutor | 低（同一 key） |
-| `ItemUseInventoryTransaction` 默认构造 | `ComplexInventoryTransaction::fromType(ItemUseTransaction)` + 派生类引用 | PlacementExecutor | 中：放置实测（阶段 B/D） |
-| `setTargetBlock(block)` | `mTargetBlockId = block.mNetworkId`（成员两版布局一致） | PlacementExecutor | 中：放置包服务器校验实测 |
-| `NetworkItemStackDescriptor::setIncludeNetIds(true)` | `mItem.get().mIncludeNetIds = true`（成员保留） | PlacementExecutor | 低（同字段） |
-| `LocalPlayer::getClientInstance()` | `ll::service::getClientInstance()`（optional_ref，判空） | PlacementExecutor | 低 |
-| `Block::getRuntimeId()`（缓存键/等价比较） | 缓存键用 `mNetworkId`；状态等同改 `Block::operator==`（serialization-id hash） | PlacementExecutor | 低 |
-| `Block::allowStateMismatchOnPlacement(other)` | `getBlockType().allowStateMismatchOnPlacement(predicted, ghost)`（clientTarget, serverTarget 序） | PlacementExecutor | 中：墙/栏杆/玻璃板容错实测 |
-| `BlockPos::neighbor(face)` / `Facing::getOpposite()` | `pos + Facing::DIRECTION()[face]` / `Facing::OPPOSITE_FACING()[face]` | PlacementExecutor | 低 |
-| `SlabBlock::isDoubleSlab()` / `Block::isSlabBlock()` | `getBlockType().isSlabBlock()`（虚函数仍在）+ 名称含 `double` | PlacementExecutor | 低 |
-| `Block::mayPlace(region, pos)` 双参重载 | 三参版传 `Facing::Name::Up`（门放置代表面） | PlacementExecutor | 中：门放置实测 |
-| `Block::getPlacementBlock(...)` | `getBlockType().getPlacementBlock(...)`（虚函数移至 BlockType） | PlacementExecutor | 低 |
-| `InventoryTransactionPacket(ptr, bool)` | `InventoryTransactionPacketPayload(std::move(ptr), true)` 包一层 | PlacementExecutor | 低 |
-| `LegacyStructureSettings` 默认构造 + get/setRotation/Mirror | 四参 MCAPI 构造 `(mirror, rotation, nullptr, BoundingBox{})`；读取走公开成员 `mRotation/mMirror` | ProjectionSectionBuilder / ProjectionRenderFrame / ProjectionRules | 低 |
-| `Block::getSerializationId()` | 公开成员 `mSerializationId.get()` | ProjectionRules / SectionBuilder / PlacementExecutor / JavaToBedrock | 低 |
-| `BaseActorRenderContext` 的 getTessellator/getClient/getScreenContext/getItemInHandRenderer | `mScreenContext.tessellator`、`mClientInstance`、`mScreenContext`、`mItemInHandRenderer`（公开成员） | RenderFrame / Renderer / BoundsWireframe / Lifecycle | 低 |
-| `getCameraPosition()` / `getWorldMatrix()`（移入不透明 Impl） | `mScreenContext.camera.mPosition`、`mScreenContext.camera.worldMatrixStack.get().push(false)`；`matrix.mat->translate(...)`（operator-> 被移除，mat 成员公开） | RenderFrame / BoundsWireframe | 中：整条渲染路径实测（阶段 D） |
-| 外层 `begin(128, false)` + `cancel()` 编排 | 该会话本就被无条件取消，直接删除；`isTessellating()` 卫语句随之移除 | RenderFrame / FramePipeline | 低（净效果等价） |
-| `Tessellator::cancel()`（空桶中止） | `end(UploadMode::Never, name, {0})` 并丢弃结果 | ProjectionSectionBuilder | 中：空 section 无泄漏实测 |
-| `colorABGR(x)` | `mNextColor = x`（同一“下一顶点颜色”槽） | SectionBuilder / FramePipeline / BoundsWireframe | 低 |
-| `vertex(Vec3)` / `vertexUV(x,y,z,u,v)` | `vertex(x,y,z)`；UV 为 `tex2(u,v)` 先行 + `vertex(x,y,z)`（next 槽机制） | SectionBuilder | 低 |
-| `Tessellator::SupplementaryFieldAutoGenerationMode::None/NormalsAndTangents` | 提升为全局枚举且无成员名：`SupplementaryFieldAutoGenerationMode{0}/{1}` | SectionBuilder / FramePipeline / BoundsWireframe | 低 |
-| `BlockTessellator::setRenderLayer()` / `getBiomeTintCache()` | `mRenderingLayer` / `mBiomeWeights` 公开成员 | SectionBuilder | 低 |
-| `BlockTessellator::buildBiomeWeights(pos)` | 无替代，已删除调用；26.32 tessellation pipeline 预期自行刷新权重 | SectionBuilder | **高：草/树叶群系着色实测（阶段 D/E）** |
-| `mce::Color::toABGR()` | 本地 `toABGR(mce::Color)` 帮助函数（同字节序） | SectionBuilder | 低 |
-| `Mesh::getMeshVertexCount()` | `mVertexCount.get().value_or(0u)` | Renderer / BoundsWireframe | 低 |
-| `renderMesh` 旧无纹理重载 | 新七参重载 + monostate 纹理 variant；`OffscreenCaptureDescription` 传**全零 48 字节缓冲**（SDK 空壳声明 ≠ 真实对象大小，`RenderMetadata` 内联存 48 字节；传 1 字节临时对象会让游戏把 47 字节栈垃圾当控制块指针，26.32 首测即崩溃，见 §11.2） | Renderer / BoundsWireframe | 中：材质/深度偏移实测 |
-| 纠错填充/线框借用 selection 材质 | ~~改用 `RenderMaterialGroup::common()` 按名解析 `debug` 材质~~ **已被整体重写取代**：26.32 材质索引中不存在名为 `debug` 的材质（按名解析得到空 RenderMaterialInfo，提交被静默跳过），纠错外壳已改走编辑器方块体积描述路径，见 §7.3 与 `docs/rendering/EditorCorrectionResearch.md` | Renderer / CorrectionRenderer | 待实测 |
-| 无 UV 纠错网格采样到残留绑定纹理 | ~~雪块白图块 UV~~ 编辑器 Hull/Wireframe 着色器不采样纹理，顶点只保留中性 UV 以满足 TEXCOORD 顶点布局 | SectionBuilder / CorrectionRenderer | 待实测 |
-| `LevelRenderer::getLevelRendererPlayer()` | `mLevelRendererPlayer->...`（shared_ptr 成员） | Renderer / BoundsWireframe | 低 |
-| `mce::MaterialPtr` operator bool/`->` | `mRenderMaterialInfoPtr` 判空；RenderMaterial 经 `mRenderMaterialInfoPtr->mPtr` | Renderer / BoundsWireframe | 低 |
-| `BlockActor::isType()` / `ChestBlockActor::isLargeChest()` | `mType` 枚举成员 / `mLargeChestPaired` 指针成员 | ProjectionPlacement | 低 |
-| `BlockType::newBlockEntity()` | `VanillaBlockActorFactory::createBlockActor(pos, blockType)` | ProjectionPlacement | 低 |
-| `NewUniqueIdsDataLoadHelper(level)`（构造不再导出） | 本地 `DisplayDataLoadHelper`（DataLoadHelper 直通实现；不做 unique-id 重映射） | ProjectionPlacement | 低（展示用方块实体足够） |
-| `BlockActorRenderDispatcher::getRenderer(actor)` | `actor->_getRenderComponent() != nullptr` | ProjectionPlacement | 低 |
-| `BlockActorRenderDispatcher::render(actor,...)` | 三参改为 `IVanillaRenderBlockActorComponent&`（经 `_getRenderComponent`） | Renderer | 中：箱/告示牌渲染实测 |
-| `BlockActor::isWithinRenderDistance()` | 本地平方距离 ≤ 64² 判定 | Renderer | 低 |
-| `BlockActor::moveTo(pos)` | `mPosition.get() = pos` | ProjectionPlacement | 低 |
-| `LevelChunk::getPosition()` | `mPosition` 成员 | ProjectionWorldEvents | 低 |
-| `TextPacket::getType()/getMessage()` | `std::visit` 遍历 `mBody` variant，各形态内比对 `mType`+`mMessage` | ProjectionGameHooks | 中：`LHolo` 指令实测（阶段 B） |
-| `Block::getMaterial()/isSuperHot()/isLiquid()` | `getBlockType().mMaterial` + `mSuperHot/mLiquid` 成员 | SectionBuilder / Queries / JavaToBedrock / FormatLoaders | 低 |
-| `ItemRegistry::getBlockItemId(block)` / `ItemStack(Item&, ...)` | `block.getBlockItemId()`（内联）+ `reinit(*itemPtr, 1, 0)` | MaterialTracker | 低 |
-| `BlockTypeRegistry::get().getDefaultBlockState()` / `forEachBlockPermutation()` | `Block::tryGetFromRegistry(HashedString)` + `mBlockPermutations` 成员遍历 | JavaToBedrock | 低 |
-| `StructureTemplate::getSize()` / `StructureTemplateData::getBlockIndices()/getExtraBlockIndices()` | 公开成员 `mStructureTemplateData.mSize` / `mBlockIndices` / `mExtraBlockIndices` | StructureFormatLoaders | 低 |
-| `Actor::getDimensionId().value()` | 返回 `DimensionType` 本体：`.mValue` | RenderFrame / Lifecycle | 低 |
-| `LevelRenderer::mAtlasTexture` 判空/缺图判断 | `mClientTexture` 判空 + `BedrockTextureData::mIsMissingTexture == Yes` | Lifecycle | 中：atlas 缺失路径实测 |
-
-已确认与 26.20.7 完全一致、无需改动：全部 15 个 LeviLamina Hook 符号与签名（`BlockSource::$getBlock`×2、`$getBlockEntity`、`LoopbackPacketSender::$send/$sendToServer`、`LevelRendererPlayer::renderHitSelect/$renderBlockEntities`、`LocalPlayer::$tickWorld`、`GameMode` 四个、`MouseDevice::feed`、`HIDControllerGameCoreDesktop` 键盘对）、`VanillaBlockStateTransformUtils::transformBlock` 主入口、`BlockTessellator::tessellateInWorld/mCachedGetBlock`、`ItemInHandRenderer` 材质成员、`LevelRendererPlayer` 材质成员、DXGI/ImGui overlay 的 COM vtable Hook。
-
-### 11.2 不透明类型 ABI 规则（26.32 崩溃教训）
-
-- SDK 头文件里 `struct X {};` 形式的空壳类型（如 `OffscreenCaptureDescription`）**不代表真实对象为空**。真实大小以其在其他类型中的内联存储为准（`RenderMetadata` 中 `TypedStorage<8, 48, OffscreenCaptureDescription>` ⇒ 真实 48 字节）。
-- 向游戏函数传这类类型的临时对象时，游戏按真实大小读取；字节数不足即读栈垃圾，典型症状为 `NonOwnerPointer` 控制块悬除断言链上的 `0xC0000005`（本次 `mov rax,[rbx+8]`、`rbx=0xE03F800000`）。
-- 正确做法：以真实大小分配**全零**缓冲并 `reinterpret_cast` 为该类型传引用（全零对应旧版本 variant monostate 的“无捕获”状态）。零状态若仍异常，必须反编译消费方确认字段语义，禁止再猜。
-- 构建必须保留 `set_symbols("debug")`（官方模板自带）：崩溃 trace 只有地址，需用本机 PDB + `llvm-symbolizer --obj=LHolo.dll --pretty-print 0x1800XXXXX`（默认基址 0x180000000 + RVA）还原函数与行号后才能定位。
-- 同族类型在改动前先核对 ABI：`Tessellator::DebugContextCallback` 两版声明一致且 26.20 实测可用，可沿用；新出现的空壳类型一律先查内联存储定真实大小。
-
-### 11.3 26.32 纠错外壳闪烁根因（已修复）
-
-症状：蓝色未放置外壳在视角静止时仍持续闪烁、颜色忽明忽暗、且大结构并非每处都有外壳。
-
-根因链（探针实证）：
-
-1. 纠错有界扫描对 24195 格结构需要约 80 秒逐格推进，每判定一格就把所在 section 标脏；
-2. 大型实心结构的**内部 section**，蓝色填充的面向内部区域按优先级互相剔除，构建结果为**零顶点空网格**；
-3. `validateMeshData` 把零顶点判定为 worker 失败，连挂 3 次后整个会话回退**同步构建**；
-4. 同步构建在渲染帧内直接替换网格，扫描期间每次格子翻转都肉眼可见地闪一次；未扫描到的格子状态仍为 Unknown 不画壳，即"并非每处都蓝"。
-
-修复：`buildFill`/`buildOutline` 检测到 `mPositions` 为空时以 `UploadMode::Never` 正常关闭会话并返回空（内部 section 无暴露面，不画是对的），worker 不再失败，保持异步路径——重建期间旧网格保持显示，就绪后原子替换。深度比较方向实测为 LessEqual（worldDepthFunc=3），平局本就通过，与闪烁无关。
-
-教训：排查渲染闪烁先用重建频率探针区分"网格反复重建"与"渲染状态翻转"两类，再对症下药；本次曾误入深度比较、几何扩张等歧途，频率探针一次定位。
-
-### 11.4 纠错外壳重写为编辑器体积管线（最终方案）
-
-§11.3 与 §11.1 的 `debug` 材质方案最终被证伪：26.32 的材质索引（`data/renderer/materials/materials.index.json`，共 151 项）中不存在名为 `debug` 的材质；`MaterialPtr` 按名解析不存在的名字会得到 `mPtr` 为空的占位 `RenderMaterialInfo`，`Mesh::_renderMesh` 对空材质直接返回——因此该方案下纠错填充/描边完全不绘制（用户所见的闪烁来自此前同步回退构建与残留视觉，颜色问题则源于 selection 材质 `OutlineColor` uniform 不读顶点色）。
-
-编辑器体积描述路线随后也被放弃：`mce::Mesh::operator dragon::mesh::Mesh()` 虽导出，但转换持有的强引用与堆记录链只能由 `dragon::mesh::Mesh::~Mesh` 释放，而该析构既不在导入库（LNK2019）也无法经运行时符号服务按名解析（实测返回空）。最终方案回到原版立即绘制路径：几何按颜色分批、每次绘制前把颜色写入 `MeshContext::currentShaderColor`（26.32 `makeMeshFallback` 会为旧版颜色着色器把它绑定为 `CurrentColor` uniform）。闪烁与错误颜色的完整解释：此前借用 selection 系材质却从未设置该全局颜色，颜色随全场其他绘制反复改写。穿透显示（X 光）功能随重写移除。编辑器路线的全部研究证据仍保留在 `docs/rendering/EditorCorrectionResearch.md`。
-
 ---
 
 ## 12. 轻松、手动与范围放置
@@ -868,13 +772,13 @@ LeviLamina Hook：
 ### 12.2 实现要点
 
 - 驱动：直接 Hook `LocalPlayer::$tickWorld`，模拟线程每 tick 一次，不使用 LL 事件系统（与全项目 Hook 风格一致）。手动模式另外 Hook `GameMode::$startBuildBlock`、`$buildBlock` 和 `$stopBuildBlock` 获取命中真实方块时的右键按下、持续与释放状态，并阻止同一次操作被原版重复放置；指向空气时 Bedrock 不进入 build 链路，因此通过官方 `GameMode::$useItem(ItemStack&)` 入口创建单次请求。
-- 定位：不能使用 `Level::getHitResult()`——那是原版射线，只命中真实世界方块，永远看不到 LHolo 自绘的投影幽灵。改为自身体素 DDA（Amanatides & Woo）射线：原点 `Actor::getEyePos()`、方向 `Actor::getViewVector(1.0f)`、上限 `LocalPlayer::getPickRange()`。逐格判定：真实方块挡住射线（此时检查其相机侧邻居是否为待放幽灵），投影 `Missing` 幽灵格直接作为放置目标；支持面用 `Facing::DIRECTION()` 偏移 + `Facing::OPPOSITE_FACING()` 选取朝向相机、且为真实方块的邻居（26.32 起 `BlockPos::neighbor`/`Facing::getOpposite` 已被内联移除）。
+- 定位：不能使用 `Level::getHitResult()`——那是原版射线，只命中真实世界方块，永远看不到 LHolo 自绘的投影幽灵。改为自身体素 DDA（Amanatides & Woo）射线：原点 `Actor::getEyePos()`、方向 `Actor::getViewVector(1.0f)`、上限 `LocalPlayer::getPickRange()`。逐格判定：真实方块挡住射线（此时检查其相机侧邻居是否为待放幽灵），投影 `Missing` 幽灵格直接作为放置目标；支持面用 `BlockPos::neighbor` + `Facing::getOpposite` 选取朝向相机、且为真实方块的邻居。
 - 投影查表：`Projection::queryProjection()`——一次锁 `gStateMutex` 内同时查 `expectedWorldBlocks`（期望块，液体/隐藏层返回 null）与 `expectedWorldBlockIndices`/`correctionStates`（是否 Missing）。DDA 每格只调一次，避免两次独立加锁；命中结果（含期望块指针）随 `ProjectionTarget` 一并返回，`tickEasyPlace` 不再二次查询。
-- 取物：遍历完整背包（36 格）按 `getIdAux()` 组合键相等匹配（26.32 起 `sameItemAndAux()` 被内联移除，二者语义相同）。快捷栏命中直接 `Player::setSelectedSlot`；背包命中用 legacy `NormalTransaction`（`ComplexInventoryTransaction::fromType` + 两个 `InventoryAction`）把物品与当前选中格**交换**（服务器同步，不假设目标格为空，避免被 net 管理器回滚）。交换后本 tick 不放置，下一 tick 物品已在选中格、走单包快速路径——同 tick 立即放置会被服务器 net 记账滞后拒绝，再触发格锁反而更慢。服务器只接受选中快捷栏槽位的放置事务。
-- 放置：经 `ComplexInventoryTransaction::fromType(ItemUseTransaction)` 创建派生实例（26.32 起默认构造不再导出），按 `ActionType::Place` 填字段后经 `IClientInstance::getPacketSender().sendToServer()` 发送，包体经 `InventoryTransactionPacketPayload(std::move(ptr), true)` 包装（单机走 LoopbackPacketSender，联机走网络发送器），服务器权威落块并保存。**关键细节**（踩坑记录）：
-  - `mPos` 是“被点击的方块”，服务器在 `mPos` 沿 `mFace` 的邻居格落块——必须填支撑块 `at`，填目标格会导致偏一格。
-  - `mItem.get().mIncludeNetIds = true`：服务器栈 net-id 系统按“含 net id”读包，缺此标志流错位、包被静默丢弃（`onTransactionError` 都不会触发）；26.32 起该字段直接赋值（旧 `setIncludeNetIds()` 已被内联移除）。
-  - `mTargetBlockId = block.mNetworkId`（26.32 起旧 `setTargetBlock()` 被内联移除，它只做这一次拷贝）；`mItem` 经仍导出的 `setSelectedItem()` 填写。
+- 取物：遍历完整背包（36 格）用 `sameItemAndAux` 匹配。快捷栏命中直接 `Player::setSelectedSlot`；背包命中用 legacy `NormalTransaction`（`ComplexInventoryTransaction::fromType` + 两个 `InventoryAction`）把物品与当前选中格**交换**（服务器同步，不假设目标格为空，避免被 net 管理器回滚）。交换后本 tick 不放置，下一 tick 物品已在选中格、走单包快速路径——同 tick 立即放置会被服务器 net 记账滞后拒绝，再触发格锁反而更慢。服务器只接受选中快捷栏槽位的放置事务。
+- 放置：直接构造 `ItemUseInventoryTransaction`(Place) 经 `IClientInstance::getPacketSender().sendToServer()` 发送（单机走 LoopbackPacketSender，联机走网络发送器），服务器权威落块并保存。**关键细节**（踩坑记录）：
+  - `mPos` 是“被点击的方块”，服务器在 `mPos.neighbor(mFace)` 落块——必须填支撑块 `at`，填目标格会导致偏一格。
+  - `setIncludeNetIds(true)`：服务器栈 net-id 系统按“含 net id”读包，缺此标志流错位、包被静默丢弃（`onTransactionError` 都不会触发）。
+  - `setTargetBlock` / `setSelectedItem` 用导出 setter 填 `mTargetBlockId` / `mItem`，避免未导出的赋值运算符。
   - 点击点取支撑面中心：`(cell + at)` 的中点。
   - `GameMode::useItemOn`（客户端）只做本地预测不持久；`Player::sendNetworkPacket` 在单机不送达集成服务器，两条路都不可用。
 - 节流：只有 `Missing` 格可进入规划，发送前再次读取真实世界；目标格只要已存在任何方块（包括错误类型或错误朝向/状态）就停止，不允许再次尝试放置。实际发包后才写入逐格锁，在 `kCellLockMs`（500 ms）内不重复发包，等待服务器应用和纠错扫描更新；新格可立即放置（受 tick 20 Hz 上限约束）。发送地板间隔 `kMinSendIntervalMs`（40 ms）防异常 tick 率双发。背包交换未生效时由 `kSwapRetryMs`（200 ms）限制重发；成功交换仍在下一游戏 tick 尝试放置。范围模式每 tick 最多执行 16 次昂贵的放置规划，失败规划缓存 250 ms。
@@ -897,7 +801,7 @@ LeviLamina Hook：
 mods/LHolo/config/config.json
 ```
 
-当前配置版本：`12`。
+当前配置版本：`11`。
 
 正式持久化字段：
 
@@ -910,6 +814,7 @@ mods/LHolo/config/config.json
 - `structureBoundsEnabled`
 - `placementRadius`
 - `autoPlacementBreakCooldownSeconds`（0～60 秒，默认 10；只控制后续破坏产生的自动放置冷却）
+- `correctionSeeThrough`、`missingSeeThrough`（错误与未放置标记的穿透显示开关，默认关闭）
 - `experimentalConsent`（辅助放置风险提示是否已确认）
 - `materialHudEnabled`、`materialHudPosition`（材料 HUD 开关与四角位置，新配置默认右下角）
 - `loadProjectionHotkey`、`closeProjectionHotkey` 及其修饰键
@@ -937,7 +842,7 @@ mods/LHolo/config/config.json
 
 - Visual Studio 2022 C++ 工具链
 - xmake
-- LeviLamina 26.32.0 client
+- LeviLamina 26.20.7 client
 - levibuildscript
 - Dear ImGui 1.91.9，Win32 + DX11，静态
 - MinHook
@@ -970,7 +875,7 @@ bin/LHolo/
 测试路径：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.32.x\mods\LHolo
+D:\games\LeviLauncher\MC\versions\1.26.20.04\mods\LHolo
 ```
 
 部署前确认 `Minecraft.Windows.exe` 未运行。复制 DLL 后对构建产物和部署文件计算 SHA256，必须一致。
@@ -1121,9 +1026,7 @@ D:\games\LeviLauncher\MC\versions\1.26.32.x\mods\LHolo
 - [ ] 草方块颜色、顶面和侧面与原版一致。
 - [ ] 石头、玻璃、玻璃板、栅栏、楼梯、门等模型正常。
 - [ ] 透明度 100% 与低透明度均无整体黑块。
-- [ ] 蓝/红/黄/品红提示及描边透明度输入 0、15、50、100 均正确。
-- [ ] 编辑器体积管线回归：单立方体先可见，随后验证多颜色批次、Hull alpha×0.9 补偿、
-      描边虚线动画（FrameTime）、远坐标（±20000）下世界坐标顶点精度。
+- [ ] 蓝/红/黄提示及描边透明度输入 0、15、50、100 均正确。
 - [ ] 一键恢复默认得到提示 15%、描边 100%。
 - [ ] 相邻提示、非完整方块和准心选中不闪烁。
 - [ ] 普通画面与灵动视效均执行上述测试。
@@ -1167,14 +1070,14 @@ D:\games\LeviLauncher\MC\versions\1.26.32.x\mods\LHolo
 测试实例日志：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.32.x\logs\latest.log
+D:\games\LeviLauncher\MC\versions\1.26.20.04\logs\latest.log
 ```
 
 崩溃文件：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.32.x\logs\crash\trace_*.log
-D:\games\LeviLauncher\MC\versions\1.26.32.x\logs\crash\minidump_*.dmp
+D:\games\LeviLauncher\MC\versions\1.26.20.04\logs\crash\trace_*.log
+D:\games\LeviLauncher\MC\versions\1.26.20.04\logs\crash\minidump_*.dmp
 ```
 
 排障优先级：

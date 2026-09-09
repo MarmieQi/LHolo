@@ -8,9 +8,6 @@
 
 #include "projection/correction/ProjectionCorrectionTracker.h"
 
-#include "ll/api/mod/NativeMod.h"
-#include "plugin/LHolo.h"
-
 #include "block/BlockPlacementRules.h"
 #include "projection/core/ProjectionRules.h"
 #include "projection/core/ProjectionState.h"
@@ -28,11 +25,6 @@
 #include "mc/world/level/levelgen/structure/LegacyStructureSettings.h"
 
 namespace lholo::projection::detail {
-
-auto& logger() {
-    return LHolo::getInstance().getSelf().getLogger();
-}
-
 namespace {
 
 void markSectionDirty(ProjectionState& state, std::size_t section) {
@@ -81,8 +73,10 @@ std::size_t ensureCorrectionSection(
     sectionState.dirty = true;
     sectionState.requestedRevision = 1;
     state.sections.push_back(std::move(sectionState));
-    for (auto& fills : state.correctionFillSectionMeshes) fills.emplace_back();
-    for (auto& outlines : state.correctionOutlineSectionMeshes) outlines.emplace_back();
+    state.warningFillSectionMeshes.emplace_back();
+    state.correctionOutlineSectionMeshes.emplace_back();
+    state.wrongFillSectionMeshes.emplace_back();
+    state.wrongOutlineSectionMeshes.emplace_back();
     state.liquidProxySectionMeshes.emplace_back();
     state.blockEntityPlaceholderSectionMeshes.emplace_back();
     return section;

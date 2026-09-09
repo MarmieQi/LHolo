@@ -35,11 +35,10 @@ struct AsyncSectionBuildResult {
     std::uint64_t actualVertexCount{};
     std::array<std::unique_ptr<mce::Mesh>, static_cast<std::size_t>(RenderBucket::Count)>
         sectionMeshes;
-    // Per-color correction batches: fill -> hull slot, outline -> wireframe slot.
-    std::array<std::unique_ptr<mce::Mesh>, static_cast<std::size_t>(CorrectionColor::Count)>
-        correctionFillMeshes;
-    std::array<std::unique_ptr<mce::Mesh>, static_cast<std::size_t>(CorrectionColor::Count)>
-        correctionOutlineMeshes;
+    std::unique_ptr<mce::Mesh> warningFillMesh;
+    std::unique_ptr<mce::Mesh> correctionOutlineMesh;
+    std::unique_ptr<mce::Mesh> wrongFillMesh;
+    std::unique_ptr<mce::Mesh> wrongOutlineMesh;
     std::unique_ptr<mce::Mesh> liquidProxyMesh;
     std::unique_ptr<mce::Mesh> blockEntityPlaceholderMesh;
 };

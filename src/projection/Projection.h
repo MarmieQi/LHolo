@@ -39,6 +39,10 @@ float getCorrectionOutlineOpacity();
 void setCorrectionOutlineOpacity(float opacity);
 bool getStructureBoundsEnabled();
 void setStructureBoundsEnabled(bool enabled);
+bool getCorrectionSeeThrough();
+void setCorrectionSeeThrough(bool enabled);
+bool getMissingSeeThrough();
+void setMissingSeeThrough(bool enabled);
 void requestNextStructureAnchor(int x, int y, int z);
 void cancelNextStructureAnchorRequest();
 // Consumes the lightweight signal produced by the existing LevelListener when

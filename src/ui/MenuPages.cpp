@@ -489,6 +489,14 @@ void renderRenderPage(MenuModel& model, MenuActions const& actions, UiMetrics co
         }
     });
 
+    renderSection("##SeeThrough", "穿透显示", metrics, [&] {
+        renderCheckboxRow(
+            "##CorrectionSeeThrough", "错误标记穿透显示（X 光）", model.correctionSeeThrough, metrics
+        );
+        renderCheckboxRow(
+            "##MissingSeeThrough", "未放置标记穿透显示（X 光）", model.missingSeeThrough, metrics
+        );
+    });
 }
 
 void renderHotkeysPage(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics) {
