@@ -59,9 +59,6 @@ bool loadSettingsFile(std::filesystem::path const& path, Settings& out) {
     out.closeProjectionHotkey = json.value("closeProjectionHotkey", out.closeProjectionHotkey);
     out.closeProjectionHotkeyModifiers
         = json.value("closeProjectionHotkeyModifiers", out.closeProjectionHotkeyModifiers);
-    out.projectionOffsetHotkey = json.value("projectionOffsetHotkey", out.projectionOffsetHotkey);
-    out.projectionOffsetHotkeyModifiers
-        = json.value("projectionOffsetHotkeyModifiers", out.projectionOffsetHotkeyModifiers);
 
     static char const* moveKeyNames[]{
         "moveXMinusHotkey",
@@ -141,8 +138,6 @@ void saveSettingsFile(std::filesystem::path const& path, Settings const& setting
         {"loadProjectionHotkeyModifiers", settings.loadProjectionHotkeyModifiers},
         {"closeProjectionHotkey", settings.closeProjectionHotkey},
         {"closeProjectionHotkeyModifiers", settings.closeProjectionHotkeyModifiers},
-        {"projectionOffsetHotkey", settings.projectionOffsetHotkey},
-        {"projectionOffsetHotkeyModifiers", settings.projectionOffsetHotkeyModifiers},
         {"moveXMinusHotkey", settings.moveHotkeys[0]},
         {"moveXPlusHotkey", settings.moveHotkeys[1]},
         {"moveZMinusHotkey", settings.moveHotkeys[2]},

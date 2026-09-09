@@ -116,8 +116,10 @@ public:
     void setAltHeld(bool held);
     void setShiftHeld(bool held);
     [[nodiscard]] unsigned int currentHotkeyModifiers() const;
+    // Raw modifier tracking (event-driven keydown/keyup), not tied to any
+    // rebindable hotkey slot. Drives the fixed Alt+wheel projection offset.
+    [[nodiscard]] bool altHeld() const;
     [[nodiscard]] bool tryPressHotkey(std::size_t index);
-    [[nodiscard]] bool hotkeyHeld(std::size_t index) const;
     [[nodiscard]] bool releaseHotkeysForKey(unsigned int key, std::uint64_t now);
     void resetHotkeyState();
     [[nodiscard]] std::uint64_t ignoreHotkeyUntil() const;

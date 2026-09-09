@@ -69,7 +69,6 @@ constexpr std::size_t kLayerIncreaseHotkeyIndex = input::hotkeyIndex(input::Hotk
 constexpr std::size_t kLayerDecreaseHotkeyIndex = input::hotkeyIndex(input::HotkeyId::LayerDecrease);
 constexpr std::size_t kLoadProjectionHotkeyIndex = input::hotkeyIndex(input::HotkeyId::LoadProjection);
 constexpr std::size_t kCloseProjectionHotkeyIndex = input::hotkeyIndex(input::HotkeyId::CloseProjection);
-constexpr std::size_t kProjectionOffsetHotkeyIndex = input::hotkeyIndex(input::HotkeyId::ProjectionOffset);
 constexpr float kActionHintVerticalScreenRatio = 0.80f;
 auto& logger() {
     return LHolo::getInstance().getSelf().getLogger();
@@ -92,24 +91,6 @@ void resetWorldSession();
 
 unsigned int currentHotkeyModifiers() {
     return uiState().currentHotkeyModifiers();
-}
-
-bool projectionOffsetHotkeyMatches(unsigned int virtualKey) {
-    auto const hotkey = uiState().inputHotkey(kProjectionOffsetHotkeyIndex);
-    auto modifiers = currentHotkeyModifiers();
-    if (virtualKey == VK_CONTROL || virtualKey == VK_LCONTROL || virtualKey == VK_RCONTROL) {
-        modifiers &= ~ui::kHotkeyModifierControl;
-    } else if (virtualKey == VK_MENU || virtualKey == VK_LMENU || virtualKey == VK_RMENU) {
-        modifiers &= ~ui::kHotkeyModifierAlt;
-    } else if (virtualKey == VK_SHIFT || virtualKey == VK_LSHIFT || virtualKey == VK_RSHIFT) {
-        modifiers &= ~ui::kHotkeyModifierShift;
-    }
-    auto const altKey = [](unsigned int key) {
-        return key == VK_MENU || key == VK_LMENU || key == VK_RMENU;
-    };
-    auto const keysMatch = hotkey.key == virtualKey
-        || (altKey(hotkey.key) && altKey(virtualKey));
-    return hotkey.key != 0 && keysMatch && hotkey.modifiers == modifiers;
 }
 
 } // namespace
@@ -175,10 +156,10 @@ bool handleGuiHotkeyKeyDown(unsigned int virtualKey) {
         return true;
     }
 
-    if (projectionOffsetHotkeyMatches(virtualKey)) {
-        if (GetTickCount64() >= uiState().ignoreHotkeyUntil()) {
-            (void)uiState().tryPressHotkey(kProjectionOffsetHotkeyIndex);
-        }
+    // The projection-offset trigger is the fixed Alt key. Its held state lives
+    // in the modifier flags tracked above; consume the bare keydown so
+    // Minecraft never reacts to Alt alone.
+    if (virtualKey == VK_MENU || virtualKey == VK_LMENU || virtualKey == VK_RMENU) {
         return true;
     }
 
@@ -251,22 +232,22 @@ bool handleGuiHotkeyKeyDown(unsigned int virtualKey) {
 bool handleGuiHotkeyKeyUp(unsigned int virtualKey) {
     if (virtualKey == VK_CONTROL || virtualKey == VK_LCONTROL || virtualKey == VK_RCONTROL) {
         uiState().setControlHeld(false);
-        return uiState().releaseHotkeysForKey(virtualKey, GetTickCount64());
+        return false;
     }
     if (virtualKey == VK_MENU || virtualKey == VK_LMENU || virtualKey == VK_RMENU) {
         uiState().setAltHeld(false);
-        return uiState().releaseHotkeysForKey(virtualKey, GetTickCount64());
+        return false;
     }
     if (virtualKey == VK_SHIFT || virtualKey == VK_LSHIFT || virtualKey == VK_RSHIFT) {
         uiState().setShiftHeld(false);
-        return uiState().releaseHotkeysForKey(virtualKey, GetTickCount64());
+        return false;
     }
 
     return uiState().releaseHotkeysForKey(virtualKey, GetTickCount64());
 }
 
 bool handleProjectionOffsetWheel(short wheelDelta) {
-    if (isGuiVisible() || !uiState().hotkeyHeld(kProjectionOffsetHotkeyIndex)
+    if (isGuiVisible() || !uiState().altHeld()
         || !detail::StructureSession::getInstance().hasLoaded()) {
         return false;
     }
@@ -772,11 +753,6 @@ void loadSettings() {
             std::clamp(settings.closeProjectionHotkey, 0, 255),
             std::clamp(settings.closeProjectionHotkeyModifiers, 0, 7)
         );
-        uiState().setHotkey(
-            kProjectionOffsetHotkeyIndex,
-            std::clamp(settings.projectionOffsetHotkey, 0, 255),
-            std::clamp(settings.projectionOffsetHotkeyModifiers, 0, 7)
-        );
         session.setSavedProjection({
             settings.hasSavedProjection,
             settings.savedAnchorX,
@@ -856,9 +832,6 @@ void saveSettings() {
         settings.loadProjectionHotkeyModifiers = loadProjectionHotkey.modifiers;
         settings.closeProjectionHotkey = closeProjectionHotkey.key;
         settings.closeProjectionHotkeyModifiers = closeProjectionHotkey.modifiers;
-        auto const projectionOffsetHotkey = uiState().hotkey(kProjectionOffsetHotkeyIndex);
-        settings.projectionOffsetHotkey = projectionOffsetHotkey.key;
-        settings.projectionOffsetHotkeyModifiers = projectionOffsetHotkey.modifiers;
         settings.hasSavedProjection = sessionSnapshot.saved.available;
         settings.savedAnchorX = sessionSnapshot.saved.anchorX;
         settings.savedAnchorY = sessionSnapshot.saved.anchorY;
@@ -903,14 +876,14 @@ void recordProjectionAnchor(int x, int y, int z) {
 }
 
 // Hotbar lock for the Alt+wheel projection offset: engages only while a
-// projection is loaded AND the projection-offset hotkey is held. Deliberately
-// reads the same event-tracked held state the wheel handler uses, so the lock
+// projection is loaded AND the Alt key is held. Deliberately
+// reads the same event-tracked Alt state the wheel handler uses, so the lock
 // and the projection move engage under exactly the same condition and cost
 // nothing while idle. The selectSlot hook (place/) consults this to suppress
 // wheel-driven hotbar changes; the mod's own slot swaps are exempt via
 // ModSlotSelectGuard.
 bool scrollLockActive() {
-    return getLoaded() != nullptr && uiState().hotkeyHeld(kProjectionOffsetHotkeyIndex);
+    return getLoaded() != nullptr && uiState().altHeld();
 }
 
 void restoreSavedProjection() {
