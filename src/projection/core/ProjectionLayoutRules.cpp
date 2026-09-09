@@ -121,7 +121,26 @@ bool isStructureCellCovered(
     return false;
 }
 
-bool isLayerVisible(int layer, int layerDisplayMode, int displayLayer) {
+bool isLayerVisible(
+    int layer,
+    int layerDisplayMode,
+    int displayLayer,
+    int materialIndex,
+    int secondaryMaterialIndex,
+    int layerAxis
+) {
+    if (layerAxis == 2) {
+        auto const materialVisible = [&](int index) {
+            if (index < 0) return false;
+            switch (layerDisplayMode) {
+            case 1: return index == displayLayer;
+            case 2: return index <= displayLayer;
+            case 3: return index >= displayLayer;
+            default: return true;
+            }
+        };
+        return materialVisible(materialIndex) || materialVisible(secondaryMaterialIndex);
+    }
     switch (layerDisplayMode) {
     case 1: return layer == displayLayer;
     case 2: return layer <= displayLayer;

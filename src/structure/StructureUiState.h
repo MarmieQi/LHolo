@@ -109,6 +109,7 @@ public:
         unsigned int key,
         unsigned int modifiers
     );
+    void resetHotkey(std::size_t index);
     void resetHotkeys();
 
     void setControlHeld(bool held);
@@ -116,12 +117,14 @@ public:
     void setShiftHeld(bool held);
     [[nodiscard]] unsigned int currentHotkeyModifiers() const;
     [[nodiscard]] bool tryPressHotkey(std::size_t index);
+    [[nodiscard]] bool hotkeyHeld(std::size_t index) const;
     [[nodiscard]] bool releaseHotkeysForKey(unsigned int key, std::uint64_t now);
     void resetHotkeyState();
     [[nodiscard]] std::uint64_t ignoreHotkeyUntil() const;
     void setIgnoreHotkeyUntil(std::uint64_t deadline);
 
     void queueMove(std::size_t index);
+    void queueOffsetDelta(int deltaX, int deltaY, int deltaZ);
     void queueLayerDelta(int delta);
     void queueLoadProjection();
     void queueCloseProjection();

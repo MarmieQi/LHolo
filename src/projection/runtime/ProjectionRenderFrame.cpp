@@ -152,10 +152,12 @@ void renderProjection(
         auto const offsetZ = structure::getOffsetZ();
         auto const layerDisplayMode = structure::getLayerDisplayMode();
         auto const layerAxis = structure::getLayerAxis();
-        auto const maxLayer = std::max(
-            0,
-            (layerAxis == 1 ? state.structure->sizeX : state.structure->sizeY) - 1
-        );
+        auto const maxLayer = layerAxis == 2
+            ? std::max(0, static_cast<int>(state.structure->materialCount) - 1)
+            : std::max(
+                0,
+                (layerAxis == 1 ? state.structure->sizeX : state.structure->sizeY) - 1
+            );
         auto const displayLayer = std::clamp(
             structure::getDisplayLayer(), 0, maxLayer
         );

@@ -27,6 +27,7 @@ struct DefaultHotkey {
 
 constexpr std::array<DefaultHotkey, input::kHotkeyCount> kDefaultHotkeys{{
     {'M',     lholo::ui::kHotkeyModifierAlt},
+    {VK_MENU,  0},
     {VK_LEFT, lholo::ui::kHotkeyModifierControl},
     {VK_RIGHT,lholo::ui::kHotkeyModifierControl},
     {VK_UP,   lholo::ui::kHotkeyModifierControl},
@@ -38,6 +39,13 @@ constexpr std::array<DefaultHotkey, input::kHotkeyCount> kDefaultHotkeys{{
     {0,       0},
     {0,       0},
 }};
+
+bool hotkeyKeysMatch(unsigned int bindingKey, unsigned int eventKey) {
+    auto const isAltKey = [](unsigned int key) {
+        return key == VK_MENU || key == VK_LMENU || key == VK_RMENU;
+    };
+    return bindingKey == eventKey || (isAltKey(bindingKey) && isAltKey(eventKey));
+}
 
 } // namespace
 
@@ -223,6 +231,15 @@ void StructureUiState::resetHotkeys() {
     stopHotkeyCapture();
 }
 
+void StructureUiState::resetHotkey(std::size_t index) {
+    auto* storage = hotkeyStorage(index);
+    if (!storage) return;
+    storage->key.store(kDefaultHotkeys[index].key, std::memory_order_release);
+    storage->modifiers.store(kDefaultHotkeys[index].modifiers, std::memory_order_release);
+    storage->capturing.store(false, std::memory_order_release);
+    storage->held.store(false, std::memory_order_release);
+}
+
 void StructureUiState::setControlHeld(bool held) {
     mControlHeld.store(held, std::memory_order_release);
 }
@@ -242,10 +259,15 @@ bool StructureUiState::tryPressHotkey(std::size_t index) {
     return storage && !storage->held.exchange(true, std::memory_order_acq_rel);
 }
 
+bool StructureUiState::hotkeyHeld(std::size_t index) const {
+    auto const* storage = hotkeyStorage(index);
+    return storage && storage->held.load(std::memory_order_acquire);
+}
+
 bool StructureUiState::releaseHotkeysForKey(unsigned int key, std::uint64_t now) {
     bool consumed{};
     for (auto& hotkey : mHotkeys) {
-        if (key == hotkey.key.load(std::memory_order_acquire)) {
+        if (hotkeyKeysMatch(hotkey.key.load(std::memory_order_acquire), key)) {
             consumed = hotkey.held.exchange(false, std::memory_order_acq_rel) || consumed;
         }
     }
@@ -286,6 +308,12 @@ void StructureUiState::queueMove(std::size_t index) {
     case 5: mPendingOffsetY.fetch_sub(1, std::memory_order_relaxed); break;
     default: break;
     }
+}
+
+void StructureUiState::queueOffsetDelta(int deltaX, int deltaY, int deltaZ) {
+    mPendingOffsetX.fetch_add(deltaX, std::memory_order_relaxed);
+    mPendingOffsetY.fetch_add(deltaY, std::memory_order_relaxed);
+    mPendingOffsetZ.fetch_add(deltaZ, std::memory_order_relaxed);
 }
 
 void StructureUiState::queueLayerDelta(int delta) {

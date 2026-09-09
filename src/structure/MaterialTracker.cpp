@@ -211,7 +211,8 @@ MaterialHudResult countMaterialHud(MaterialHudInput input) {
         auto const& entry = blocks[index];
         auto const layer = input.key.layerAxis == 1 ? entry.x : entry.y;
         if (!projection::isLayerVisible(
-                layer, input.key.layerDisplayMode, input.key.displayLayer
+            layer, input.key.layerDisplayMode, input.key.displayLayer,
+                entry.materialIndex, entry.liquidMaterialIndex, input.key.layerAxis
             )) {
             continue;
         }

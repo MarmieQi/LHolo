@@ -162,7 +162,12 @@ bool StructureSession::adjustDisplayLayer(int delta) {
     auto       maxLayer = 0;
     {
         std::lock_guard lock(mMutex);
-        if (mLoaded) maxLayer = maxLayerFor(*mLoaded, axis);
+        if (mLoaded) {
+            maxLayer = axis == 2
+                ? static_cast<int>(mLoaded->materialCount)
+                : maxLayerFor(*mLoaded, axis);
+            if (maxLayer > 0) --maxLayer;
+        }
     }
     auto const current = static_cast<long long>(mDisplayLayer.load(std::memory_order_relaxed));
     auto const next = std::clamp(current + static_cast<long long>(delta), 0LL, static_cast<long long>(maxLayer));

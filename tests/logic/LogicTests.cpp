@@ -107,6 +107,13 @@ void testLayoutRules() {
     LHOLO_CHECK(!isLayerVisible(4, 2, 3));
     LHOLO_CHECK(isLayerVisible(4, 3, 3));
     LHOLO_CHECK(!isLayerVisible(2, 3, 3));
+    LHOLO_CHECK(isLayerVisible(0, 0, 0, 2, -1, 2));
+    LHOLO_CHECK(isLayerVisible(0, 1, 2, 2, -1, 2));
+    LHOLO_CHECK(!isLayerVisible(0, 1, 1, 2, -1, 2));
+    LHOLO_CHECK(isLayerVisible(0, 2, 2, 1, 3, 2));
+    LHOLO_CHECK(!isLayerVisible(0, 2, 2, 3, 4, 2));
+    LHOLO_CHECK(isLayerVisible(0, 3, 3, -1, 3, 2));
+    LHOLO_CHECK(!isLayerVisible(0, 3, 2, 1, 1, 2));
 
     LHOLO_CHECK(renderBucketFor(BlockRenderLayer::RenderlayerOpaque) == RenderBucket::Opaque);
     LHOLO_CHECK(renderBucketFor(BlockRenderLayer::RenderlayerSeasonsOpaque) == RenderBucket::Opaque);

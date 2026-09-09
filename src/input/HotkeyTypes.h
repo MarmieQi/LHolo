@@ -11,6 +11,7 @@ namespace lholo::input {
 // silently desynchronize input handling, settings, and menu presentation.
 enum class HotkeyId : std::uint8_t {
     Gui,
+    ProjectionOffset,
     MoveXMinus,
     MoveXPlus,
     MoveZMinus,

@@ -52,6 +52,7 @@ MenuPage               gActivePage{MenuPage::Projection};
 struct HotkeyDefinition { HotkeyId id; char const* label; };
 constexpr std::array<HotkeyDefinition, input::kHotkeyCount> kHotkeyDefinitions{{
     {HotkeyId::Gui, "打开投影菜单"},
+    {HotkeyId::ProjectionOffset, "结构偏移"},
     {HotkeyId::MoveXMinus, "结构偏移 X -1"},
     {HotkeyId::MoveXPlus, "结构偏移 X +1"},
     {HotkeyId::MoveZMinus, "结构偏移 Z -1"},
@@ -90,7 +91,7 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
         auto const& point = *captureSnapshot.draft.second;
         model.capture.second = {true, point.x, point.y, point.z};
     }
-    model.layerAxis = std::clamp(sessionSnapshot.transform.layerAxis, 0, 1);
+    model.layerAxis = std::clamp(sessionSnapshot.transform.layerAxis, 0, 2);
     model.status = sessionSnapshot.status;
     model.hasLoadedStructure = static_cast<bool>(sessionSnapshot.loaded);
     model.hasSavedProjection = sessionSnapshot.saved.available;
@@ -99,6 +100,8 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
     model.savedAnchorZ = sessionSnapshot.saved.anchorZ;
     model.maxLayerY = sessionSnapshot.maxLayerY;
     model.maxLayerX = sessionSnapshot.maxLayerX;
+    model.materialCount = sessionSnapshot.loaded
+        ? static_cast<int>(sessionSnapshot.loaded->materialCount) : 0;
     model.structureBoundsEnabled = projection::getStructureBoundsEnabled();
     model.correctionSeeThrough = projection::getCorrectionSeeThrough();
     model.missingSeeThrough = projection::getMissingSeeThrough();
@@ -121,7 +124,9 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
     model.layerDisplayMode = std::clamp(sessionSnapshot.transform.layerDisplayMode, 0, 3);
     model.displayLayer = std::clamp(
         sessionSnapshot.transform.displayLayer, 0,
-        model.layerAxis == 1 ? model.maxLayerX : model.maxLayerY
+        model.layerAxis == 2
+            ? std::max(0, model.materialCount - 1)
+            : (model.layerAxis == 1 ? model.maxLayerX : model.maxLayerY)
     );
     model.hudEnabled = hud.enabled;
     model.hudPosition = std::clamp(hud.position, 0, 3);
@@ -208,11 +213,14 @@ void applyStructureMenuModel(MenuModel const& model, float effectiveUiScale) {
         projection::setCorrectionOutlineOpacity(outline);
         changed = true;
     }
-    auto const layerAxis = std::clamp(model.layerAxis, 0, 1);
+    auto const layerAxis = std::clamp(model.layerAxis, 0, 2);
     changed = session.setLayerAxis(layerAxis) || changed;
     changed = session.setLayerDisplayMode(std::clamp(model.layerDisplayMode, 0, 3)) || changed;
     auto const sessionSnapshot = session.snapshot();
-    auto const displayMax = layerAxis == 1 ? sessionSnapshot.maxLayerX : sessionSnapshot.maxLayerY;
+    auto const displayMax = layerAxis == 2
+        ? std::max(0, static_cast<int>(sessionSnapshot.loaded
+            ? sessionSnapshot.loaded->materialCount : 0) - 1)
+        : (layerAxis == 1 ? sessionSnapshot.maxLayerX : sessionSnapshot.maxLayerY);
     changed = session.setDisplayLayer(std::clamp(model.displayLayer, 0, displayMax)) || changed;
     auto hud = uiState().hud();
     hud.enabled = model.hudEnabled;
@@ -307,6 +315,10 @@ MenuActions buildStructureMenuActions(bool& refreshModel) {
     };
     actions.clearHotkey = [](HotkeyId id) {
         uiState().clearHotkey(static_cast<std::size_t>(id));
+        structure::saveSettings();
+    };
+    actions.resetHotkey = [](HotkeyId id) {
+        uiState().resetHotkey(static_cast<std::size_t>(id));
         structure::saveSettings();
     };
     actions.resetHotkeys = [] {

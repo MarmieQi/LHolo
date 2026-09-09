@@ -48,6 +48,8 @@ struct Settings {
     int loadProjectionHotkeyModifiers{0};
     int closeProjectionHotkey{0};
     int closeProjectionHotkeyModifiers{0};
+    int projectionOffsetHotkey{0x12}; // VK_MENU
+    int projectionOffsetHotkeyModifiers{0};
     // X-, X+, Z-, Z+, Y+, Y-
     std::array<int, input::kMoveHotkeyCount> moveHotkeys{0x25, 0x27, 0x26, 0x28, 0x26, 0x28};
     std::array<int, input::kMoveHotkeyCount> moveHotkeyModifiers{1, 1, 1, 1, 4, 4};
