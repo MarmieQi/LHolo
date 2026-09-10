@@ -19,8 +19,6 @@ namespace detail {
 
 std::shared_ptr<LoadedStructure> loadStructureFile(std::filesystem::path const& path, std::string& error);
 
-std::string makeStructureStatus(LoadedStructure const& loaded);
-
 } // namespace lholo::structure::detail
 
 } // namespace lholo::structure

@@ -16,6 +16,7 @@
 
 #include "structure/StructureLoader.h"
 
+#include "i18n/Message.h"
 #include "settings/SettingsStore.h"
 #include "structure/MaterialTracker.h"
 #include "structure/formats/StructureFormatLoaders.h"
@@ -277,7 +278,10 @@ void processPendingActions() {
         place::resetWorldSession();
         capture::clear();
         resetWorldSession();
-        showActionHint("已退出世界，投影已关闭", kProjectionLifecycleHintDurationMs);
+        showActionHint(
+            i18n::Message{i18n::TextKey::ActionHintWorldExited},
+            kProjectionLifecycleHintDurationMs
+        );
         return;
     }
 
@@ -291,12 +295,12 @@ void processPendingActions() {
 
     if (pending.loadProjection) {
         restoreSavedProjection();
-        showActionHint("加载投影");
+        showActionHint(i18n::Message{i18n::TextKey::ActionHintLoadProjection});
     }
     if (pending.closeProjection) {
         clear();
         saveSettings();
-        showActionHint("关闭投影");
+        showActionHint(i18n::Message{i18n::TextKey::ActionHintCloseProjection});
     }
 
     changed = pending.settingsSave || changed;
@@ -362,8 +366,25 @@ void setMaterialHudPosition(int position) {
     uiState().setMaterialHudPosition(position);
 }
 
-void showActionHint(std::string text, std::uint64_t durationMs) {
-    uiState().setActionHint(std::move(text), GetTickCount64() + durationMs);
+void showActionHint(i18n::Message message, std::uint64_t durationMs) {
+    uiState().setActionHint(std::move(message), GetTickCount64() + durationMs);
+}
+
+i18n::Message makeLoadedStatusMessage(LoadedStructure const& loaded) {
+    char sizeText[64]{};
+    std::snprintf(
+        sizeText, sizeof(sizeText), "%d x %d x %d", loaded.sizeX, loaded.sizeY, loaded.sizeZ
+    );
+    char blocksText[96]{};
+    std::snprintf(
+        blocksText, sizeof(blocksText), "%llu  |  Palette %llu",
+        static_cast<unsigned long long>(loaded.renderBlocks.size()),
+        static_cast<unsigned long long>(loaded.paletteEntries)
+    );
+    return {
+        i18n::TextKey::StatusLoaded,
+        {detail::pathToUtf8(loaded.sourcePath.filename()), sizeText, blocksText}
+    };
 }
 
 bool actionHintActive() {
@@ -481,43 +502,45 @@ void renderHud() {
         | ImGuiWindowFlags_NoNavFocus
         | ImGuiWindowFlags_NoInputs;
     if (ImGui::Begin("##LHoloHud", nullptr, flags)) {
-        if (showFileName) ImGui::Text("投影：%s", fileName.c_str());
+        if (showFileName) ImGui::Text(i18n::tr(i18n::TextKey::HudFileName), fileName.c_str());
         if (showLayer && layerAxis == LayerAxis::Material) {
             if (layerMode == LayerDisplayMode::All) {
-                ImGui::TextUnformatted("材料筛选：全部");
+                ImGui::TextUnformatted(i18n::tr(i18n::TextKey::HudMaterialFilterAll));
             } else if (layerMode == LayerDisplayMode::Single) {
                 ImGui::Text(
-                    "材料筛选：第 %d 种（共 %d 种）",
+                    i18n::tr(i18n::TextKey::HudMaterialFilterSingle),
                     currentLayer + 1,
                     maxLayer + 1
                 );
             } else if (layerMode == LayerDisplayMode::UpToCurrent) {
-                ImGui::Text("材料筛选：前 %d 种", currentLayer + 1);
+                ImGui::Text(
+                    i18n::tr(i18n::TextKey::HudMaterialFilterUpTo), currentLayer + 1
+                );
             } else {
                 ImGui::Text(
-                    "材料筛选：第 %d～%d 种",
+                    i18n::tr(i18n::TextKey::HudMaterialFilterRange),
                     currentLayer + 1,
                     maxLayer + 1
                 );
             }
         } else if (showLayer && layerMode == LayerDisplayMode::All) {
-            ImGui::TextUnformatted("显示范围：完整结构");
+            ImGui::TextUnformatted(i18n::tr(i18n::TextKey::HudRangeAll));
         } else if (showLayer && layerMode == LayerDisplayMode::Single) {
             ImGui::Text(
-                "当前层：%d / %d（%s 轴）",
+                i18n::tr(i18n::TextKey::HudCurrentLayer),
                 currentLayer,
                 maxLayer,
                 layerAxis == LayerAxis::X ? "X" : "Y"
             );
         } else if (showLayer && layerMode == LayerDisplayMode::UpToCurrent) {
             ImGui::Text(
-                "显示范围：第 0～%d 层（%s 轴）",
+                i18n::tr(i18n::TextKey::HudRangeFromZero),
                 currentLayer,
                 layerAxis == LayerAxis::X ? "X" : "Y"
             );
         } else if (showLayer) {
             ImGui::Text(
-                "显示范围：第 %d～%d 层（%s 轴）",
+                i18n::tr(i18n::TextKey::HudRangeBetween),
                 currentLayer,
                 maxLayer,
                 layerAxis == LayerAxis::X ? "X" : "Y"
@@ -529,14 +552,14 @@ void renderHud() {
         if (showAnyProgress) progress = projection::getBuildProgress();
         if (showOverallProgress) {
             ImGui::Text(
-                "总体进度：%llu / %llu",
+                i18n::tr(i18n::TextKey::HudOverallProgress),
                 static_cast<unsigned long long>(progress.placed),
                 static_cast<unsigned long long>(progress.total)
             );
         }
         if (showProgress) {
             ImGui::Text(
-                "建造进度：%llu / %llu",
+                i18n::tr(i18n::TextKey::HudBuildProgress),
                 static_cast<unsigned long long>(progress.visiblePlaced),
                 static_cast<unsigned long long>(progress.visibleTotal)
             );
@@ -544,34 +567,42 @@ void renderHud() {
         if (showWrongState && progress.wrongState != 0) {
             ImGui::TextColored(
                 ImVec4(1.0f, 0.62f, 0.18f, 1.0f),
-                "朝向错误：%llu",
+                i18n::tr(i18n::TextKey::HudWrongState),
                 static_cast<unsigned long long>(progress.wrongState)
             );
         }
         if (showWrongType && progress.wrongType != 0) {
             ImGui::TextColored(
                 ImVec4(1.0f, 0.28f, 0.24f, 1.0f),
-                "放置错误：%llu",
+                i18n::tr(i18n::TextKey::HudWrongType),
                 static_cast<unsigned long long>(progress.wrongType)
             );
         }
         if (showExtraBlocks && progress.extra != 0) {
             ImGui::TextColored(
                 ImVec4(1.0f, 0.30f, 0.90f, 1.0f),
-                "多余方块：%llu",
+                i18n::tr(i18n::TextKey::HudExtraBlocks),
                 static_cast<unsigned long long>(progress.extra)
             );
         }
         auto const aimedProjectedBlock = place::getAimedProjectedBlockName();
         if (showProjectedBlockName && !aimedProjectedBlock.empty()) {
-            ImGui::Text("投影方块：%s", aimedProjectedBlock.c_str());
+            ImGui::Text(
+                i18n::tr(i18n::TextKey::HudProjectedBlock), aimedProjectedBlock.c_str()
+            );
         }
         // Show which assisted-placement mode (if any) is currently on.
-        char const* const placeMode = place::isManualMode() ? "手动放置"
-            : place::isEnabled() ? "轻松放置"
-            : place::isRangeEnabled() ? "范围放置" : nullptr;
+        char const* const placeMode = place::isManualMode()
+            ? i18n::tr(i18n::TextKey::ModeManual)
+            : place::isEnabled()
+                ? i18n::tr(i18n::TextKey::ModeEasy)
+                : place::isRangeEnabled() ? i18n::tr(i18n::TextKey::ModeRange) : nullptr;
         if (placeMode) {
-            ImGui::TextColored(ImVec4(0.45f, 0.85f, 1.0f, 1.0f), "辅助放置：%s", placeMode);
+            ImGui::TextColored(
+                ImVec4(0.45f, 0.85f, 1.0f, 1.0f),
+                i18n::tr(i18n::TextKey::HudPlacementMode),
+                placeMode
+            );
         }
         // Record our rect + corner so the material HUD (drawn right after) can
         // stack clear of us when it shares this corner, instead of overlapping.
@@ -598,9 +629,9 @@ void renderMaterialHud() {
     auto const& available = snapshot.available;
 
     struct Row {
-        std::string const* name;
-        std::uint64_t      missing;
-        int                stackSize;
+        char const*   name;
+        std::uint64_t missing;
+        int           stackSize;
     };
     std::vector<Row> missing;
     for (std::size_t index = 0; index < materials.size(); ++index) {
@@ -609,7 +640,13 @@ void renderMaterialHud() {
         auto const miss = static_cast<std::uint64_t>(have) >= need
             ? 0ULL : need - static_cast<std::uint64_t>(have);
         if (miss > 0) {
-            missing.push_back({&materials[index].displayName, miss, materials[index].stackSize});
+            missing.push_back({
+                lholo::ui::materialDisplayName(
+                    materials[index].displayName, materials[index].nameKey
+                ),
+                miss,
+                materials[index].stackSize
+            });
         }
     }
     std::sort(missing.begin(), missing.end(), [](Row const& a, Row const& b) {
@@ -654,13 +691,15 @@ void renderMaterialHud() {
         | ImGuiWindowFlags_NoNavFocus
         | ImGuiWindowFlags_NoInputs;
     if (ImGui::Begin("##LHoloMaterialHud", nullptr, flags)) {
-        ImGui::TextUnformatted("缺失材料");
+        ImGui::TextUnformatted(i18n::tr(i18n::TextKey::MaterialHudTitle));
         ImGui::Separator();
         if (!snapshot.ready) {
-            ImGui::TextDisabled("正在统计当前显示范围…");
+            ImGui::TextDisabled("%s", i18n::tr(i18n::TextKey::MaterialHudScanning));
         } else if (missing.empty()) {
             ImGui::TextColored(
-                ImVec4(0.55f, 0.85f, 0.40f, 1.0f), "当前显示范围材料已备齐"
+                ImVec4(0.55f, 0.85f, 0.40f, 1.0f),
+                "%s",
+                i18n::tr(i18n::TextKey::MaterialHudComplete)
             );
         } else {
             constexpr std::size_t kMaxRows = 14;
@@ -670,12 +709,14 @@ void renderMaterialHud() {
                 // stacks, e.g. "白色玻璃  111 (1 x 64 + 47)".
                 ImGui::TextColored(
                     ImVec4(1.0f, 0.62f, 0.20f, 1.0f), "%s  %s",
-                    row.name->c_str(),
+                    row.name,
                     lholo::ui::formatStackCount(row.missing, row.stackSize).c_str()
                 );
             }
             if (missing.size() > kMaxRows) {
-                ImGui::TextDisabled("…还有 %zu 种材料", missing.size() - kMaxRows);
+                ImGui::TextDisabled(
+                    i18n::tr(i18n::TextKey::MaterialHudMore), missing.size() - kMaxRows
+                );
             }
         }
     }
@@ -696,6 +737,7 @@ void loadSettings() {
             saveSettings();
             return;
         }
+        i18n::setLanguage(i18n::languageFromInt(settings.language));
         session.setLastPath(settings.lastStructurePath);
         uiState().setUiScale(std::clamp(settings.uiScale, 0.0f, 5.0f));
         projection::setOpacity(settings.opacity);
@@ -799,6 +841,7 @@ void saveSettings() {
         auto const hud = uiState().hud();
         lholo::settings::Settings settings;
         settings.lastStructurePath = sessionSnapshot.lastPath;
+        settings.language = i18n::toInt(i18n::language());
         settings.uiScale = hud.uiScale;
         settings.opacity = projection::getOpacity();
         settings.correctionFillOpacity = projection::getCorrectionFillOpacity();
@@ -904,7 +947,7 @@ void restoreSavedProjection() {
     std::string error;
     auto loaded = detail::loadStructureFile(detail::pathFromUtf8(savedPath), error);
     if (!loaded) {
-        session.setStatus("恢复失败: " + error);
+        session.setStatus(i18n::Message{i18n::TextKey::StatusRestoreFailed, {error}});
         logger().error("Could not restore structure {}: {}", savedPath, error);
         return;
     }
@@ -917,7 +960,11 @@ void restoreSavedProjection() {
     session.setDisplayLayer(saved.transform.displayLayer);
     session.setLayerAxis(saved.transform.layerAxis);
     projection::requestNextStructureAnchor(saved.anchorX, saved.anchorY, saved.anchorZ);
-    session.replaceLoaded(std::move(loaded), savedPath, "已恢复上次投影记录，等待进入渲染");
+    session.replaceLoaded(
+        std::move(loaded),
+        savedPath,
+        i18n::Message{i18n::TextKey::StatusRestoredPending}
+    );
     detail::invalidateMaterialList();
     logger().info(
         "Restoring projection {} at ({}, {}, {})",
@@ -927,7 +974,7 @@ void restoreSavedProjection() {
 
 namespace {
 
-void clearProjectionSession(std::string status) {
+void clearProjectionSession(i18n::Message status) {
     // Withdraw the requested structure before waiting for the mesh worker.
     // Otherwise the render hook can observe the old loaded structure in the gap after
     // projection::disable() and immediately enable the projection again.
@@ -940,14 +987,14 @@ void clearProjectionSession(std::string status) {
 }
 
 void resetWorldSession() {
-    clearProjectionSession("已退出世界");
+    clearProjectionSession(i18n::Message{i18n::TextKey::StatusWorldExited});
     uiState().resetWorldSession();
 }
 
 } // namespace
 
 void clear() {
-    clearProjectionSession("已关闭投影");
+    clearProjectionSession(i18n::Message{i18n::TextKey::StatusProjectionClosed});
     uiState().clearMaterials();
 }
 

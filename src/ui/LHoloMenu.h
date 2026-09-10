@@ -1,6 +1,7 @@
 // LHolo - Fluent-style menu
 #pragma once
 
+#include "i18n/Translator.h"
 #include "ui/FluentTheme.h"
 #include "input/HotkeyTypes.h"
 
@@ -24,9 +25,15 @@ enum class MenuPage : std::uint8_t {
     Render,
     Hud,
     Hotkeys,
-    UiScale,
-    Experimental
+    Interface,
+    Experimental,
+    Count
 };
+
+// Derived from the trailing Count enumerator, matching HotkeyId/TextKey: adding
+// a page anywhere above Count grows this and makes the navigation-label table
+// in MenuPages.cpp fail its completeness assertion.
+inline constexpr std::size_t kMenuPageCount = static_cast<std::size_t>(MenuPage::Count);
 
 enum class CapturePointId : std::uint8_t { First, Second };
 
@@ -53,6 +60,8 @@ struct HotkeyRow {
 
 struct MaterialRow {
     std::string displayName;
+    // Language-table override for names with no in-game item; empty otherwise.
+    std::optional<i18n::TextKey> nameKey;
     std::string typeName;
     std::uint64_t count{};
     int stackSize{64};
@@ -70,6 +79,9 @@ struct MenuModel {
     int savedAnchorY{};
     int savedAnchorZ{};
     float uiScale{1.0f};
+    // i18n::Language encoding; the page control edits it and the model apply
+    // step persists it.
+    int language{};
 
     CaptureDraftModel capture;
     std::uint64_t     captureRevision{};

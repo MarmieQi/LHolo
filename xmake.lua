@@ -26,7 +26,7 @@ end
 
 target("LHolo")
     add_rules("@levibuildscript/linkrule")
-    add_rules("@levibuildscript/modpacker", {modVersion = "26.20.8"})
+    add_rules("@levibuildscript/modpacker", {modVersion = "26.20.9"})
     add_cxflags(
         "/utf-8",
         "/W4",
@@ -58,6 +58,7 @@ target("LHoloLogicTests")
     set_languages("c++20")
     set_default(false)
     add_includedirs("src")
+    add_files("src/i18n/**.cpp")
     add_files("src/projection/core/ProjectionLayoutRules.cpp")
     add_files("src/projection/runtime/ProjectionProgress.cpp")
     add_files("src/place/PlacementState.cpp")

@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "i18n/Message.h"
 #include "structure/LayerDisplayTypes.h"
 #include "structure/StructureLoader.h"
 
@@ -61,10 +62,17 @@ public:
     [[nodiscard]] bool hasLoaded() const;
     [[nodiscard]] std::string lastPath() const;
 
-    void setStatus(std::string status);
+    // Status is stored as a key plus arguments, never as rendered text: the
+    // menu renders it every frame, so a language switch applies to messages
+    // that were produced before the switch.
+    void setStatus(i18n::Message status);
     void setLastPath(std::string path);
-    void replaceLoaded(std::shared_ptr<LoadedStructure> loaded, std::string path, std::string status);
-    void clearLoaded(std::string status);
+    void replaceLoaded(
+        std::shared_ptr<LoadedStructure> loaded,
+        std::string                      path,
+        i18n::Message                    status
+    );
+    void clearLoaded(i18n::Message status);
 
     [[nodiscard]] StructureTransformSnapshot transform() const;
     [[nodiscard]] bool layerDisplayEnabled() const;
@@ -96,7 +104,7 @@ private:
     std::shared_ptr<LoadedStructure> mLoaded;
     std::string                      mSavedStructurePath;
     std::string                      mLastPath;
-    std::string                      mStatus{"尚未加载结构文件"};
+    i18n::Message                    mStatus{i18n::TextKey::StatusNotLoaded};
 
     std::atomic_int mRotationQuarterTurns{0};
     std::atomic_int mMirrorMode{0};

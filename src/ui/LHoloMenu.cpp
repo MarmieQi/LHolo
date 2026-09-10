@@ -7,18 +7,8 @@
 #include "ui/MenuPages.h"
 
 #include <algorithm>
-#include <array>
-#include <charconv>
-#include <cmath>
-#include <cfloat>
-#include <cstdio>
-#include <limits>
 
 namespace lholo::ui {
-namespace {
-
-
-} // namespace
 
 void renderMenu(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics) {
     bool open = true;
@@ -31,17 +21,23 @@ void renderMenu(MenuModel& model, MenuActions const& actions, UiMetrics const& m
                 | ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoSavedSettings
         )) {
         ImGui::TextUnformatted("LHolo");
-        auto const closeWidth = ImGui::CalcTextSize("关闭菜单").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        auto const closeLabel = i18n::tr(i18n::TextKey::MenuClose);
+        auto const closeWidth = ImGui::CalcTextSize(closeLabel).x + ImGui::GetStyle().FramePadding.x * 2.0f;
         ImGui::SameLine();
         ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - closeWidth - metrics.outerPadding));
-        if (ImGui::Button("关闭菜单")) open = false;
+        if (ImGui::Button(closeLabel)) open = false;
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
 
         auto const available = ImGui::GetContentRegionAvail();
         auto navText = 0.0f;
-        for (auto const* name : kPageNames) navText = std::max(navText, ImGui::CalcTextSize(name).x);
+        for (std::size_t page = 0; page < kMenuPageCount; ++page) {
+            navText = std::max(
+                navText,
+                ImGui::CalcTextSize(pageName(static_cast<MenuPage>(page))).x
+            );
+        }
         auto navWidth = std::max(navText + metrics.outerPadding * 2.2f, available.x * 0.17f);
         navWidth = std::min(navWidth, available.x * 0.34f);
         ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
@@ -63,9 +59,12 @@ void renderMenu(MenuModel& model, MenuActions const& actions, UiMetrics const& m
             case MenuPage::Render: renderRenderPage(model, actions, metrics); break;
             case MenuPage::Hotkeys: renderHotkeysPage(model, actions, metrics); break;
             case MenuPage::Hud: renderHudPage(model, metrics); break;
-            case MenuPage::UiScale: renderUiScalePage(model, metrics); break;
+            case MenuPage::Interface: renderInterfacePage(model, metrics); break;
             }
-            if (model.materialPopupRequested) ImGui::OpenPopup(kMaterialPopupName);
+            if (model.materialPopupRequested) {
+                auto const popupName = materialPopupName();
+                ImGui::OpenPopup(popupName.c_str());
+            }
             // Both opening and rendering happen in this page child. Dear
             // ImGui popup IDs are scoped to the current window.
             renderMaterialPopup(model, metrics);

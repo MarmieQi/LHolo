@@ -17,6 +17,7 @@ bool loadSettingsFile(std::filesystem::path const& path, Settings& out) {
     auto const json = nlohmann::json::parse(input, nullptr, true, true);
 
     out.lastStructurePath = json.value("lastStructurePath", out.lastStructurePath);
+    out.language = json.value("language", out.language);
     out.uiScale = json.value("uiScale", out.uiScale);
     out.opacity = json.value("opacity", out.opacity);
     out.correctionFillOpacity = json.value("correctionFillOpacity", out.correctionFillOpacity);
@@ -106,6 +107,7 @@ void saveSettingsFile(std::filesystem::path const& path, Settings const& setting
     nlohmann::ordered_json const json{
         {"version", 11},
         {"lastStructurePath", settings.lastStructurePath},
+        {"language", settings.language},
         {"uiScale", settings.uiScale},
         {"opacity", settings.opacity},
         {"correctionFillOpacity", settings.correctionFillOpacity},

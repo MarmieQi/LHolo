@@ -2,10 +2,14 @@
 // Run with: xmake r LHoloLogicTests
 
 #include <cstdio>
+#include <cctype>
 #include <fstream>
 #include <sstream>
+#include <string_view>
 
 #include "block/BlockPlacementRules.h"
+#include "i18n/Message.h"
+#include "i18n/Translator.h"
 #include "place/PlacementState.h"
 #include "projection/core/ProjectionRules.h"
 #include "projection/runtime/ProjectionProgress.h"
@@ -181,6 +185,7 @@ void testSettingsStore() {
     std::filesystem::remove(path, error);
 
     lholo::settings::Settings settings;
+    settings.language = 1;
     settings.uiScale = 1.25f;
     settings.guiHotkey = 'L';
     settings.guiHotkeyModifiers = 1;
@@ -200,6 +205,7 @@ void testSettingsStore() {
         std::ostringstream contents;
         contents << saved.rdbuf();
         LHOLO_CHECK(contents.str().find("\"version\": 11") != std::string::npos);
+        LHOLO_CHECK(contents.str().find("\"language\": 1") != std::string::npos);
         LHOLO_CHECK(contents.str().find("toggleManualHotkey") == std::string::npos);
         LHOLO_CHECK(contents.str().find("toggleEasyHotkey") == std::string::npos);
         LHOLO_CHECK(contents.str().find("toggleRangeHotkey") == std::string::npos);
@@ -207,6 +213,7 @@ void testSettingsStore() {
 
     lholo::settings::Settings loaded;
     LHOLO_CHECK(lholo::settings::loadSettingsFile(path, loaded));
+    LHOLO_CHECK(loaded.language == 1);
     LHOLO_CHECK(loaded.uiScale == 1.25f);
     LHOLO_CHECK(loaded.guiHotkey == 'L');
     LHOLO_CHECK(loaded.guiHotkeyModifiers == 1);
@@ -235,6 +242,8 @@ void testSettingsStore() {
     LHOLO_CHECK(!migrated.correctionSeeThrough);
     LHOLO_CHECK(!migrated.materialHudEnabled);
     LHOLO_CHECK(migrated.materialHudPosition == 3);
+    // A config written before the language field existed keeps the default.
+    LHOLO_CHECK(migrated.language == 0);
 
     lholo::settings::Settings missing;
     std::filesystem::remove(path, error);
@@ -249,14 +258,15 @@ void testStructureSession() {
     using lholo::structure::detail::StructureSession;
 
     auto& session = StructureSession::getInstance();
-    session.clearLoaded("尚未加载结构文件");
+    session.clearLoaded(lholo::i18n::Message{lholo::i18n::TextKey::StatusNotLoaded});
     session.resetTransform();
     session.setLastPath("initial.mcstructure");
     session.setSavedProjection(SavedProjectionSnapshot{});
 
     auto snapshot = session.snapshot();
     LHOLO_CHECK(!snapshot.loaded);
-    LHOLO_CHECK(snapshot.status == "尚未加载结构文件");
+    // The snapshot renders the stored message in the selected language.
+    LHOLO_CHECK(snapshot.status == lholo::i18n::tr(lholo::i18n::TextKey::StatusNotLoaded));
     LHOLO_CHECK(snapshot.lastPath == "initial.mcstructure");
     LHOLO_CHECK(snapshot.transform.rotation == 0);
     LHOLO_CHECK(!snapshot.saved.available);
@@ -265,7 +275,11 @@ void testStructureSession() {
     loaded->sizeX = 7;
     loaded->sizeY = 5;
     loaded->sizeZ = 3;
-    session.replaceLoaded(loaded, "active.mcstructure", "loaded");
+    session.replaceLoaded(
+        loaded,
+        "active.mcstructure",
+        lholo::i18n::Message{lholo::i18n::TextKey::StatusRestoredPending}
+    );
     LHOLO_CHECK(session.setRotation(2));
     LHOLO_CHECK(!session.setRotation(2));
     LHOLO_CHECK(session.setMirror(1));
@@ -296,12 +310,16 @@ void testStructureSession() {
     layered->sizeX = 3;
     layered->sizeY = 8;
     layered->sizeZ = 4;
-    session.replaceLoaded(layered, "layered.mcstructure", "layered");
+    session.replaceLoaded(
+        layered,
+        "layered.mcstructure",
+        lholo::i18n::Message{lholo::i18n::TextKey::StatusRestoredPending}
+    );
     session.setLayerDisplayMode(LayerDisplayMode::UpToCurrent);
     session.setDisplayLayer(7);
     session.setLayerAxis(LayerAxis::Y);
     session.recordProjectionAnchor(40, 50, 60);
-    session.clearLoaded("closed");
+    session.clearLoaded(lholo::i18n::Message{lholo::i18n::TextKey::StatusProjectionClosed});
     session.setDisplayLayer(0); // Empty-menu clamping must not alter the saved layer.
     auto const layeredSaved = session.savedProjection();
     LHOLO_CHECK(layeredSaved.transform.layerDisplayMode == LayerDisplayMode::UpToCurrent);
@@ -311,13 +329,17 @@ void testStructureSession() {
     session.setLayerDisplayMode(layeredSaved.transform.layerDisplayMode);
     session.setDisplayLayer(layeredSaved.transform.displayLayer);
     session.setLayerAxis(layeredSaved.transform.layerAxis);
-    session.replaceLoaded(layered, layeredSaved.structurePath, "restored");
+    session.replaceLoaded(
+        layered,
+        layeredSaved.structurePath,
+        lholo::i18n::Message{lholo::i18n::TextKey::StatusRestoredPending}
+    );
     snapshot = session.snapshot();
     LHOLO_CHECK(snapshot.loaded == layered);
     LHOLO_CHECK(snapshot.maxLayerY == 7);
     LHOLO_CHECK(snapshot.transform.displayLayer == 7);
 
-    session.clearLoaded("closed");
+    session.clearLoaded(lholo::i18n::Message{lholo::i18n::TextKey::StatusProjectionClosed});
 }
 
 void testPlacementState() {
@@ -513,7 +535,10 @@ void testStructureUiState() {
     state.requestMaterialList();
     LHOLO_CHECK(state.consumeMaterialListRequest());
     LHOLO_CHECK(!state.consumeMaterialListRequest());
-    state.replaceMaterialRequirements({{"Stone", "minecraft:stone", "minecraft:stone", 12}});
+    state.replaceMaterialRequirements({
+        {.displayName = "Stone", .typeName = "minecraft:stone",
+         .itemId = "minecraft:stone", .count = 12}
+    });
     LHOLO_CHECK(state.materialListReady());
     // Reopening a completed list must not queue another full structure scan.
     state.requestMaterialList();
@@ -527,7 +552,8 @@ void testStructureUiState() {
     auto hudMaterials = state.materialHudSnapshot();
     LHOLO_CHECK(!hudMaterials.ready);
     state.replaceMaterialHudSnapshot(
-        {{"Glass", "minecraft:glass", "minecraft:glass", 5}},
+        {{.displayName = "Glass", .typeName = "minecraft:glass",
+          .itemId = "minecraft:glass", .count = 5}},
         {2}
     );
     hudMaterials = state.materialHudSnapshot();
@@ -544,12 +570,12 @@ void testStructureUiState() {
     state.setExperimentalConsentGiven(true);
     state.setMaterialHudEnabled(true);
     state.setMaterialHudPosition(3);
-    state.setActionHint("test", 1234);
+    state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::StatusWorldExited}, 1234);
     LHOLO_CHECK(state.experimentalConsentGiven());
     LHOLO_CHECK(state.materialHudEnabled());
     LHOLO_CHECK(state.materialHudPosition() == 3);
     auto const hint = state.actionHint();
-    LHOLO_CHECK(hint.text == "test");
+    LHOLO_CHECK(hint.text == lholo::i18n::tr(lholo::i18n::TextKey::StatusWorldExited));
     LHOLO_CHECK(hint.expiry == 1234);
 
     state.setGuiVisible(false);
@@ -570,12 +596,16 @@ void testStructureUiState() {
     state.queueLoadProjection();
     state.queueCloseProjection();
     state.requestSettingsSave();
-    state.replaceMaterialRequirements({{"Stone", "minecraft:stone", "minecraft:stone", 4}});
+    state.replaceMaterialRequirements({
+        {.displayName = "Stone", .typeName = "minecraft:stone",
+         .itemId = "minecraft:stone", .count = 4}
+    });
     state.replaceMaterialHudSnapshot(
-        {{"Glass", "minecraft:glass", "minecraft:glass", 2}},
+        {{.displayName = "Glass", .typeName = "minecraft:glass",
+          .itemId = "minecraft:glass", .count = 2}},
         {1}
     );
-    state.setActionHint("world hint", 9999);
+    state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::StatusWorldExited}, 9999);
     state.resetWorldSession();
     LHOLO_CHECK(!state.guiVisible());
     LHOLO_CHECK(!state.openingInputBlocked());
@@ -616,11 +646,14 @@ void testHotkeyFormat() {
     LHOLO_CHECK(lholo::ui::isModifierKey(VK_MENU));
     LHOLO_CHECK(lholo::ui::isModifierKey(VK_LWIN));
     LHOLO_CHECK(!lholo::ui::isModifierKey('A'));
-    LHOLO_CHECK(lholo::ui::hotkeyName(0) == "未设置");
-    LHOLO_CHECK(lholo::ui::hotkeyName(VK_MBUTTON) == "鼠标中键");
-    LHOLO_CHECK(lholo::ui::hotkeyName(VK_XBUTTON1) == "鼠标侧键1");
-    LHOLO_CHECK(lholo::ui::hotkeyName(VK_XBUTTON2) == "鼠标侧键2");
-    LHOLO_CHECK(lholo::ui::hotkeyChordName(0, 0) == "未设置");
+    // Compare against the table rather than against literals: these assertions
+    // cover name formatting, while the wording follows the selected language.
+    using lholo::i18n::TextKey;
+    LHOLO_CHECK(lholo::ui::hotkeyName(0) == lholo::i18n::tr(TextKey::KeyNotSet));
+    LHOLO_CHECK(lholo::ui::hotkeyName(VK_MBUTTON) == lholo::i18n::tr(TextKey::KeyMouseMiddle));
+    LHOLO_CHECK(lholo::ui::hotkeyName(VK_XBUTTON1) == lholo::i18n::tr(TextKey::KeyMouseSide1));
+    LHOLO_CHECK(lholo::ui::hotkeyName(VK_XBUTTON2) == lholo::i18n::tr(TextKey::KeyMouseSide2));
+    LHOLO_CHECK(lholo::ui::hotkeyChordName(0, 0) == lholo::i18n::tr(TextKey::KeyNotSet));
     auto const chord = lholo::ui::hotkeyChordName(lholo::ui::kHotkeyModifierControl, 'M');
     LHOLO_CHECK(chord.rfind("Ctrl + ", 0) == 0);
     LHOLO_CHECK(chord.size() > 7);
@@ -647,6 +680,98 @@ void testJavaTextComponents() {
     LHOLO_CHECK(javaTextComponentToPlainText("not json") == "not json");
 }
 
+void testI18n() {
+    using namespace lholo::i18n;
+
+    // Integer encoding round-trips and clamps unknown values to the default.
+    LHOLO_CHECK(toInt(Language::SimplifiedChinese) == 0);
+    LHOLO_CHECK(toInt(Language::English) == 1);
+    LHOLO_CHECK(languageFromInt(0) == Language::SimplifiedChinese);
+    LHOLO_CHECK(languageFromInt(1) == Language::English);
+    LHOLO_CHECK(languageFromInt(7) == Language::SimplifiedChinese);
+
+    // Every key resolves to text in both languages; every key except the "no
+    // message" sentinel must carry actual wording.
+    for (std::size_t index = 0; index < kTextKeyCount; ++index) {
+        auto const key = static_cast<TextKey>(index);
+        for (auto const candidate : {Language::SimplifiedChinese, Language::English}) {
+            auto const* text = tr(key, candidate);
+            LHOLO_CHECK(text != nullptr);
+            LHOLO_CHECK(key == TextKey::None ? *text == '\0' : *text != '\0');
+        }
+    }
+    // The sentinel is the platform zero value, so a default-constructed message
+    // renders as nothing instead of an unrelated entry declared first.
+    LHOLO_CHECK(static_cast<std::uint16_t>(TextKey::None) == 0);
+    LHOLO_CHECK(format(Message{}) == std::string{});
+    // Out-of-range keys resolve to an empty string instead of null or garbage.
+    LHOLO_CHECK(tr(static_cast<TextKey>(kTextKeyCount)) != nullptr);
+    LHOLO_CHECK(*tr(static_cast<TextKey>(kTextKeyCount)) == '\0');
+
+    // Both languages must declare the same placeholders for a key. A
+    // translation that drops or adds one would consume arguments that are not
+    // there (or silently ignore one that is).
+    auto const placeholders = [](std::string_view text) {
+        std::size_t count = 0;
+        for (std::size_t index = 0; index < text.size(); ++index) {
+            if (text[index] != '%') continue;
+            auto cursor = index + 1;
+            while (cursor < text.size()
+                   && (std::isdigit(static_cast<unsigned char>(text[cursor]))
+                       || text[cursor] == 'l' || text[cursor] == 'h'
+                       || text[cursor] == 'z' || text[cursor] == '.'
+                       || text[cursor] == '-')) {
+                ++cursor;
+            }
+            if (cursor < text.size()
+                && std::string_view{"diufsgxXc"}.find(text[cursor])
+                    != std::string_view::npos) {
+                ++count;
+                index = cursor;
+            }
+        }
+        return count;
+    };
+    for (std::size_t index = 0; index < kTextKeyCount; ++index) {
+        auto const key = static_cast<TextKey>(index);
+        LHOLO_CHECK(
+            placeholders(tr(key, Language::SimplifiedChinese))
+            == placeholders(tr(key, Language::English))
+        );
+    }
+
+    // Switching the active language changes lookups and is reversible.
+    setLanguage(Language::SimplifiedChinese);
+    auto const chineseClose = std::string{tr(TextKey::MenuClose)};
+    setLanguage(Language::English);
+    auto const englishClose = std::string{tr(TextKey::MenuClose)};
+    LHOLO_CHECK(chineseClose != englishClose);
+    LHOLO_CHECK(std::string{tr(TextKey::MenuClose, Language::SimplifiedChinese)} == chineseClose);
+    LHOLO_CHECK(std::string{tr(TextKey::MenuClose, Language::English)} == englishClose);
+    setLanguage(Language::SimplifiedChinese);
+    LHOLO_CHECK(std::string{tr(TextKey::MenuClose)} == chineseClose);
+
+    // Language names are shown in their own language, never translated.
+    LHOLO_CHECK(std::string{languageName(Language::English)} == "English");
+    LHOLO_CHECK(std::string{languageName(Language::SimplifiedChinese)} != std::string{languageName(Language::English)});
+
+    // Messages keep their arguments and follow the active language.
+    setLanguage(Language::English);
+    auto const englishFailure = format(Message{TextKey::StatusLoadFailed, {"boom"}});
+    LHOLO_CHECK(englishFailure.find("boom") != std::string::npos);
+    setLanguage(Language::SimplifiedChinese);
+    auto const chineseFailure = format(Message{TextKey::StatusLoadFailed, {"boom"}});
+    LHOLO_CHECK(chineseFailure != englishFailure);
+    LHOLO_CHECK(chineseFailure.find("boom") != std::string::npos);
+    // A message without arguments renders its pattern unchanged.
+    auto const plain = format(Message{TextKey::StatusProjectionClosed});
+    LHOLO_CHECK(!plain.empty());
+    LHOLO_CHECK(plain == std::string{tr(TextKey::StatusProjectionClosed)});
+    // Extra arguments are ignored and a pattern without placeholders is never
+    // interpreted as a printf format string.
+    LHOLO_CHECK(format(Message{TextKey::StatusProjectionClosed, {"extra"}}) == plain);
+}
+
 } // namespace
 
 int main() {
@@ -659,6 +784,7 @@ int main() {
     testHotkeyFormat();
     testBlockPlacementRules();
     testJavaTextComponents();
+    testI18n();
     std::printf("LHoloLogicTests: %d checks, %d failures\n", gChecks, gFailures);
     return gFailures == 0 ? 0 : 1;
 }

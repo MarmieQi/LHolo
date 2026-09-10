@@ -49,19 +49,19 @@ std::array<char, 2048> gPathBuffer{};
 bool                   gPathInitialized{};
 MenuPage               gActivePage{MenuPage::Projection};
 
-struct HotkeyDefinition { HotkeyId id; char const* label; };
+struct HotkeyDefinition { HotkeyId id; i18n::TextKey label; };
 constexpr std::array<HotkeyDefinition, input::kHotkeyCount> kHotkeyDefinitions{{
-    {HotkeyId::Gui, "打开投影菜单"},
-    {HotkeyId::MoveXMinus, "结构偏移 X -1"},
-    {HotkeyId::MoveXPlus, "结构偏移 X +1"},
-    {HotkeyId::MoveZMinus, "结构偏移 Z -1"},
-    {HotkeyId::MoveZPlus, "结构偏移 Z +1"},
-    {HotkeyId::MoveYPlus, "结构偏移 Y +1"},
-    {HotkeyId::MoveYMinus, "结构偏移 Y -1"},
-    {HotkeyId::LayerIncrease, "上一层"},
-    {HotkeyId::LayerDecrease, "下一层"},
-    {HotkeyId::LoadProjection, "加载投影"},
-    {HotkeyId::CloseProjection, "关闭投影"}
+    {HotkeyId::Gui, i18n::TextKey::HotkeyOpenMenu},
+    {HotkeyId::MoveXMinus, i18n::TextKey::HotkeyMoveXMinus},
+    {HotkeyId::MoveXPlus, i18n::TextKey::HotkeyMoveXPlus},
+    {HotkeyId::MoveZMinus, i18n::TextKey::HotkeyMoveZMinus},
+    {HotkeyId::MoveZPlus, i18n::TextKey::HotkeyMoveZPlus},
+    {HotkeyId::MoveYPlus, i18n::TextKey::HotkeyMoveYPlus},
+    {HotkeyId::MoveYMinus, i18n::TextKey::HotkeyMoveYMinus},
+    {HotkeyId::LayerIncrease, i18n::TextKey::HotkeyLayerIncrease},
+    {HotkeyId::LayerDecrease, i18n::TextKey::HotkeyLayerDecrease},
+    {HotkeyId::LoadProjection, i18n::TextKey::HotkeyLoadProjection},
+    {HotkeyId::CloseProjection, i18n::TextKey::HotkeyCloseProjection}
 }};
 
 } // namespace
@@ -76,6 +76,7 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
     model.pathBufferSize = gPathBuffer.size();
     model.blockOpeningInput = uiState().openingInputBlocked();
     model.uiScale = effectiveUiScale;
+    model.language = i18n::toInt(i18n::language());
     auto const captureSnapshot = structure::capture::getSnapshot();
     model.capture.mode = static_cast<int>(captureSnapshot.draft.mode);
     model.captureRevision = captureSnapshot.revision;
@@ -143,7 +144,7 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
         auto const binding = uiState().hotkey(static_cast<std::size_t>(definition.id));
         auto& row = model.hotkeys[rowIndex++];
         row.id = definition.id;
-        row.label = definition.label;
+        row.label = i18n::tr(definition.label);
         row.display = hotkeyChordName(binding.modifiers, binding.key);
         row.capturing = binding.capturing;
     }
@@ -151,7 +152,8 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
     model.materials.reserve(materials.size());
     for (auto const& material : materials) {
         model.materials.push_back(
-            {material.displayName, material.typeName, material.count, material.stackSize}
+            {material.displayName, material.nameKey, material.typeName,
+             material.count, material.stackSize}
         );
     }
     return model;
@@ -160,6 +162,11 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
 void applyStructureMenuModel(MenuModel const& model, float effectiveUiScale) {
     bool changed = false;
     auto& session = structure::detail::StructureSession::getInstance();
+    auto const language = i18n::languageFromInt(model.language);
+    if (language != i18n::language()) {
+        i18n::setLanguage(language);
+        changed = true;
+    }
     if (std::abs(model.uiScale - effectiveUiScale) > 0.001f) {
         auto const scale = std::clamp(model.uiScale, 1.0f, 5.0f);
         if (std::abs(uiState().hud().uiScale - scale) > 0.001f)
@@ -276,7 +283,7 @@ MenuActions buildStructureMenuActions(bool& refreshModel) {
         auto& session = structure::detail::StructureSession::getInstance();
         auto const pathText = std::string{pathValue};
         if (pathText.empty()) {
-            session.setStatus("请选择或输入 .mcstructure / .litematic 文件路径");
+            session.setStatus(i18n::Message{i18n::TextKey::StatusPathEmpty});
             return;
         }
         std::string error;
@@ -284,11 +291,12 @@ MenuActions buildStructureMenuActions(bool& refreshModel) {
             structure::detail::pathFromUtf8(pathText), error
         );
         if (!loaded) {
-            session.setStatus("加载失败: " + error);
+            session.setStatus(i18n::Message{i18n::TextKey::StatusLoadFailed, {error}});
             logger().error("Could not load structure {}: {}", pathText, error);
             return;
         }
-        auto const status = structure::detail::makeStructureStatus(*loaded);
+        auto const renderBlocks = loaded->renderBlocks.size();
+        auto const status = structure::makeLoadedStatusMessage(*loaded);
         // A normal file load is a new user intent. Do not let an unconsumed
         // restore request from an earlier failed/pending activation move it.
         projection::cancelNextStructureAnchorRequest();
@@ -296,7 +304,7 @@ MenuActions buildStructureMenuActions(bool& refreshModel) {
         structure::detail::invalidateMaterialList();
         structure::saveSettings();
         refreshModel = true;
-        logger().info("{}", status);
+        logger().info("Loaded structure {}: {} renderable blocks", pathText, renderBlocks);
     };
     actions.restoreProjection = [&refreshModel] {
         structure::restoreSavedProjection();

@@ -8,8 +8,6 @@
 
 #include "mc/deps/core/math/Vec3.h"
 
-class LocalPlayer;
-
 namespace lholo::place::detail {
 
 struct PlacementContext {
@@ -35,7 +33,5 @@ enum class ManualTargetStatus {
 // inventory availability stay separate so a missing item is never reported as
 // an aiming failure or handed back to vanilla use-item handling.
 ManualTargetStatus manualTargetStatusUnderCrosshair();
-
-void tickRangePlace(LocalPlayer& player, PlacementContext const& context);
 
 } // namespace lholo::place::detail

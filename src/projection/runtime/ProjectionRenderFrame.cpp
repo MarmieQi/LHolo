@@ -118,7 +118,7 @@ void suspendProjectionDimension(ProjectionState& state) {
     );
     suspendProjectionState(state);
     structure::showActionHint(
-        "维度发生变化，投影已暂停",
+        i18n::Message{i18n::TextKey::ActionHintProjectionSuspended},
         structure::kProjectionLifecycleHintDurationMs
     );
 }
@@ -401,7 +401,7 @@ void renderProjectionFrame(BaseActorRenderContext& renderContext, bool renderAlp
                     session.cancelDimensionSuspension();
                     if (activationStatus == DimensionActivationStatus::Resuming) {
                         structure::showActionHint(
-                            "已返回投影所在维度，投影已恢复",
+                            i18n::Message{i18n::TextKey::ActionHintProjectionRestored},
                             structure::kProjectionLifecycleHintDurationMs
                         );
                     }

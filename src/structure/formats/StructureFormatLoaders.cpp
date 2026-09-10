@@ -33,7 +33,6 @@
 #include <memory>
 #include <map>
 #include <optional>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -846,15 +845,6 @@ std::shared_ptr<LoadedStructure> loadStructureFile(std::filesystem::path const& 
         return nullptr;
     }
     return loaded;
-}
-
-std::string makeStructureStatus(LoadedStructure const& loaded) {
-    std::ostringstream output;
-    output << "已加载: " << loaded.sourcePath.filename().string() << "\n"
-           << "尺寸 " << loaded.sizeX << " x " << loaded.sizeY << " x " << loaded.sizeZ
-           << "  |  方块 " << loaded.renderBlocks.size()
-           << "  |  Palette " << loaded.paletteEntries;
-    return output.str();
 }
 
 } // namespace lholo::structure::detail

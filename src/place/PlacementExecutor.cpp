@@ -937,10 +937,6 @@ void tickEasyPlace() {
     tickEasyPlaceImpl();
 }
 
-void tickRangePlace(LocalPlayer& player, PlacementContext const& context) {
-    tickRangePlaceImpl(player, context);
-}
-
 } // namespace lholo::place::detail
 
 } // namespace lholo::place

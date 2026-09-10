@@ -2,6 +2,8 @@
 
 #include "ui/MenuWidgets.h"
 
+#include "i18n/Translator.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cfloat>
@@ -33,6 +35,13 @@ std::string formatStackCount(std::uint64_t count, int stackSize) {
         );
     }
     return buffer;
+}
+
+char const* materialDisplayName(
+    std::string const&                  displayName,
+    std::optional<i18n::TextKey> const& nameKey
+) {
+    return nameKey ? i18n::tr(*nameKey) : displayName.c_str();
 }
 
 float fieldWidth(UiMetrics const& metrics) {

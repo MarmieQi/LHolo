@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "i18n/Message.h"
 #include "structure/LayerDisplayTypes.h"
 
 #include <cstdint>
@@ -90,8 +91,9 @@ void renderHud();
 // Current-visible-range material HUD: missing projected cells vs. inventory.
 void renderMaterialHud();
 // JE-style transient hint shown centered above the hotbar for a moment (e.g.
-// when manual mode blocks an action, or a placement hotkey is toggled).
-void showActionHint(std::string text, std::uint64_t durationMs = 1600);
+// when manual mode blocks an action, or a placement hotkey is toggled). The
+// hint is stored as a message so it follows a language switch while pending.
+void showActionHint(i18n::Message message, std::uint64_t durationMs = 1600);
 void renderActionHint();
 // True while a hint is still on screen, so the overlay keeps drawing even with
 // no projection loaded and the menu closed.
@@ -129,5 +131,8 @@ void clear();
 // Reload the last saved projection at its saved anchor/transform. Standalone so
 // both the menu action and the load hotkey can trigger it.
 void restoreSavedProjection();
+// Status line for a freshly loaded structure. File names and dimensions are
+// language-neutral fragments; the table entry supplies the wording.
+i18n::Message makeLoadedStatusMessage(LoadedStructure const& loaded);
 
 } // namespace lholo::structure

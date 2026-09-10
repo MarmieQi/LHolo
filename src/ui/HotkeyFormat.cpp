@@ -3,6 +3,8 @@
 
 #include "ui/HotkeyFormat.h"
 
+#include "i18n/Translator.h"
+
 #include <cstdio>
 #include <string>
 #include <string_view>
@@ -36,7 +38,7 @@ bool isModifierKey(unsigned int key) {
 }
 
 std::string hotkeyName(unsigned int key) {
-    if (key == 0) return "未设置";
+    if (key == 0) return i18n::tr(i18n::TextKey::KeyNotSet);
     switch (key) {
     case VK_BACK: return "Backspace";
     case VK_DELETE: return "Delete";
@@ -49,9 +51,9 @@ std::string hotkeyName(unsigned int key) {
     case VK_UP: return "Up";
     case VK_DOWN: return "Down";
     // Mouse buttons carry no keyboard scan code, so name them explicitly.
-    case VK_MBUTTON: return "鼠标中键";
-    case VK_XBUTTON1: return "鼠标侧键1";
-    case VK_XBUTTON2: return "鼠标侧键2";
+    case VK_MBUTTON: return i18n::tr(i18n::TextKey::KeyMouseMiddle);
+    case VK_XBUTTON1: return i18n::tr(i18n::TextKey::KeyMouseSide1);
+    case VK_XBUTTON2: return i18n::tr(i18n::TextKey::KeyMouseSide2);
     default: break;
     }
     auto scanCode = MapVirtualKeyW(key, MAPVK_VK_TO_VSC);
@@ -69,7 +71,7 @@ std::string hotkeyName(unsigned int key) {
 }
 
 std::string hotkeyChordName(unsigned int modifiers, unsigned int key) {
-    if (key == 0) return "未设置";
+    if (key == 0) return i18n::tr(i18n::TextKey::KeyNotSet);
     std::string result;
     if ((modifiers & kHotkeyModifierControl) != 0) result += "Ctrl + ";
     if ((modifiers & kHotkeyModifierAlt) != 0) result += "Alt + ";

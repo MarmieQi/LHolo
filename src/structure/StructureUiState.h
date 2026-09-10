@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "i18n/Message.h"
 #include "input/HotkeyTypes.h"
 
 #include <array>
@@ -21,6 +22,9 @@ namespace lholo::structure::detail {
 
 struct MaterialRequirement {
     std::string   displayName;
+    // Set when the display name comes from the interface language table rather
+    // than from the game (projected liquids have no item to take a name from).
+    std::optional<i18n::TextKey> nameKey;
     std::string   typeName;
     // Resolved inventory item type. Empty for materials without a directly
     // countable inventory form (for example projected water/lava cells).
@@ -139,7 +143,9 @@ public:
     void setMaterialHudEnabled(bool enabled);
     [[nodiscard]] int materialHudPosition() const;
     void setMaterialHudPosition(int position);
-    void setActionHint(std::string text, std::uint64_t expiry);
+    // Hints are stored as key plus arguments so a pending hint follows a
+    // language switch like every other interface string.
+    void setActionHint(i18n::Message message, std::uint64_t expiry);
     [[nodiscard]] std::uint64_t actionHintExpiry() const;
     [[nodiscard]] ActionHintSnapshot actionHint() const;
 
@@ -212,7 +218,7 @@ private:
     std::atomic_bool mMaterialHudEnabled{false};
     std::atomic_int  mMaterialHudPosition{3};
     mutable std::mutex mActionHintMutex;
-    std::string        mActionHintText;
+    i18n::Message      mActionHintMessage;
     std::atomic_uint64_t mActionHintExpiry{};
 
     mutable std::mutex                mMaterialMutex;

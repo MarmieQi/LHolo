@@ -11,10 +11,42 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <string>
 
 #include <imgui.h>
 
 namespace lholo::ui {
+
+char const* pageName(MenuPage page) {
+    // Sized by kMenuPageCount. A page added without a label leaves the "no
+    // message" sentinel behind, which the assertion below rejects: a missing
+    // initializer alone would only be value-initialized, not diagnosed.
+    static constexpr std::array<i18n::TextKey, kMenuPageCount> kPageKeys{
+        i18n::TextKey::PageProjection,
+        i18n::TextKey::PageCreateStructure,
+        i18n::TextKey::PageTransform,
+        i18n::TextKey::PageRender,
+        i18n::TextKey::PageHud,
+        i18n::TextKey::PageHotkeys,
+        i18n::TextKey::PageInterface,
+        i18n::TextKey::PageExperimental
+    };
+    constexpr auto allPagesNamed
+        = [](std::array<i18n::TextKey, kMenuPageCount> const& keys) constexpr {
+              for (auto key : keys) {
+                  if (key == i18n::TextKey::None) return false;
+              }
+              return true;
+          };
+    static_assert(allPagesNamed(kPageKeys), "every MenuPage needs a navigation label");
+    auto const index = static_cast<std::size_t>(page);
+    return index < kPageKeys.size() ? i18n::tr(kPageKeys[index]) : "";
+}
+
+std::string materialPopupName() {
+    return std::string{i18n::tr(i18n::TextKey::MaterialListTitle)} + "###LHoloMaterialList";
+}
+
 // Keep the navigation indicator independent from the page content.  This
 // makes a page change feel connected even though the right-hand panel is
 // rebuilt immediately for the newly selected page.
@@ -70,7 +102,8 @@ int maxLayer(MenuModel const& model) {
 void renderPathRow(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics) {
     auto input = [&] {
         if (!model.pathBuffer || model.pathBufferSize == 0) return;
-        auto const browseWidth = ImGui::CalcTextSize("浏览").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        auto const browseWidth = ImGui::CalcTextSize(i18n::tr(i18n::TextKey::ButtonBrowse)).x
+            + ImGui::GetStyle().FramePadding.x * 2.0f;
         auto const width = std::max(
             0.0f,
             (metrics.compact ? ImGui::GetContentRegionAvail().x : fieldWidth(metrics))
@@ -84,34 +117,39 @@ void renderPathRow(MenuModel& model, MenuActions const& actions, UiMetrics const
             model.blockOpeningInput ? ImGuiInputTextFlags_ReadOnly : ImGuiInputTextFlags_None
         );
         ImGui::SameLine();
-        if (ImGui::Button("浏览") && actions.browseStructure) {
+        if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonBrowse)) && actions.browseStructure) {
             if (auto selected = actions.browseStructure(model.pathBuffer)) {
                 std::snprintf(model.pathBuffer, model.pathBufferSize, "%s", selected->c_str());
             }
         }
     };
     if (metrics.compact) {
-        ImGui::TextUnformatted("结构文件路径（.mcstructure / .litematic）");
+        ImGui::TextUnformatted(i18n::tr(i18n::TextKey::LabelStructurePath));
         input();
     } else {
         input();
         ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted("结构文件路径（.mcstructure / .litematic）");
+        ImGui::TextUnformatted(i18n::tr(i18n::TextKey::LabelStructurePath));
     }
 }
 
 void renderProjectionPage(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics) {
-    renderSection("##ProjectionFile", "投影文件", metrics, [&] {
+    renderSection(
+        "##ProjectionFile", i18n::tr(i18n::TextKey::SectionProjectionFile), metrics, [&] {
         ImGui::TextWrapped("%s", model.status.c_str());
         ImGui::Spacing();
         renderPathRow(model, actions, metrics);
         ImGui::Spacing();
-        if (ImGui::Button("加载") && actions.loadStructure) actions.loadStructure(model.pathBuffer ? model.pathBuffer : "");
+        if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonLoad)) && actions.loadStructure) {
+            actions.loadStructure(model.pathBuffer ? model.pathBuffer : "");
+        }
         if (!metrics.compact) ImGui::SameLine();
-        if (ImGui::Button("关闭投影") && actions.closeProjection) actions.closeProjection();
+        if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonCloseProjection)) && actions.closeProjection) {
+            actions.closeProjection();
+        }
         if (!metrics.compact) ImGui::SameLine();
-        if (ImGui::Button("材料清单")) {
+        if (ImGui::Button(i18n::tr(i18n::TextKey::MaterialListTitle))) {
             if (actions.requestMaterials) actions.requestMaterials();
             // OpenPopup() is deferred to the page scope, where the modal is
             // rendered, so both calls use the same Dear ImGui ID stack.
@@ -119,11 +157,19 @@ void renderProjectionPage(MenuModel& model, MenuActions const& actions, UiMetric
         }
         ImGui::Spacing();
         if (model.hasSavedProjection) {
-            if (ImGui::Button("恢复上次投影") && actions.restoreProjection) actions.restoreProjection();
+            if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonRestoreLastProjection))
+                && actions.restoreProjection) {
+                actions.restoreProjection();
+            }
             ImGui::SameLine();
-            ImGui::TextDisabled("原点 X %d  Y %d  Z %d", model.savedAnchorX, model.savedAnchorY, model.savedAnchorZ);
+            ImGui::TextDisabled(
+                i18n::tr(i18n::TextKey::LabelSavedOrigin),
+                model.savedAnchorX,
+                model.savedAnchorY,
+                model.savedAnchorZ
+            );
         } else {
-            ImGui::TextDisabled("没有可恢复的上次投影记录");
+            ImGui::TextDisabled("%s", i18n::tr(i18n::TextKey::HintNoSavedProjection));
         }
     });
 
@@ -131,7 +177,7 @@ void renderProjectionPage(MenuModel& model, MenuActions const& actions, UiMetric
 
 bool renderCapturePoint(
     char const* id,
-    char const* title,
+    i18n::TextKey title,
     CapturePointModel& point,
     CapturePointId pointId,
     CaptureCoordinateText& coordinateText,
@@ -140,7 +186,7 @@ bool renderCapturePoint(
     UiMetrics const& metrics
 ) {
     ImGui::PushID(id);
-    ImGui::TextUnformatted(title);
+    ImGui::TextUnformatted(i18n::tr(title));
     constexpr std::array<char const*, 3> axisNames{"X", "Y", "Z"};
     for (std::size_t index = 0; index < coordinateText.size(); ++index) {
         ImGui::AlignTextToFramePadding();
@@ -170,33 +216,36 @@ bool renderCapturePoint(
         point.z = z;
     }
     if (!metrics.compact) ImGui::SameLine();
-    if (ImGui::Button("使用玩家当前位置") && actions.usePlayerCapturePosition) {
+    if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonUsePlayerPosition))
+        && actions.usePlayerCapturePosition) {
         actions.usePlayerCapturePosition(pointId);
     }
     if (!valid) {
         if (!metrics.compact) ImGui::SameLine();
-        ImGui::TextDisabled("未设置");
+        ImGui::TextDisabled("%s", i18n::tr(i18n::TextKey::LabelNotSet));
     }
     ImGui::PopID();
     return valid;
 }
 
 void renderCreateStructurePage(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics) {
-    renderSection("##CaptureSource", "创建结构", metrics, [&] {
+    renderSection(
+        "##CaptureSource", i18n::tr(i18n::TextKey::SectionCaptureSource), metrics, [&] {
         model.capture.mode = 0;
-        static char const* modeNames[]{"客户端模式"};
+        char const* modeNames[]{i18n::tr(i18n::TextKey::ComboCaptureModeClient)};
         ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted("模式");
+        ImGui::TextUnformatted(i18n::tr(i18n::TextKey::LabelCaptureMode));
         ImGui::SameLine();
         ImGui::SetNextItemWidth(adaptiveComboWidth(modeNames, 1));
         if (ImGui::BeginCombo("##CaptureMode", modeNames[0])) {
             ImGui::Selectable(modeNames[0], true);
             ImGui::EndCombo();
         }
-        ImGui::TextDisabled("客户端模式只能保存当前已加载的世界范围，且容器内容和实体数据可能不完整");
+        ImGui::TextDisabled("%s", i18n::tr(i18n::TextKey::HintCaptureClientOnly));
     });
 
-    renderSection("##CaptureSelection", "结构选区", metrics, [&] {
+    renderSection(
+        "##CaptureSelection", i18n::tr(i18n::TextKey::SectionCaptureSelection), metrics, [&] {
         ImGui::TextWrapped("%s", model.captureStatus.c_str());
         syncCaptureInputState(model);
         auto coordinateWidth = ImGui::CalcTextSize("0").x;
@@ -215,7 +264,8 @@ void renderCreateStructurePage(MenuModel& model, MenuActions const& actions, UiM
         auto const spacing = ImGui::GetStyle().ItemSpacing.x;
         auto const buttonWidth = metrics.compact
             ? 0.0f
-            : ImGui::CalcTextSize("使用玩家当前位置").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+            : ImGui::CalcTextSize(i18n::tr(i18n::TextKey::ButtonUsePlayerPosition)).x
+                + ImGui::GetStyle().FramePadding.x * 2.0f;
         auto const maximumWidth = std::max(
             0.0f,
             (ImGui::GetContentRegionAvail().x - axisWidth * 3.0f - buttonWidth
@@ -224,12 +274,12 @@ void renderCreateStructurePage(MenuModel& model, MenuActions const& actions, UiM
         coordinateWidth = std::min(coordinateWidth, maximumWidth);
         ImGui::BeginDisabled(!model.captureWorldAvailable);
         auto const firstValid = renderCapturePoint(
-            "First", "点 1", model.capture.first, CapturePointId::First,
+            "First", i18n::TextKey::LabelCapturePoint1, model.capture.first, CapturePointId::First,
             gCaptureInputState.first, coordinateWidth, actions, metrics
         );
         ImGui::Spacing();
         auto const secondValid = renderCapturePoint(
-            "Second", "点 2", model.capture.second, CapturePointId::Second,
+            "Second", i18n::TextKey::LabelCapturePoint2, model.capture.second, CapturePointId::Second,
             gCaptureInputState.second, coordinateWidth, actions, metrics
         );
         ImGui::EndDisabled();
@@ -245,20 +295,27 @@ void renderCreateStructurePage(MenuModel& model, MenuActions const& actions, UiM
                 static_cast<std::int64_t>(model.capture.second.z) - model.capture.first.z
             )) + 1;
             auto const volume = sizeX * sizeY * sizeZ;
-            ImGui::Text("尺寸：%llu × %llu × %llu", sizeX, sizeY, sizeZ);
-            ImGui::Text("方块总数：%llu", volume);
+            ImGui::Text(i18n::tr(i18n::TextKey::LabelCaptureSize), sizeX, sizeY, sizeZ);
+            ImGui::Text(i18n::tr(i18n::TextKey::LabelCaptureVolume), volume);
         }
 
         ImGui::Dummy(ImVec2(0.0f, metrics.gap * 0.55f));
         ImGui::BeginDisabled(!model.captureWorldAvailable);
-        renderCheckboxRow("##IncludeEntities", "包含实体", model.capture.includeEntities, metrics);
+        renderCheckboxRow(
+            "##IncludeEntities",
+            i18n::tr(i18n::TextKey::CheckboxIncludeEntities),
+            model.capture.includeEntities,
+            metrics
+        );
         ImGui::EndDisabled();
-        if (ImGui::Button("清除选区") && actions.clearCapture) actions.clearCapture();
+        if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonClearSelection)) && actions.clearCapture) {
+            actions.clearCapture();
+        }
         if (!metrics.compact) ImGui::SameLine();
         ImGui::BeginDisabled(
             !model.captureWorldAvailable || !firstValid || !secondValid
         );
-        if (ImGui::Button("导出 .mcstructure") && actions.exportCapture) {
+        if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonExportMcstructure)) && actions.exportCapture) {
             actions.exportCapture(model.capture);
         }
         ImGui::EndDisabled();
@@ -319,19 +376,19 @@ void renderExperimentalConsentModal(
         )) {
         return;
     }
-    ImGui::TextUnformatted("⚠ 实验性功能 · 使用前请阅读");
+    ImGui::TextUnformatted(i18n::tr(i18n::TextKey::ModalTitleExperimental));
     ImGui::Separator();
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
-    ImGui::TextWrapped("轻松放置 / 手动放置 / 范围放置 属于实验性辅助功能，会自动或半自动地帮你放置投影中的方块。");
-    ImGui::TextWrapped("由于这些功能会程序化地模拟方块放置，部分服务器的反作弊系统可能将其判定为作弊 / 外挂行为。");
-    ImGui::TextWrapped("· 请仅在单人世界，或已获得服主明确许可的服务器上使用。");
-    ImGui::TextWrapped("· 在未经许可的服务器上使用，可能导致被踢出、封禁账号等后果。");
-    ImGui::TextWrapped("· 一切风险与后果由使用者自行承担，作者与本模组概不负责。");
-    ImGui::TextWrapped("手动逐格搭建始终是安全的做法；辅助放置仅为提升效率的实验性工具。");
+    ImGui::TextWrapped("%s", i18n::tr(i18n::TextKey::ExperimentalWarningIntro));
+    ImGui::TextWrapped("%s", i18n::tr(i18n::TextKey::ExperimentalWarningAntiCheat));
+    ImGui::TextWrapped("%s", i18n::tr(i18n::TextKey::ExperimentalWarningAllowed));
+    ImGui::TextWrapped("%s", i18n::tr(i18n::TextKey::ExperimentalWarningConsequence));
+    ImGui::TextWrapped("%s", i18n::tr(i18n::TextKey::ExperimentalWarningResponsibility));
+    ImGui::TextWrapped("%s", i18n::tr(i18n::TextKey::ExperimentalWarningManualSafe));
     ImGui::PopTextWrapPos();
     ImGui::Separator();
     if (model.experimentalConsent) {
-        if (ImGui::Button("关闭")) {
+        if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonClose))) {
             pendingFeature = 0;
             ImGui::CloseCurrentPopup();
         }
@@ -339,7 +396,7 @@ void renderExperimentalConsentModal(
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.72f, 0.20f, 0.22f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.26f, 0.28f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.62f, 0.16f, 0.18f, 1.0f));
-        bool const enable = ImGui::Button("我已了解风险，启用");
+        bool const enable = ImGui::Button(i18n::tr(i18n::TextKey::ButtonConsentEnable));
         ImGui::PopStyleColor(3);
         if (enable) {
             if (actions.giveExperimentalConsent) actions.giveExperimentalConsent();
@@ -351,7 +408,7 @@ void renderExperimentalConsentModal(
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("取消")) {
+        if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonCancel))) {
             pendingFeature = 0;
             ImGui::CloseCurrentPopup();
         }
@@ -363,15 +420,16 @@ void renderExperimentalConsentModal(
 
 void renderExperimentalPage(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics) {
     static int pendingConsentFeature = 0;
-    renderSection("##AssistedPlacement", "辅助放置", metrics, [&] {
+    renderSection(
+        "##AssistedPlacement", i18n::tr(i18n::TextKey::SectionAssistedPlacement), metrics, [&] {
         // The说明 / consent entry sits at the very top and is coloured to stand out.
         {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.72f, 0.20f, 0.22f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.26f, 0.28f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.62f, 0.16f, 0.18f, 1.0f));
             char const* label = model.experimentalConsent
-                ? "查看实验性功能说明"
-                : "⚠ 实验性功能说明（点此阅读并启用）";
+                ? i18n::tr(i18n::TextKey::ButtonExperimentalInfoView)
+                : i18n::tr(i18n::TextKey::ButtonExperimentalInfoOpen);
             if (renderExperimentalInfoButton(label)) {
                 pendingConsentFeature = -1;
                 ImGui::OpenPopup("##ExperimentalConsent");
@@ -389,29 +447,56 @@ void renderExperimentalPage(MenuModel& model, MenuActions const& actions, UiMetr
                 ImGui::OpenPopup("##ExperimentalConsent");
             }
         };
-        renderCheckboxRow("##ManualPlace", "手动放置（右键放置·按住连放）", model.manualPlace, metrics);
+        renderCheckboxRow(
+            "##ManualPlace",
+            i18n::tr(i18n::TextKey::CheckboxManualPlace),
+            model.manualPlace,
+            metrics
+        );
         gate(model.manualPlace, 1);
         if (model.manualPlace) { model.easyPlaceEnabled = false; model.rangeEnabled = false; }
-        renderCheckboxRow("##EasyPlace", "轻松放置（准心对准投影方块自动放置）", model.easyPlaceEnabled, metrics);
+        renderCheckboxRow(
+            "##EasyPlace",
+            i18n::tr(i18n::TextKey::CheckboxEasyPlace),
+            model.easyPlaceEnabled,
+            metrics
+        );
         gate(model.easyPlaceEnabled, 2);
         if (model.easyPlaceEnabled) { model.manualPlace = false; model.rangeEnabled = false; }
-        renderCheckboxRow("##RangePlace", "范围放置（自动放置周围投影缺块）", model.rangeEnabled, metrics);
+        renderCheckboxRow(
+            "##RangePlace",
+            i18n::tr(i18n::TextKey::CheckboxRangePlace),
+            model.rangeEnabled,
+            metrics
+        );
         gate(model.rangeEnabled, 3);
         if (model.rangeEnabled) { model.easyPlaceEnabled = false; model.manualPlace = false; }
         ImGui::Dummy(ImVec2(0.0f, metrics.gap * 0.25f));
         if (model.manualPlace || model.easyPlaceEnabled || model.rangeEnabled) {
-            char const* mode = model.manualPlace ? "手动放置"
-                : model.easyPlaceEnabled ? "轻松放置" : "范围放置";
-            ImGui::TextWrapped("%s已临时开启", mode);
+            char const* mode = model.manualPlace
+                ? i18n::tr(i18n::TextKey::ModeManual)
+                : model.easyPlaceEnabled
+                    ? i18n::tr(i18n::TextKey::ModeEasy)
+                    : i18n::tr(i18n::TextKey::ModeRange);
+            ImGui::TextWrapped(i18n::tr(i18n::TextKey::HintModeEnabled), mode);
         } else if (!model.experimentalConsent) {
-            ImGui::TextDisabled("辅助放置未开启（需先同意实验性功能声明）");
+            ImGui::TextDisabled(
+                "%s", i18n::tr(i18n::TextKey::HintAssistedDisabledByConsent)
+            );
         } else {
-            ImGui::TextDisabled("辅助放置未开启");
+            ImGui::TextDisabled("%s", i18n::tr(i18n::TextKey::HintAssistedDisabled));
         }
-        renderSteppedInt("PlacementRadius", "放置半径（范围 1～4）", model.placementRadius, 1, 4, metrics);
+        renderSteppedInt(
+            "PlacementRadius",
+            i18n::tr(i18n::TextKey::LabelPlacementRadius),
+            model.placementRadius,
+            1,
+            4,
+            metrics
+        );
         renderSteppedInt(
             "AutoPlacementBreakCooldown",
-            "投影方块被破坏自动放置冷却时长（范围 0～60 秒）",
+            i18n::tr(i18n::TextKey::LabelAutoPlacementCooldown),
             model.autoPlacementBreakCooldownSeconds,
             0,
             60,
@@ -421,52 +506,73 @@ void renderExperimentalPage(MenuModel& model, MenuActions const& actions, UiMetr
 }
 
 void renderTransformPage(MenuModel& model, UiMetrics const& metrics) {
-    renderSection("##Transform", "结构变换", metrics, [&] {
+    renderSection("##Transform", i18n::tr(i18n::TextKey::SectionTransform), metrics, [&] {
         static char const* rotationNames[]{"0°", "90°", "180°", "270°"};
-        static char const* mirrorNames[]{"无", "X", "Z"};
+        char const* mirrorNames[]{
+            i18n::tr(i18n::TextKey::ComboMirrorNone), "X", "Z"
+        };
         auto const transformComboWidth = std::max(
             adaptiveComboWidth(rotationNames, 4),
             adaptiveComboWidth(mirrorNames, 3)
         );
-        renderValueRow("结构旋转", metrics, [&] {
+        renderValueRow(i18n::tr(i18n::TextKey::LabelRotation), metrics, [&] {
             ImGui::SetNextItemWidth(transformComboWidth);
             ImGui::Combo("##Rotation", &model.rotation, rotationNames, 4);
         });
-        renderValueRow("结构镜像", metrics, [&] {
+        renderValueRow(i18n::tr(i18n::TextKey::LabelMirror), metrics, [&] {
             ImGui::SetNextItemWidth(transformComboWidth);
             ImGui::Combo("##Mirror", &model.mirror, mirrorNames, 3);
         });
         ImGui::Separator();
-        renderSteppedInt("OffsetX", "X 轴偏移", model.offsetX, std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), metrics);
-        renderSteppedInt("OffsetY", "Y 轴偏移", model.offsetY, std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), metrics);
-        renderSteppedInt("OffsetZ", "Z 轴偏移", model.offsetZ, std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), metrics);
+        renderSteppedInt("OffsetX", i18n::tr(i18n::TextKey::LabelOffsetX), model.offsetX, std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), metrics);
+        renderSteppedInt("OffsetY", i18n::tr(i18n::TextKey::LabelOffsetY), model.offsetY, std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), metrics);
+        renderSteppedInt("OffsetZ", i18n::tr(i18n::TextKey::LabelOffsetZ), model.offsetZ, std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), metrics);
     });
 }
 
 void renderRenderPage(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics) {
-    renderSection("##ProjectionStyle", "投影显示设置", metrics, [&] {
+    renderSection(
+        "##ProjectionStyle", i18n::tr(i18n::TextKey::SectionProjectionStyle), metrics, [&] {
         auto opacity = static_cast<int>(std::lround(model.opacity * 100.0f));
-        renderNumericValueRow("投影透明度（范围 0～100）", metrics, [&] {
+        renderNumericValueRow(i18n::tr(i18n::TextKey::LabelOpacity), metrics, [&] {
             if (ImGui::InputInt("##Opacity", &opacity, 0, 0)) {
                 model.opacity = static_cast<float>(std::clamp(opacity, 0, 100)) / 100.0f;
             }
         });
-        renderCheckboxRow("##RenderBounds", "显示整体结构边框", model.structureBoundsEnabled, metrics);
+        renderCheckboxRow(
+            "##RenderBounds",
+            i18n::tr(i18n::TextKey::CheckboxRenderBounds),
+            model.structureBoundsEnabled,
+            metrics
+        );
     });
 
-    renderSection("##LayerSettings", "分层显示设置", metrics, [&] {
-        static char const* axisNames[]{"Y 轴（水平分层）", "X 轴（纵向切片）", "按材料"};
-        static char const* layerModeNames[]{"完整结构", "单层", "当前层及以下", "当前层及以上"};
-        static char const* materialModeNames[]{
-            "全部材料", "当前序号", "第 1 项至当前项", "当前项至最后一项"
+    renderSection(
+        "##LayerSettings", i18n::tr(i18n::TextKey::SectionLayerSettings), metrics, [&] {
+        char const* axisNames[]{
+            i18n::tr(i18n::TextKey::ComboLayerAxisY),
+            i18n::tr(i18n::TextKey::ComboLayerAxisX),
+            i18n::tr(i18n::TextKey::ComboLayerAxisMaterial)
         };
-        renderValueRow("分层轴", metrics, [&] {
+        char const* layerModeNames[]{
+            i18n::tr(i18n::TextKey::ComboRangeAll),
+            i18n::tr(i18n::TextKey::ComboRangeSingle),
+            i18n::tr(i18n::TextKey::ComboRangeUpToCurrent),
+            i18n::tr(i18n::TextKey::ComboRangeFromCurrent)
+        };
+        char const* materialModeNames[]{
+            i18n::tr(i18n::TextKey::ComboMaterialAll),
+            i18n::tr(i18n::TextKey::ComboMaterialSingle),
+            i18n::tr(i18n::TextKey::ComboMaterialUpToCurrent),
+            i18n::tr(i18n::TextKey::ComboMaterialFromCurrent)
+        };
+        renderValueRow(i18n::tr(i18n::TextKey::LabelLayerAxis), metrics, [&] {
             ImGui::SetNextItemWidth(adaptiveComboWidth(axisNames, 3));
             if (ImGui::Combo("##LayerAxis", &model.layerAxis, axisNames, 3)) {
                 model.displayLayer = std::clamp(model.displayLayer, 0, maxLayer(model));
             }
         });
-        renderValueRow("显示范围", metrics, [&] {
+        renderValueRow(i18n::tr(i18n::TextKey::LabelDisplayRange), metrics, [&] {
             auto const modeNames = structure::layerAxisFromInt(model.layerAxis)
                     == structure::LayerAxis::Material
                 ? materialModeNames : layerModeNames;
@@ -476,23 +582,25 @@ void renderRenderPage(MenuModel& model, MenuActions const& actions, UiMetrics co
         if (structure::layerAxisFromInt(model.layerAxis) == structure::LayerAxis::Material) {
             auto materialNumber = model.displayLayer + 1;
             renderSteppedInt(
-                "DisplayMaterial", "当前材料序号", materialNumber,
+                "DisplayMaterial", i18n::tr(i18n::TextKey::LabelCurrentMaterial), materialNumber,
                 1, maxLayer(model) + 1, metrics
             );
             model.displayLayer = materialNumber - 1;
         } else {
             renderSteppedInt(
-                "DisplayLayer", "当前层", model.displayLayer,
+                "DisplayLayer", i18n::tr(i18n::TextKey::LabelCurrentLayer), model.displayLayer,
                 0, maxLayer(model), metrics
             );
         }
         if (!metrics.compact) ImGui::SameLine(0.0f, metrics.gap * 0.55f);
         ImGui::PushTextWrapPos(-1.0f);
         if (structure::layerAxisFromInt(model.layerAxis) == structure::LayerAxis::Material) {
-            ImGui::TextDisabled("1 - %d（按材料清单顺序）", maxLayer(model) + 1);
+            ImGui::TextDisabled(
+                i18n::tr(i18n::TextKey::HintMaterialOrder), maxLayer(model) + 1
+            );
         } else {
             ImGui::TextDisabled(
-                "0 - %d（结构 %s 轴起点为 0）",
+                i18n::tr(i18n::TextKey::HintLayerZeroBased),
                 maxLayer(model),
                 structure::layerAxisFromInt(model.layerAxis) == structure::LayerAxis::X ? "X" : "Y"
             );
@@ -500,40 +608,47 @@ void renderRenderPage(MenuModel& model, MenuActions const& actions, UiMetrics co
         ImGui::PopTextWrapPos();
     });
 
-    renderSection("##CorrectionStyle", "纠错提示样式", metrics, [&] {
+    renderSection(
+        "##CorrectionStyle", i18n::tr(i18n::TextKey::SectionCorrectionStyle), metrics, [&] {
         auto fill = static_cast<int>(std::lround(model.correctionFillOpacity * 100.0f));
-        renderNumericValueRow("纠错填充透明度（范围 0～100）", metrics, [&] {
+        renderNumericValueRow(i18n::tr(i18n::TextKey::LabelCorrectionFill), metrics, [&] {
             if (ImGui::InputInt("##CorrectionFill", &fill, 0, 0)) {
                 model.correctionFillOpacity = static_cast<float>(std::clamp(fill, 0, 100)) / 100.0f;
             }
         });
         auto outline = static_cast<int>(std::lround(model.correctionOutlineOpacity * 100.0f));
-        renderNumericValueRow("纠错描边透明度（范围 0～100）", metrics, [&] {
+        renderNumericValueRow(i18n::tr(i18n::TextKey::LabelCorrectionOutline), metrics, [&] {
             if (ImGui::InputInt("##CorrectionOutline", &outline, 0, 0)) {
                 model.correctionOutlineOpacity = static_cast<float>(std::clamp(outline, 0, 100)) / 100.0f;
             }
         });
-        if (ImGui::Button("恢复默认纠错样式")) {
+        if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonResetCorrectionStyle))) {
             if (actions.resetCorrectionStyle) actions.resetCorrectionStyle();
             model.correctionFillOpacity = 0.15f;
             model.correctionOutlineOpacity = 1.0f;
         }
     });
 
-    renderSection("##SeeThrough", "穿透显示", metrics, [&] {
+    renderSection("##SeeThrough", i18n::tr(i18n::TextKey::SectionSeeThrough), metrics, [&] {
         renderCheckboxRow(
-            "##CorrectionSeeThrough", "错误标记穿透显示（X 光）", model.correctionSeeThrough, metrics
+            "##CorrectionSeeThrough",
+            i18n::tr(i18n::TextKey::CheckboxCorrectionSeeThrough),
+            model.correctionSeeThrough,
+            metrics
         );
         renderCheckboxRow(
-            "##MissingSeeThrough", "未放置标记穿透显示（X 光）", model.missingSeeThrough, metrics
+            "##MissingSeeThrough",
+            i18n::tr(i18n::TextKey::CheckboxMissingSeeThrough),
+            model.missingSeeThrough,
+            metrics
         );
     });
 }
 
 void renderHotkeysPage(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics) {
-    renderSection("##Hotkeys", "快捷键", metrics, [&] {
+    renderSection("##Hotkeys", i18n::tr(i18n::TextKey::SectionHotkeys), metrics, [&] {
         auto maxLabelWidth = 0.0f;
-        auto maxBindingWidth = ImGui::CalcTextSize("请按组合键").x;
+        auto maxBindingWidth = ImGui::CalcTextSize(i18n::tr(i18n::TextKey::HintPressKeys)).x;
         for (auto const& hotkey : model.hotkeys) {
             maxLabelWidth = std::max(maxLabelWidth, ImGui::CalcTextSize(hotkey.label.c_str()).x);
             maxBindingWidth = std::max(maxBindingWidth, ImGui::CalcTextSize(hotkey.display.c_str()).x);
@@ -558,61 +673,111 @@ void renderHotkeysPage(MenuModel& model, MenuActions const& actions, UiMetrics c
                 auto const controlX = rowStart + maxLabelWidth + metrics.gap * 1.4f;
                 ImGui::SetCursorPosX(controlX);
             }
-            auto const clearWidth = ImGui::CalcTextSize("清除").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+            auto const clearWidth = ImGui::CalcTextSize(i18n::tr(i18n::TextKey::ButtonClearHotkey)).x
+                + ImGui::GetStyle().FramePadding.x * 2.0f;
             auto const available = ImGui::GetContentRegionAvail().x;
             auto const controlSpacing = ImGui::GetStyle().ItemSpacing.x;
             auto const requiredWidth = preferredBindingWidth + clearWidth + controlSpacing;
             auto const totalWidth = std::min(available, requiredWidth);
             auto const bindWidth = std::max(0.0f, totalWidth - clearWidth - controlSpacing);
-            auto const label = hotkey.capturing ? "请按组合键" : hotkey.display.c_str();
+            auto const label = hotkey.capturing
+                ? i18n::tr(i18n::TextKey::HintPressKeys)
+                : hotkey.display.c_str();
             if (ImGui::Button(label, ImVec2(bindWidth, 0.0f)) && !hotkey.capturing && actions.beginHotkeyCapture) {
                 actions.beginHotkeyCapture(hotkey.id);
             }
             ImGui::SameLine();
-            if (ImGui::Button("恢复默认") && actions.resetHotkey) actions.resetHotkey(hotkey.id);
+            if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonResetHotkey)) && actions.resetHotkey) {
+                actions.resetHotkey(hotkey.id);
+            }
             ImGui::SameLine();
-            if (ImGui::Button("清除") && actions.clearHotkey) actions.clearHotkey(hotkey.id);
+            if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonClearHotkey)) && actions.clearHotkey) {
+                actions.clearHotkey(hotkey.id);
+            }
             ImGui::PopID();
         }
         ImGui::PopStyleVar();
-        if (ImGui::Button("恢复默认快捷键") && actions.resetHotkeys) actions.resetHotkeys();
-        ImGui::TextDisabled("可在聊天栏输入 LHolo 打开投影菜单");
+        if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonResetAllHotkeys)) && actions.resetHotkeys) {
+            actions.resetHotkeys();
+        }
+        ImGui::TextDisabled("%s", i18n::tr(i18n::TextKey::HintChatCommand));
     });
 }
 
 void renderHudPage(MenuModel& model, UiMetrics const& metrics) {
-    renderSection("##Hud", "HUD 信息显示", metrics, [&] {
-        renderCheckboxRow("##HudEnabled", "启用 HUD", model.hudEnabled, metrics);
+    renderSection("##Hud", i18n::tr(i18n::TextKey::SectionHud), metrics, [&] {
+        renderCheckboxRow(
+            "##HudEnabled", i18n::tr(i18n::TextKey::CheckboxHudEnabled), model.hudEnabled, metrics
+        );
         ImGui::BeginDisabled(!model.hudEnabled);
-        static char const* positions[]{"左上", "左下", "右上", "右下"};
-        renderValueRow("HUD 位置", metrics, [&] {
+        char const* positions[]{
+            i18n::tr(i18n::TextKey::CornerTopLeft),
+            i18n::tr(i18n::TextKey::CornerBottomLeft),
+            i18n::tr(i18n::TextKey::CornerTopRight),
+            i18n::tr(i18n::TextKey::CornerBottomRight)
+        };
+        renderValueRow(i18n::tr(i18n::TextKey::LabelHudPosition), metrics, [&] {
             ImGui::SetNextItemWidth(adaptiveComboWidth(positions, 4));
             ImGui::Combo("##HudPosition", &model.hudPosition, positions, 4);
         });
-        renderCheckboxRow("##HudFileName", "显示投影文件名", model.hudShowFileName, metrics);
-        renderCheckboxRow("##HudLayer", "显示渲染层信息", model.hudShowLayer, metrics);
         renderCheckboxRow(
-            "##HudOverallProgress", "显示总体进度", model.hudShowOverallProgress, metrics
+            "##HudFileName",
+            i18n::tr(i18n::TextKey::CheckboxHudFileName),
+            model.hudShowFileName,
+            metrics
         );
-        renderCheckboxRow("##HudProgress", "显示建造进度", model.hudShowProgress, metrics);
+        renderCheckboxRow(
+            "##HudLayer",
+            i18n::tr(i18n::TextKey::CheckboxHudLayer),
+            model.hudShowLayer,
+            metrics
+        );
+        renderCheckboxRow(
+            "##HudOverallProgress",
+            i18n::tr(i18n::TextKey::CheckboxHudOverallProgress),
+            model.hudShowOverallProgress,
+            metrics
+        );
+        renderCheckboxRow(
+            "##HudProgress",
+            i18n::tr(i18n::TextKey::CheckboxHudProgress),
+            model.hudShowProgress,
+            metrics
+        );
         renderCheckboxRow(
             "##HudProjectedBlockName",
-            "显示投影方块名称",
+            i18n::tr(i18n::TextKey::CheckboxHudProjectedBlockName),
             model.hudShowProjectedBlockName,
             metrics
         );
-        renderCheckboxRow("##HudWrongState", "显示朝向错误", model.hudShowWrongState, metrics);
-        renderCheckboxRow("##HudWrongType", "显示放置错误", model.hudShowWrongType, metrics);
         renderCheckboxRow(
-            "##HudExtraBlocks", "显示多余方块", model.hudShowExtraBlocks, metrics
+            "##HudWrongState",
+            i18n::tr(i18n::TextKey::CheckboxHudWrongState),
+            model.hudShowWrongState,
+            metrics
+        );
+        renderCheckboxRow(
+            "##HudWrongType",
+            i18n::tr(i18n::TextKey::CheckboxHudWrongType),
+            model.hudShowWrongType,
+            metrics
+        );
+        renderCheckboxRow(
+            "##HudExtraBlocks",
+            i18n::tr(i18n::TextKey::CheckboxHudExtraBlocks),
+            model.hudShowExtraBlocks,
+            metrics
         );
         ImGui::EndDisabled();
         ImGui::Separator();
         renderCheckboxRow(
-            "##MaterialHudEnabled", "显示缺失材料", model.materialHudEnabled, metrics
+            "##MaterialHudEnabled",
+            i18n::tr(i18n::TextKey::CheckboxMaterialHudEnabled),
+            model.materialHudEnabled,
+            metrics
         );
         ImGui::BeginDisabled(!model.materialHudEnabled);
-        renderValueRow("缺失材料位置", metrics, [&] {
+        renderValueRow(i18n::tr(i18n::TextKey::LabelMaterialHudPosition), metrics, [&] {
             ImGui::SetNextItemWidth(adaptiveComboWidth(positions, 4));
             ImGui::Combo("##MaterialHudPosition", &model.materialHudPosition, positions, 4);
         });
@@ -620,12 +785,30 @@ void renderHudPage(MenuModel& model, UiMetrics const& metrics) {
     });
 }
 
-void renderUiScalePage(MenuModel& model, UiMetrics const& metrics) {
-    renderSection("##UiScale", "界面缩放", metrics, [&] {
+void renderInterfacePage(MenuModel& model, UiMetrics const& metrics) {
+    renderSection(
+        "##InterfaceSettings", i18n::tr(i18n::TextKey::SectionInterfaceSettings), metrics, [&] {
         renderSteppedFloat(
-            "UiScaleValue", "界面缩放（范围 1～5）", model.uiScale,
+            "UiScaleValue", i18n::tr(i18n::TextKey::LabelUiScale), model.uiScale,
             1.0f, 5.0f, 0.1f, metrics
         );
+        char const* languageNames[]{
+            i18n::languageName(i18n::Language::SimplifiedChinese),
+            i18n::languageName(i18n::Language::English)
+        };
+        // Label first, like the stepped row above: this page reads left to
+        // right, so the value follows the name instead of preceding it.
+        if (metrics.compact) {
+            ImGui::TextUnformatted(i18n::tr(i18n::TextKey::LabelLanguage));
+        } else {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(i18n::tr(i18n::TextKey::LabelLanguage));
+            ImGui::SameLine(0.0f, ImGui::GetStyle().ItemSpacing.x * 0.55f);
+        }
+        ImGui::SetNextItemWidth(adaptiveComboWidth(languageNames, i18n::kLanguageCount));
+        // The selection is persisted by applyStructureMenuModel; the next frame
+        // then rebuilds every string from the new language.
+        ImGui::Combo("##Language", &model.language, languageNames, i18n::kLanguageCount);
     });
 }
 
@@ -638,11 +821,14 @@ void renderMaterialPopup(MenuModel const& model, UiMetrics const& metrics) {
     constexpr float totalColumnWeight = 0.20f;
     // Measure the actual table content.  A fixed width multiplier makes a
     // seven-row list look like a wide banner and leaves unused space below.
-    auto nameWidth = ImGui::CalcTextSize("物品").x;
-    auto typeWidth = ImGui::CalcTextSize("标识符").x;
-    auto countWidth = ImGui::CalcTextSize("总计数量").x;
+    auto nameWidth = ImGui::CalcTextSize(i18n::tr(i18n::TextKey::ColumnItem)).x;
+    auto typeWidth = ImGui::CalcTextSize(i18n::tr(i18n::TextKey::ColumnIdentifier)).x;
+    auto countWidth = ImGui::CalcTextSize(i18n::tr(i18n::TextKey::ColumnTotal)).x;
+    auto const materialName = [](MaterialRow const& row) {
+        return materialDisplayName(row.displayName, row.nameKey);
+    };
     for (auto const& item : model.materials) {
-        nameWidth = std::max(nameWidth, ImGui::CalcTextSize(item.displayName.c_str()).x);
+        nameWidth = std::max(nameWidth, ImGui::CalcTextSize(materialName(item)).x);
         typeWidth = std::max(typeWidth, ImGui::CalcTextSize(item.typeName.c_str()).x);
         auto const countText = std::to_string(item.count);
         countWidth = std::max(countWidth, ImGui::CalcTextSize(countText.c_str()).x);
@@ -655,8 +841,11 @@ void renderMaterialPopup(MenuModel const& model, UiMetrics const& metrics) {
             (countWidth + cellPadding) / totalColumnWeight
         )
     );
-    auto const closeWidth = ImGui::CalcTextSize("关闭").x + ImGui::GetStyle().FramePadding.x * 2.0f;
-    auto const titleWidth = ImGui::CalcTextSize("材料清单").x + closeWidth + metrics.gap;
+    auto const closeLabel = i18n::tr(i18n::TextKey::ButtonClose);
+    auto const closeWidth = ImGui::CalcTextSize(closeLabel).x
+        + ImGui::GetStyle().FramePadding.x * 2.0f;
+    auto const titleWidth = ImGui::CalcTextSize(i18n::tr(i18n::TextKey::MaterialListTitle)).x
+        + closeWidth + metrics.gap;
     auto const popupWidth = std::min(
         std::max(tableWidth + metrics.outerPadding * 2.35f, titleWidth + metrics.outerPadding * 2.35f)
             * popupDensity,
@@ -681,25 +870,26 @@ void renderMaterialPopup(MenuModel const& model, UiMetrics const& metrics) {
         popupHeight
     );
     ImGui::SetNextWindowSize(popupSize, ImGuiCond_Always);
+    auto const popupName = materialPopupName();
     if (!ImGui::BeginPopupModal(
-            kMaterialPopupName,
+            popupName.c_str(),
             nullptr,
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar
                 | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoSavedSettings
         )) return;
 
-    ImGui::TextUnformatted("材料清单");
+    ImGui::TextUnformatted(i18n::tr(i18n::TextKey::MaterialListTitle));
     ImGui::SameLine();
     ImGui::SetCursorPosX(std::max(
         ImGui::GetCursorPosX(),
         ImGui::GetWindowWidth() - closeWidth - metrics.sectionPadding
     ));
-    if (ImGui::Button("关闭")) ImGui::CloseCurrentPopup();
+    if (ImGui::Button(closeLabel)) ImGui::CloseCurrentPopup();
     ImGui::Separator();
     ImGui::Dummy(ImVec2(0.0f, metrics.gap * 0.35f));
 
     if (!model.hasLoadedStructure) {
-        ImGui::TextDisabled("尚未加载结构文件");
+        ImGui::TextDisabled("%s", i18n::tr(i18n::TextKey::StatusNotLoaded));
     } else {
         std::uint64_t total{};
         for (auto const& item : model.materials) {
@@ -709,7 +899,11 @@ void renderMaterialPopup(MenuModel const& model, UiMetrics const& metrics) {
             }
             total += item.count;
         }
-        ImGui::Text("共 %llu 个方块，%zu 种材料", static_cast<unsigned long long>(total), model.materials.size());
+        ImGui::Text(
+            i18n::tr(i18n::TextKey::LabelMaterialSummary),
+            static_cast<unsigned long long>(total),
+            model.materials.size()
+        );
         ImGui::Separator();
         // The popup header and Close button are fixed. Only this child consumes
         // the wheel; its visual scrollbar stays hidden to match the rest of the
@@ -722,15 +916,29 @@ void renderMaterialPopup(MenuModel const& model, UiMetrics const& metrics) {
                 ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings
             )) {
             if (model.materials.empty()) {
-                ImGui::TextDisabled("没有可直接放置的实体方块");
+                ImGui::TextDisabled(
+                    "%s", i18n::tr(i18n::TextKey::HintNoPlaceableMaterials)
+                );
             } else if (ImGui::BeginTable(
                            "##MaterialTable", 3,
                            ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg
                                | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings
                        )) {
-                ImGui::TableSetupColumn("物品", ImGuiTableColumnFlags_WidthStretch, itemColumnWeight);
-                ImGui::TableSetupColumn("标识符", ImGuiTableColumnFlags_WidthStretch, typeColumnWeight);
-                ImGui::TableSetupColumn("总计数量", ImGuiTableColumnFlags_WidthStretch, totalColumnWeight);
+                ImGui::TableSetupColumn(
+                    i18n::tr(i18n::TextKey::ColumnItem),
+                    ImGuiTableColumnFlags_WidthStretch,
+                    itemColumnWeight
+                );
+                ImGui::TableSetupColumn(
+                    i18n::tr(i18n::TextKey::ColumnIdentifier),
+                    ImGuiTableColumnFlags_WidthStretch,
+                    typeColumnWeight
+                );
+                ImGui::TableSetupColumn(
+                    i18n::tr(i18n::TextKey::ColumnTotal),
+                    ImGuiTableColumnFlags_WidthStretch,
+                    totalColumnWeight
+                );
                 ImGui::TableHeadersRow();
                 auto renderCenteredCell = [&](char const* text) {
                     auto const cellWidth = ImGui::GetContentRegionAvail().x;
@@ -752,7 +960,7 @@ void renderMaterialPopup(MenuModel const& model, UiMetrics const& metrics) {
                         (ImGui::GetTextLineHeight() + metrics.gap * 0.55f) * popupDensity
                     );
                     ImGui::TableSetColumnIndex(0);
-                    renderCenteredCell(item.displayName.c_str());
+                    renderCenteredCell(materialName(item));
                     ImGui::TableSetColumnIndex(1);
                     renderCenteredCell(item.typeName.c_str());
                     ImGui::TableSetColumnIndex(2);
@@ -770,8 +978,9 @@ void renderMaterialPopup(MenuModel const& model, UiMetrics const& metrics) {
 void renderNavigation(MenuModel& model, UiMetrics const& metrics) {
     ImVec2 indicatorMin{};
     ImVec2 indicatorMax{};
-    for (std::size_t index = 0; index < kPageNames.size(); ++index) {
+    for (std::size_t index = 0; index < kMenuPageCount; ++index) {
         auto const page = static_cast<MenuPage>(index);
+        auto const* name = pageName(page);
         auto const selected = model.page == page;
         ImGui::PushID(static_cast<int>(index));
         auto const min = ImGui::GetCursorScreenPos();
@@ -796,14 +1005,14 @@ void renderNavigation(MenuModel& model, UiMetrics const& metrics) {
             indicatorMin = min;
             indicatorMax = max;
         }
-        auto const textSize = ImGui::CalcTextSize(kPageNames[index]);
+        auto const textSize = ImGui::CalcTextSize(name);
         auto const textInset = metrics.sectionPadding * 1.25f;
         drawList->AddText(
             ImGui::GetFont(),
             ImGui::GetFontSize(),
             ImVec2(min.x + textInset, min.y + (height - textSize.y) * 0.5f),
             ImGui::GetColorU32(ImGuiCol_Text),
-            kPageNames[index]
+            name
         );
         ImGui::PopID();
     }

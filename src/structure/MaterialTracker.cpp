@@ -129,9 +129,9 @@ std::vector<MaterialRequirement> resolveMaterials(
         MaterialRequirement requirement;
         requirement.typeName = typeName;
         if (typeName == "minecraft:water" || typeName == "minecraft:flowing_water") {
-            requirement.displayName = "水";
+            requirement.nameKey = i18n::TextKey::MaterialWater;
         } else if (typeName == "minecraft:lava" || typeName == "minecraft:flowing_lava") {
-            requirement.displayName = "熔岩";
+            requirement.nameKey = i18n::TextKey::MaterialLava;
         } else if (auto const item = block::resolvePlacementItem(*blockValue); item.valid) {
             requirement.displayName = item.displayName;
             requirement.itemId = item.itemId;

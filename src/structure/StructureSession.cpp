@@ -66,7 +66,7 @@ StructureSessionSnapshot StructureSession::snapshot() const {
     std::lock_guard lock(mMutex);
     StructureSessionSnapshot result;
     result.loaded    = mLoaded;
-    result.status    = mStatus;
+    result.status    = i18n::format(mStatus);
     result.lastPath  = mLastPath;
     result.transform = transformRelaxed();
     result.saved     = savedProjectionLocked();
@@ -92,7 +92,7 @@ std::string StructureSession::lastPath() const {
     return mLastPath;
 }
 
-void StructureSession::setStatus(std::string status) {
+void StructureSession::setStatus(i18n::Message status) {
     std::lock_guard lock(mMutex);
     mStatus = std::move(status);
 }
@@ -105,7 +105,7 @@ void StructureSession::setLastPath(std::string path) {
 void StructureSession::replaceLoaded(
     std::shared_ptr<LoadedStructure> loaded,
     std::string                      path,
-    std::string                      status
+    i18n::Message                    status
 ) {
     std::lock_guard lock(mMutex);
     mLastPath = std::move(path);
@@ -113,7 +113,7 @@ void StructureSession::replaceLoaded(
     mLoaded   = std::move(loaded);
 }
 
-void StructureSession::clearLoaded(std::string status) {
+void StructureSession::clearLoaded(i18n::Message status) {
     std::lock_guard lock(mMutex);
     // Freeze the last active transform before dropping the structure. Once
     // mLoaded is empty, menu models legitimately clamp their current layer to

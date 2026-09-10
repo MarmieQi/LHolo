@@ -1,5 +1,6 @@
 #include "structure/capture/StructureCapture.h"
 
+#include "i18n/Message.h"
 #include "structure/capture/McstructureExporter.h"
 
 #include <algorithm>
@@ -20,7 +21,7 @@ namespace {
 
 std::mutex    gMutex;
 Draft         gDraft;
-std::string   gStatus{"请设置选区点 1 和点 2"};
+i18n::Message gStatus{i18n::TextKey::CaptureStatusNeedTwoPoints};
 Level*        gLevel{};
 Dimension*    gDimension{};
 std::uint64_t gRevision{};
@@ -40,7 +41,7 @@ ClientContext currentContext() {
 
 void resetLocked() {
     gDraft = {};
-    gStatus = "请设置选区点 1 和点 2";
+    gStatus = i18n::Message{i18n::TextKey::CaptureStatusNeedTwoPoints};
     ++gRevision;
 }
 
@@ -65,7 +66,7 @@ Bounds normalizedBounds(Draft const& draft) {
     };
 }
 
-void setStatus(std::string const& status) {
+void setStatus(i18n::Message const& status) {
     std::lock_guard lock(gMutex);
     gStatus = status;
 }
@@ -76,7 +77,7 @@ Snapshot getSnapshot() {
     auto const context = currentContext();
     std::lock_guard lock(gMutex);
     syncContextLocked(context);
-    return {gDraft, static_cast<bool>(context.player), gStatus, gRevision};
+    return {gDraft, static_cast<bool>(context.player), i18n::format(gStatus), gRevision};
 }
 
 std::optional<Bounds> getBounds() {
@@ -95,11 +96,11 @@ void updateDraft(Draft const& draft) {
     if (gDraft == draft) return;
     gDraft = draft;
     if (gDraft.first && gDraft.second) {
-        gStatus = "选区已设置";
+        gStatus = i18n::Message{i18n::TextKey::CaptureStatusSelectionReady};
     } else if (gDraft.first || gDraft.second) {
-        gStatus = "请继续设置另一个选区点";
+        gStatus = i18n::Message{i18n::TextKey::CaptureStatusNeedOtherPoint};
     } else {
-        gStatus = "请设置选区点 1 和点 2";
+        gStatus = i18n::Message{i18n::TextKey::CaptureStatusNeedTwoPoints};
     }
     ++gRevision;
 }
@@ -107,7 +108,7 @@ void updateDraft(Draft const& draft) {
 void setPointFromPlayer(PointSlot slot) {
     auto const context = currentContext();
     if (!context.player) {
-        setStatus("尚未进入世界");
+        setStatus(i18n::Message{i18n::TextKey::CaptureStatusNoWorld});
         return;
     }
     auto const position = context.player->getFeetBlockPos();
@@ -116,22 +117,26 @@ void setPointFromPlayer(PointSlot slot) {
     syncContextLocked(context);
     auto& point = slot == PointSlot::First ? gDraft.first : gDraft.second;
     point = Point{position.x, position.y, position.z};
-    gStatus = slot == PointSlot::First ? "已记录选区点 1" : "已记录选区点 2";
+    gStatus = i18n::Message{
+        slot == PointSlot::First
+            ? i18n::TextKey::CaptureStatusPoint1Recorded
+            : i18n::TextKey::CaptureStatusPoint2Recorded
+    };
     ++gRevision;
 }
 
 void exportStructure(Draft const& draft, std::filesystem::path const& output) {
     auto const context = currentContext();
     if (!context.player) {
-        setStatus("尚未进入世界");
+        setStatus(i18n::Message{i18n::TextKey::CaptureStatusNoWorld});
         return;
     }
     if (draft.mode != CaptureMode::Client) {
-        setStatus("单人存档模式尚未实现");
+        setStatus(i18n::Message{i18n::TextKey::CaptureStatusSingleplayerUnsupported});
         return;
     }
     if (!draft.first || !draft.second) {
-        setStatus("请先设置选区点 1 和点 2");
+        setStatus(i18n::Message{i18n::TextKey::CaptureStatusNeedBothPoints});
         return;
     }
 
@@ -150,7 +155,7 @@ void exportStructure(Draft const& draft, std::filesystem::path const& output) {
     BlockPos const max{bounds.max.x, bounds.max.y, bounds.max.z};
     auto& region = context.player->getDimensionBlockSource();
     if (!region.areChunksFullyLoaded(min, max)) {
-        setStatus("选区包含客户端尚未完整加载的区域");
+        setStatus(i18n::Message{i18n::TextKey::CaptureStatusRegionNotLoaded});
         return;
     }
 
@@ -162,14 +167,14 @@ void exportStructure(Draft const& draft, std::filesystem::path const& output) {
         !draft.includeEntities
     );
     if (!structure) {
-        setStatus("原版 StructureTemplate 无法捕获该选区");
+        setStatus(i18n::Message{i18n::TextKey::CaptureStatusTemplateFailed});
         return;
     }
     if (!exportMcstructure(*structure, output)) {
-        setStatus("写入 .mcstructure 文件失败");
+        setStatus(i18n::Message{i18n::TextKey::CaptureStatusWriteFailed});
         return;
     }
-    setStatus("结构已成功导出");
+    setStatus(i18n::Message{i18n::TextKey::CaptureStatusExported});
 }
 
 void clear() {

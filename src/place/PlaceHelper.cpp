@@ -16,6 +16,7 @@
 
 #include "place/PlaceHelper.h"
 
+#include "i18n/Message.h"
 #include "place/PlacementExecutor.h"
 #include "place/PlacementState.h"
 
@@ -128,10 +129,12 @@ LL_TYPE_INSTANCE_HOOK(
             (void)placementState().beginManualPress(GetTickCount64());
         } else if (targetStatus == detail::ManualTargetStatus::MissingMaterial) {
             cancelPendingManualPress();
-            structure::showActionHint("背包中没有对应的投影方块");
+            structure::showActionHint(i18n::Message{i18n::TextKey::ActionHintNoMatchingItem});
         } else {
             cancelPendingManualPress();
-            structure::showActionHint("已被手动放置模式阻止（对准投影方块才能放置）");
+            structure::showActionHint(
+                i18n::Message{i18n::TextKey::ActionHintManualModeBlocked}
+            );
         }
         return;  // LHolo owns this press; vanilla places nothing.
     }
@@ -162,7 +165,9 @@ LL_TYPE_INSTANCE_HOOK(
             (void)placementState().beginManualPress(GetTickCount64());
         } else {
             placementState().cancelManualPress();
-            structure::showActionHint("背包中没有对应的投影方块");
+            structure::showActionHint(
+                i18n::Message{i18n::TextKey::ActionHintNoMatchingItem}
+            );
         }
         return false;
     }

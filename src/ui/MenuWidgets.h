@@ -17,6 +17,15 @@ float adaptiveComboWidth(char const* const* items, int count);
 // 18 buckets (S=1) -> "18 (18 x 1)".
 std::string formatStackCount(std::uint64_t count, int stackSize);
 
+// Material names come either from the game (displayName) or, for projected
+// liquids that have no in-game item to take a name from, from the interface
+// language table (nameKey). Every material row must resolve its name here so
+// the menu and the HUD never disagree.
+char const* materialDisplayName(
+    std::string const&                  displayName,
+    std::optional<i18n::TextKey> const& nameKey
+);
+
 template <typename Body>
 void renderSection(char const* id, char const* title, UiMetrics const& metrics, Body&& body) {
     // Function groups deliberately share the page canvas.  A child window

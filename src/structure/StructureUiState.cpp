@@ -360,10 +360,10 @@ void StructureUiState::setMaterialHudPosition(int position) {
     mMaterialHudPosition.store(std::clamp(position, 0, 3), std::memory_order_release);
 }
 
-void StructureUiState::setActionHint(std::string text, std::uint64_t expiry) {
+void StructureUiState::setActionHint(i18n::Message message, std::uint64_t expiry) {
     {
         std::lock_guard lock(mActionHintMutex);
-        mActionHintText = std::move(text);
+        mActionHintMessage = std::move(message);
     }
     mActionHintExpiry.store(expiry, std::memory_order_release);
 }
@@ -375,7 +375,10 @@ std::uint64_t StructureUiState::actionHintExpiry() const {
 ActionHintSnapshot StructureUiState::actionHint() const {
     auto const expiry = mActionHintExpiry.load(std::memory_order_acquire);
     std::lock_guard lock(mActionHintMutex);
-    return {mActionHintText, expiry};
+    // A cleared hint carries no message, so the default key must never be
+    // rendered as text.
+    if (expiry == 0) return {std::string{}, 0};
+    return {i18n::format(mActionHintMessage), expiry};
 }
 
 void StructureUiState::requestMaterialList() {
@@ -458,7 +461,7 @@ void StructureUiState::resetWorldSession() {
     mIgnoreHotkeyUntil.store(0, std::memory_order_release);
     stopHotkeyCapture();
     resetHotkeyState();
-    setActionHint({}, 0);
+    setActionHint(i18n::Message{}, 0);
     clearMaterials();
 }
 
