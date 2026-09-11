@@ -14,7 +14,7 @@ option_end()
 
 add_repositories("levimc-repo " .. (get_config("levimc_repo") or "https://github.com/LiteLDev/xmake-repo.git"))
 
-add_requires("levilamina 26.20.7", {configs = {target_type = get_config("target_type") or "client"}})
+add_requires("levilamina 26.40.0", {configs = {target_type = get_config("target_type") or "client"}})
 add_requires("levibuildscript")
 add_requires("imgui v1.91.9", {configs = {shared = false, win32 = true, dx11 = true, no_demo_windows = true}})
 add_requires("minhook", {configs = {shared = false}})
@@ -24,9 +24,14 @@ if not has_config("vs_runtime") then
     set_runtimes("MD")
 end
 
+-- LeviLamina 26.40 is built with clang-cl (LLVM 22); the generated Minecraft
+-- headers rely on the clang frontend, so the mod must use the same toolchain.
+set_toolchains("clang-cl")
+
 target("LHolo")
     add_rules("@levibuildscript/linkrule")
-    add_rules("@levibuildscript/modpacker", {modVersion = "26.20.10"})
+    add_rules("@levibuildscript/modpacker", {modVersion = "26.40.0"})
+    add_shflags("/DELAYLOAD:bedrock_runtime.dll", {force = true})
     add_cxflags(
         "/utf-8",
         "/W4",
@@ -37,12 +42,26 @@ target("LHolo")
         "/w44738",
         "/w45204"
     )
+    add_cxflags(
+        "/EHs",
+        "-Wno-microsoft-cast",
+        "-Wno-invalid-offsetof",
+        "-Wno-c++2b-extensions",
+        "-Wno-microsoft-include",
+        "-Wno-overloaded-virtual",
+        "-Wno-ignored-qualifiers",
+        "-Wno-missing-field-initializers",
+        "-Wno-potentially-evaluated-expression",
+        "-Wno-pragma-system-header-outside-header",
+        {tools = {"clang_cl"}}
+    )
     add_defines("NOMINMAX", "UNICODE")
-    add_syslinks("user32", "comdlg32", "d3d11", "d3d12", "dxgi")
+    add_syslinks("user32", "comdlg32", "d3d11", "d3d12", "dxgi", "delayimp")
     add_packages("levilamina", "imgui", "minhook", "zlib")
 
     set_kind("shared")
     set_languages("c++20")
+    set_symbols("debug")
 
     add_files("src/**.cpp")
     add_includedirs("src")
