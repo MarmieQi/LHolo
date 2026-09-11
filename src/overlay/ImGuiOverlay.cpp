@@ -97,11 +97,23 @@ bool             gImGuiInitialized{};
 bool             gGraphicsInitialized{};
 bool             gGuiVisibleLastFrame{};
 std::atomic_bool gMouseHandoffActive{};
-// ImGui's Win32 backend sets the native cursor handle to null while drawing
-// its software cursor. LHolo can skip NewFrame entirely after the menu closes,
-// so restore the arrow handle on the window thread without touching the
-// ShowCursor display counter owned by Minecraft.
+// Cursor ownership while the menu is open.
+//
+// The mods in this ecosystem decide "a UI owns the mouse" from GetCursorInfo():
+// a displayed OS cursor means somebody has opened a UI, a hidden one means the
+// player is in gameplay and the game holds the mouse. ImGui's software cursor
+// breaks that contract - its Win32 backend calls SetCursor(nullptr) on every
+// frame, which removes the cursor from the screen, so other mods keep re-centring
+// a cursor they believe the game still owns (ChiyanMap clamps it to the client
+// centre, freezing the mouse over our menu). The menu therefore draws with the
+// native cursor and holds the ShowCursor display counter at >= 0 while visible.
+//
+// ShowCursor is per-thread state, so both halves run on the window thread via
+// these messages. LHolo only ever releases the increments it forced itself, so
+// the counter Minecraft owns ends up exactly where it was.
 constexpr UINT kMsgRestoreNativeCursor = WM_APP + 0x101;
+constexpr UINT kMsgAcquireMenuCursor   = WM_APP + 0x102;
+std::atomic_int gMenuCursorShowCount{};
 std::array<bool, 256> gGameKeysDown{};
 std::array<bool, 5>   gGameMouseButtonsDown{};
 std::atomic_bool      gConsumeEscapeRelease{false};
@@ -346,6 +358,28 @@ void maintainMouseHandoff(HWND window) {
     confineMouseToClientCenter(window);
 }
 
+// -- window thread only ------------------------------------------------------
+// Raise the ShowCursor display counter until the OS cursor can be shown.
+// ShowCursor returns the counter AFTER the call, so a result above 0 means the
+// cursor was already visible and this probe increment has to be undone - that
+// keeps repeated calls idempotent instead of drifting upward frame after frame.
+void acquireMenuCursor() {
+    if (ShowCursor(TRUE) > 0) {
+        ShowCursor(FALSE);
+        return;
+    }
+    gMenuCursorShowCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+// Drop exactly the increments acquireMenuCursor() forced. Minecraft's own
+// negative counter is never touched, so gameplay still hides the cursor.
+void releaseMenuCursor() {
+    while (gMenuCursorShowCount.load(std::memory_order_relaxed) > 0) {
+        gMenuCursorShowCount.fetch_sub(1, std::memory_order_relaxed);
+        ShowCursor(FALSE);
+    }
+}
+
 bool isMenuInputMessage(UINT message) {
     switch (message) {
     case WM_INPUT:
@@ -388,13 +422,19 @@ LRESULT consumeMenuInputMessage(HWND window, UINT message, WPARAM wParam, LPARAM
 }
 
 LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == kMsgAcquireMenuCursor) {
+        acquireMenuCursor();
+        return 0;
+    }
     if (message == kMsgRestoreNativeCursor) {
+        releaseMenuCursor();
         ::SetCursor(::LoadCursorW(nullptr, IDC_ARROW));
         return 0;
     }
     if (message == WM_KILLFOCUS || (message == WM_ACTIVATEAPP && wParam == FALSE)) {
         structure::resetHotkeyState();
         gMouseHandoffActive.store(false, std::memory_order_release);
+        releaseMenuCursor();
         ClipCursor(nullptr);
     }
     if (!gShuttingDown.load(std::memory_order_acquire)
@@ -482,6 +522,10 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         if (isMenuInputMessage(message)) {
             return consumeMenuInputMessage(window, message, wParam, lParam);
         }
+        // The handler above already installed the cursor shape ImGui asked for.
+        // Passing WM_SETCURSOR on to the game lets it hide the cursor again, and
+        // other mods read a hidden cursor as "gameplay has the mouse".
+        if (message == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT) return 1;
     }
     if (structure::isMenuInputCaptured()
         && isMenuInputMessage(message)
@@ -601,11 +645,20 @@ void render(IDXGISwapChain* swapChain) {
     }
     gGuiVisibleLastFrame = showGui;
     if (!showGui) maintainMouseHandoff(gWindow);
-    ImGui::GetIO().MouseDrawCursor = showGui;
+    // Keep the native cursor for the menu: ImGui's software cursor would hide
+    // the OS one and make other mods believe the game still owns the mouse.
+    // See the cursor-ownership note at the top of this file.
+    ImGui::GetIO().MouseDrawCursor = false;
     auto const showHint = structure::actionHintActive();
     if (!showGui && !showHud && !showHint) return;
 
-    if (showGui) ClipCursor(nullptr);
+    if (showGui) {
+        // Re-asserted every frame: a Minecraft screen transition, an alt-tab or
+        // another overlay can hide the cursor again behind our back. The handler
+        // is idempotent, so this never drifts the display counter.
+        PostMessageW(gWindow, kMsgAcquireMenuCursor, 0, 0);
+        ClipCursor(nullptr);
+    }
 
     auto draw = [](ID3D11RenderTargetView* target) {
         gDeviceContext->OMSetRenderTargets(1, &target, nullptr);
@@ -882,6 +935,9 @@ bool ensureInstalled() {
 void shutdown() {
     gShuttingDown.store(true, std::memory_order_release);
     gMouseHandoffActive.store(false, std::memory_order_release);
+    // Best effort: leave the cursor exactly where Minecraft expects it if the
+    // mod is unloaded while the menu is still open.
+    releaseMenuCursor();
     ClipCursor(nullptr);
     removeHook(gExecuteTarget);
     removeHook(gResize1Target);

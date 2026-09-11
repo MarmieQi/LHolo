@@ -661,6 +661,12 @@ GUI 是全屏 ImGui 窗口，不是切换 Minecraft 窗口模式。
 - 消费菜单关闭动作对应的释放消息。
 - 防止关闭后的首次右键变成 ESC/暂停效果或鼠标落到客户区外。
 
+菜单可见期间必须让系统光标保持可见，这是与其它覆盖层模组之间的隐含契约：
+
+- ImGui 的自绘光标会让 Win32 后端每帧执行 `SetCursor(nullptr)`，`GetCursorInfo()` 因此报告光标隐藏。其它模组（例如 ChiyanMap）以该系统标志判断“游戏是否仍抓着鼠标”，会把光标夹回客户区中心，导致菜单里的鼠标无法移动。
+- 因此菜单期间 `MouseDrawCursor` 保持 false，光标形状交给 ImGui 后端设置；并在窗口线程通过 `kMsgAcquireMenuCursor` 用 `ShowCursor` 把显示计数顶到 ≥ 0。`ShowCursor` 返回的是调用后的计数，`> 0` 表示光标本来就可见、需要撤销这次探测增量；关闭、失焦和卸载时只归还自己加的增量，Minecraft 的负数计数不受影响。
+- 菜单可见时，客户端区域的 `WM_SETCURSOR` 不再分发给游戏，避免光标被重新隐藏；窗口边框等非客户端区域仍然放行，不影响缩放光标。
+
 不要依赖“消息积压”解释输入 bug；应检查鼠标坐标、Capture/ClipCursor、按键状态和 Raw Input 所有权。
 
 ### 9.3 Bedrock 输入源保护
