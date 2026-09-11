@@ -89,10 +89,11 @@ RawMaterialCounts collectRawMaterials(
 
 std::string localizedBlockName(Block const& block, std::string_view localeCode) {
     auto const& typeName = block.getTypeName();
-    auto const itemId = ItemRegistry::getBlockItemId(block);
+    auto const itemId = block.getBlockItemId();
     auto const item = ItemRegistryManager::getItemRegistry().getItem(itemId);
     if (auto* itemPtr = item.get()) {
-        ItemStack const itemStack(*itemPtr, 1, 0, nullptr);
+        ItemStack itemStack;
+        itemStack.reinit(*itemPtr, 1, 0);
         auto const name = itemStack.getName();
         if (!name.empty() && name != typeName) return name;
     }

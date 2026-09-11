@@ -3,12 +3,44 @@
 #include "mc/client/game/IClientInstance.h"
 #include "mc/client/gui/screens/ScreenContext.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
+#include "mc/client/renderer/SupplementaryFieldAutoGenerationMode.h"
 #include "mc/client/renderer/Tessellator.h"
 #include "mc/client/renderer/game/LevelRenderer.h"
 #include "mc/client/renderer/game/LevelRendererPlayer.h"
+#include "mc/deps/minecraft_renderer/framebuilder/dragon/RenderMetadata.h"
 #include "mc/deps/minecraft_renderer/renderer/Mesh.h"
+#include "mc/deps/minecraft_renderer/resources/ClientTexture.h"
+#include "mc/deps/minecraft_renderer/resources/ServerTexture.h"
+#include "mc/deps/renderer/Camera.h"
 
 namespace lholo::overlay {
+
+namespace {
+
+Vec3 renderCameraPosition(BaseActorRenderContext const& renderContext) {
+    // ScreenContext inherits mce::MeshContext, which owns the render camera.
+    // The world matrix used below is built from this same camera, so bounds
+    // stay in the coordinate space Bedrock renders them in.
+    auto const& position = renderContext.mScreenContext.camera.mPosition.get();
+    return {position.x, position.y, position.z};
+}
+
+OffscreenCaptureDescription const& emptyOffscreenCaptureDescription() {
+    using Storage = decltype(dragon::RenderMetadata::mOffscreenCaptureDescription);
+    static Storage empty{};
+    return empty.get();
+}
+
+void setColorAbgr(Tessellator& tessellator, std::uint32_t colorAbgr) {
+    tessellator.color(
+        static_cast<float>((colorAbgr >> 0) & 0xFF) / 255.0f,
+        static_cast<float>((colorAbgr >> 8) & 0xFF) / 255.0f,
+        static_cast<float>((colorAbgr >> 16) & 0xFF) / 255.0f,
+        static_cast<float>((colorAbgr >> 24) & 0xFF) / 255.0f
+    );
+}
+
+} // namespace
 
 BoundsWireframe::~BoundsWireframe() = default;
 
@@ -38,17 +70,17 @@ void BoundsWireframe::render(BaseActorRenderContext& renderContext, bool renderA
         float const y1 = static_cast<float>(mMax.y - mMin.y + 1) + expansion;
         float const z1 = static_cast<float>(mMax.z - mMin.z + 1) + expansion;
 
-        auto& tessellator = renderContext.getTessellator();
+        auto& tessellator = renderContext.mScreenContext.tessellator;
         tessellator.begin(
             Tessellator::DebugContextCallback{},
             mce::PrimitiveMode::LineList,
             24,
             false
         );
-        tessellator.colorABGR(static_cast<int>(mColor));
+        setColorAbgr(tessellator, mColor);
         auto const addEdge = [&](Vec3 const& a, Vec3 const& b) {
-            tessellator.vertex(a);
-            tessellator.vertex(b);
+            tessellator.vertex(a.x, a.y, a.z);
+            tessellator.vertex(b.x, b.y, b.z);
         };
         addEdge({x0,y0,z0},{x1,y0,z0}); addEdge({x1,y0,z0},{x1,y1,z0});
         addEdge({x1,y1,z0},{x0,y1,z0}); addEdge({x0,y1,z0},{x0,y0,z0});
@@ -59,31 +91,32 @@ void BoundsWireframe::render(BaseActorRenderContext& renderContext, bool renderA
         mMesh = std::make_unique<mce::Mesh>(tessellator.end(
             Tessellator::UploadMode::Buffered,
             "LHoloSelectionBounds",
-            Tessellator::SupplementaryFieldAutoGenerationMode::None
+            SupplementaryFieldAutoGenerationMode{0}
         ));
         return;
     }
 
     if (!renderAlphaLayer || !mMesh || !mMesh->isValid()) return;
-    auto& client = renderContext.getClient();
+    auto& client = renderContext.mClientInstance;
     auto* levelRenderer = client.getLevelRenderer();
     if (!levelRenderer) return;
-    auto const& material = levelRenderer->getLevelRendererPlayer().mOutlineSelectionMaterial.get();
-    if (!material) return;
+    auto const& material = levelRenderer->mLevelRendererPlayer->mOutlineSelectionMaterial.get();
+    if (material.mRenderMaterialInfoPtr.get() == nullptr) return;
 
-    auto const& camera = renderContext.getCameraPosition();
-    auto matrix = renderContext.getWorldMatrix().push(false);
-    matrix->translate(
+    Vec3 const camera = renderCameraPosition(renderContext);
+    auto matrix = renderContext.mScreenContext.camera.worldMatrixStack.get().push(false);
+    matrix.mat->translate(
         static_cast<float>(mMin.x) - camera.x,
         static_cast<float>(mMin.y) - camera.y,
         static_cast<float>(mMin.z) - camera.z
     );
     mMesh->renderMesh(
-        renderContext.getScreenContext(),
+        renderContext.mScreenContext,
         material,
+        std::variant<std::monostate, mce::TexturePtr, mce::ClientTexture, mce::ServerTexture>{},
         0,
-        static_cast<uint>(mMesh->getMeshVertexCount()),
-        renderContext.mOffscreenCaptureDescription.get(),
+        mMesh->mVertexCount.get().value_or(0u),
+        emptyOffscreenCaptureDescription(),
         nullptr
     );
 }

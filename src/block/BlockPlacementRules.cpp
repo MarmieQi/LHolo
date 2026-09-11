@@ -15,7 +15,11 @@ ItemStack makePlacementItem(Block const& block) {
     std::string const blockName{placeableBaseName(block.getTypeName())};
     auto const itemName = placementItemName(blockName);
     std::string_view const name = itemName.empty() ? std::string_view{blockName} : itemName;
-    return ItemStack(name, 1, 0, nullptr);
+    // 26.40 removed the ItemStack(name, count, aux, tag) constructor; the
+    // remaining route is default construction followed by reinit().
+    ItemStack item;
+    item.reinit(name, 1, 0);
+    return item;
 }
 
 std::string stripMinecraftFormatting(std::string_view text) {

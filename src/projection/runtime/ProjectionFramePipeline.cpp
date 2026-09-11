@@ -10,8 +10,10 @@
 #include "projection/core/ProjectionState.h"
 #include "structure/StructureLoader.h"
 
+#include <cstdint>
 #include <memory>
 
+#include "mc/client/renderer/SupplementaryFieldAutoGenerationMode.h"
 #include "mc/client/renderer/Tessellator.h"
 #include "mc/client/renderer/block/BlockTessellator.h"
 #include "mc/world/level/BlockSource.h"
@@ -19,6 +21,15 @@
 
 namespace lholo::projection::detail {
 namespace {
+
+void setColorAbgr(Tessellator& tessellator, std::uint32_t colorAbgr) {
+    tessellator.color(
+        static_cast<float>((colorAbgr >> 0) & 0xFFU) / 255.0f,
+        static_cast<float>((colorAbgr >> 8) & 0xFFU) / 255.0f,
+        static_cast<float>((colorAbgr >> 16) & 0xFFU) / 255.0f,
+        static_cast<float>((colorAbgr >> 24) & 0xFFU) / 255.0f
+    );
+}
 
 void ensureStructureBoundsMesh(
     ProjectionState& state,
@@ -43,10 +54,10 @@ void ensureStructureBoundsMesh(
     tessellator.begin(
         Tessellator::DebugContextCallback{}, mce::PrimitiveMode::LineList, 24, false
     );
-    tessellator.colorABGR(static_cast<int>(0xFFFFD633U));
+    setColorAbgr(tessellator, 0xFFFFD633U);
     auto addBoundsEdge = [&](Vec3 const& first, Vec3 const& second) {
-        tessellator.vertex(first);
-        tessellator.vertex(second);
+        tessellator.vertex(first.x, first.y, first.z);
+        tessellator.vertex(second.x, second.y, second.z);
     };
     addBoundsEdge({x0,y0,z0},{x1,y0,z0}); addBoundsEdge({x1,y0,z0},{x1,y1,z0});
     addBoundsEdge({x1,y1,z0},{x0,y1,z0}); addBoundsEdge({x0,y1,z0},{x0,y0,z0});
@@ -57,7 +68,7 @@ void ensureStructureBoundsMesh(
     state.structureBoundsMesh = std::make_unique<mce::Mesh>(tessellator.end(
         Tessellator::UploadMode::Buffered,
         "LHoloStructureBounds",
-        Tessellator::SupplementaryFieldAutoGenerationMode::None
+        SupplementaryFieldAutoGenerationMode{0}
     ));
 }
 
@@ -103,8 +114,6 @@ void processProjectionOpaqueFrame(
             state.progressExtraCount
         );
     }
-
-    if (tessellator.isTessellating()) tessellator.cancel();
 
     // Consume completed CPU data only in the opaque render pass.
     uploadCompletedProjectionMeshes(state, tessellator);

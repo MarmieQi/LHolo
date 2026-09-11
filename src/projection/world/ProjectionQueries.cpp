@@ -11,6 +11,7 @@
 #include <tuple>
 
 #include "mc/world/level/block/Block.h"
+#include "mc/world/level/block/BlockType.h"
 #include "mc/world/level/material/Material.h"
 
 namespace lholo::projection::detail {
@@ -27,7 +28,7 @@ ProjectionQuery queryProjectionCell(
         ? nullptr
         : foundBlock->second;
     // Liquids have no normal block item, so they are never a valid place target.
-    if (block && block->getMaterial().isLiquid()) block = nullptr;
+    if (block && block->getBlockType().mMaterial.mLiquid) block = nullptr;
     bool const missing = state.correctionStates[foundIndex->second] == CorrectionState::Missing;
     return {block, missing};
 }
@@ -64,7 +65,7 @@ std::vector<RangeCandidate> queryMissingProjectionCells(
                     ? nullptr
                     : foundBlock->second;
                 // Liquids have no normal block item, so they are never a valid place target.
-                if (block && block->getMaterial().isLiquid()) block = nullptr;
+                if (block && block->getBlockType().mMaterial.mLiquid) block = nullptr;
                 if (!block) continue;
                 result.push_back({x, y, z, block});
             }

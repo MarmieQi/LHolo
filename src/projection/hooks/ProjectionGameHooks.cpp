@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <string_view>
+#include <variant>
 
 #include "mc/network/LoopbackPacketSender.h"
 #include "mc/network/MinecraftPacketIds.h"
@@ -43,8 +44,11 @@ bool isMenuCommand(std::string_view message) {
 bool filterProjectionPacket(Packet& packet) {
     if (packet.getId() != MinecraftPacketIds::Text) return false;
     auto& textPacket = static_cast<TextPacket&>(packet);
-    if (textPacket.getType() != TextPacketType::Chat
-        || !isMenuCommand(textPacket.getMessage())) return false;
+    auto const* chat = std::get_if<TextPacketPayload::AuthorAndMessage>(
+        &textPacket.mBody.get()
+    );
+    if (!chat || chat->mType != TextPacketType::Chat
+        || !isMenuCommand(chat->mMessage.get())) return false;
 
     if (overlay::ensureInstalled()) {
         structure::requestOpenGui();

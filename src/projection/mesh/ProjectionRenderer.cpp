@@ -20,14 +20,33 @@
 #include "mc/client/renderer/game/ItemInHandRenderer.h"
 #include "mc/client/renderer/game/LevelRenderer.h"
 #include "mc/client/renderer/game/LevelRendererPlayer.h"
+#include "mc/deps/core/renderer/RenderMaterialInfo.h"
 #include "mc/deps/minecraft_renderer/framebuilder/dragon/RenderMetadata.h"
 #include "mc/deps/minecraft_renderer/renderer/RenderMaterial.h"
+#include "mc/deps/minecraft_renderer/resources/ClientTexture.h"
+#include "mc/deps/minecraft_renderer/resources/ServerTexture.h"
 #include "mc/deps/renderer/hal/interface/DepthStencilStateDescription.h"
 #include "mc/world/level/block/actor/BlockActor.h"
+#include "mc/world/level/block/actor/component/IVanillaRenderBlockActorComponent.h"
 
 namespace lholo::projection::detail {
 
 namespace {
+
+bool materialExists(mce::MaterialPtr const& material) {
+    return material.mRenderMaterialInfoPtr.get() != nullptr;
+}
+
+mce::RenderMaterial* tryRenderMaterial(mce::MaterialPtr const& material) {
+    auto* info = material.mRenderMaterialInfoPtr.get();
+    return info ? info->mPtr.get() : nullptr;
+}
+
+OffscreenCaptureDescription const& emptyOffscreenCaptureDescription() {
+    using Storage = decltype(dragon::RenderMetadata::mOffscreenCaptureDescription);
+    static Storage empty{};
+    return empty.get();
+}
 
 // Temporarily turns off depth testing on a shared render material so correction
 // overlay geometry draws through world blocks (X-ray), restoring it when the scope ends.
@@ -36,8 +55,8 @@ namespace {
 class ScopedNoDepthTest {
 public:
     ScopedNoDepthTest(mce::MaterialPtr const& material, bool enable) {
-        if (!enable || !material) return;
-        mMaterial = const_cast<mce::RenderMaterial*>(material.operator->());
+        if (!enable || !materialExists(material)) return;
+        mMaterial = tryRenderMaterial(material);
         if (!mMaterial) return;
         auto& description = mMaterial->depthStencilStateDescription.get();
         mSaved = description.depthTestEnabled;
@@ -75,16 +94,18 @@ void submitProjectedBlockActorPass(
     );
     for (auto const& projected : state.projectedBlockActors) {
         auto const correctionState = state.correctionStates[projected.structureIndex];
+        auto* renderComponent = projected.actor->_getRenderComponent();
         if (correctionState == CorrectionState::Correct
             || correctionState == CorrectionState::WrongType
             || correctionState == CorrectionState::WrongState
-            || !projected.actor->isWithinRenderDistance(camera)) {
+            || !renderComponent
+            || !renderComponent->isWithinRenderDistance(camera)) {
             continue;
         }
         dispatcher.render(
             renderContext,
             region,
-            *projected.actor,
+            *renderComponent,
             *projected.block,
             renderAlphaLayer,
             noForcedMaterial,
@@ -107,7 +128,7 @@ void submitProjectionMeshPass(
     bool                    correctionSeeThrough,
     bool                    missingSeeThrough
 ) {
-    auto& itemRenderer = renderContext.getItemInHandRenderer();
+    auto& itemRenderer = renderContext.mItemInHandRenderer;
     auto const& blendMaterial = itemRenderer.mMatBlendBlock.get();
 
     struct VisibleMesh {
@@ -134,16 +155,16 @@ void submitProjectionMeshPass(
         });
     };
     auto renderMeshes = [&](std::vector<VisibleMesh> const& meshes, mce::MaterialPtr const& material) {
-        if (!material) return;
+        if (!materialExists(material)) return;
         for (auto const& visible : meshes) {
             auto& mesh = *state.sections[visible.section].meshes[visible.bucket];
             mesh.renderMesh(
-                renderContext.getScreenContext(),
+                renderContext.mScreenContext,
                 material,
                 *state.terrainTextureVariant,
                 0,
-                static_cast<uint>(mesh.getMeshVertexCount()),
-                renderContext.mOffscreenCaptureDescription.get(),
+                mesh.mVertexCount.get().value_or(0u),
+                emptyOffscreenCaptureDescription(),
                 nullptr
             );
         }
@@ -175,12 +196,19 @@ void submitProjectionMeshPass(
         auto const& alphaMaterial = itemRenderer.mMatAlphaBlock.get();
         auto const& alphaOneSidedMaterial = itemRenderer.mMatAlphaOneSidedBlock.get();
         if (!renderAlphaLayer) {
-            renderMeshes(opaqueMeshes, opaqueMaterial ? opaqueMaterial : blendMaterial);
-            renderMeshes(alphaMeshes, alphaMaterial ? alphaMaterial : blendMaterial);
+            renderMeshes(
+                opaqueMeshes,
+                materialExists(opaqueMaterial) ? opaqueMaterial : blendMaterial
+            );
+            renderMeshes(
+                alphaMeshes,
+                materialExists(alphaMaterial) ? alphaMaterial : blendMaterial
+            );
             renderMeshes(
                 alphaOneSidedMeshes,
-                alphaOneSidedMaterial ? alphaOneSidedMaterial
-                                      : (alphaMaterial ? alphaMaterial : blendMaterial)
+                materialExists(alphaOneSidedMaterial)
+                    ? alphaOneSidedMaterial
+                    : (materialExists(alphaMaterial) ? alphaMaterial : blendMaterial)
             );
         } else {
             renderMeshes(transparentMeshes, blendMaterial);
@@ -221,12 +249,12 @@ void submitProjectionMeshPass(
         for (auto const liquidSection : liquidSections) {
             auto& mesh = *state.liquidProxySectionMeshes[liquidSection];
             mesh.renderMesh(
-                renderContext.getScreenContext(),
+                renderContext.mScreenContext,
                 blendMaterial,
                 *state.terrainTextureVariant,
                 0,
-                static_cast<uint>(mesh.getMeshVertexCount()),
-                renderContext.mOffscreenCaptureDescription.get(),
+                mesh.mVertexCount.get().value_or(0u),
+                emptyOffscreenCaptureDescription(),
                 nullptr
             );
         }
@@ -235,12 +263,12 @@ void submitProjectionMeshPass(
         for (auto const& placeholder : state.blockEntityPlaceholderSectionMeshes) {
             if (!placeholder || !placeholder->isValid()) continue;
             placeholder->renderMesh(
-                renderContext.getScreenContext(),
+                renderContext.mScreenContext,
                 blendMaterial,
                 *state.terrainTextureVariant,
                 0,
-                static_cast<uint>(placeholder->getMeshVertexCount()),
-                renderContext.mOffscreenCaptureDescription.get(),
+                placeholder->mVertexCount.get().value_or(0u),
+                emptyOffscreenCaptureDescription(),
                 nullptr
             );
         }
@@ -250,21 +278,22 @@ void submitProjectionMeshPass(
 
     auto* levelRenderer = client.getLevelRenderer();
     auto const& outlineMaterial = levelRenderer
-        ? levelRenderer->getLevelRendererPlayer().mOutlineSelectionMaterial.get()
+        ? levelRenderer->mLevelRendererPlayer->mOutlineSelectionMaterial.get()
         : itemRenderer.mMatBlendBlock.get();
-    if (outlineMaterial && structureBoundsEnabled
+    if (materialExists(outlineMaterial) && structureBoundsEnabled
         && state.structureBoundsMesh && state.structureBoundsMesh->isValid()) {
         state.structureBoundsMesh->renderMesh(
-            renderContext.getScreenContext(),
+            renderContext.mScreenContext,
             outlineMaterial,
+            std::variant<std::monostate, mce::TexturePtr, mce::ClientTexture, mce::ServerTexture>{},
             0,
-            static_cast<uint>(state.structureBoundsMesh->getMeshVertexCount()),
-            renderContext.mOffscreenCaptureDescription.get(),
+            state.structureBoundsMesh->mVertexCount.get().value_or(0u),
+            emptyOffscreenCaptureDescription(),
             nullptr
         );
     }
     auto const& warningMaterial = levelRenderer
-        ? levelRenderer->getLevelRendererPlayer().selectionBlockEntityOverlayColorMaterial.get()
+        ? levelRenderer->mLevelRendererPlayer->selectionBlockEntityOverlayColorMaterial.get()
         : itemRenderer.mMatBlendBlockNoColor.get();
     // seeThroughMeshes is passed per call so the "missing" correction meshes stay
     // depth-tested while only the "wrong" ones honor the X-ray toggle.
@@ -273,16 +302,17 @@ void submitProjectionMeshPass(
         mce::MaterialPtr const& material,
         bool seeThroughMeshes
     ) {
-        if (!material) return;
+        if (!materialExists(material)) return;
         ScopedNoDepthTest seeThrough(material, seeThroughMeshes);
         for (auto const& overlay : meshes) {
             if (!overlay || !overlay->isValid()) continue;
             overlay->renderMesh(
-                renderContext.getScreenContext(),
+                renderContext.mScreenContext,
                 material,
+                std::variant<std::monostate, mce::TexturePtr, mce::ClientTexture, mce::ServerTexture>{},
                 0,
-                static_cast<uint>(overlay->getMeshVertexCount()),
-                renderContext.mOffscreenCaptureDescription.get(),
+                overlay->mVertexCount.get().value_or(0u),
+                emptyOffscreenCaptureDescription(),
                 nullptr
             );
         }
@@ -307,11 +337,10 @@ void submitProjectionMeshPass(
     if (static_cast<bool>(itemRenderer.mIsDeferredEnabled)) {
         // Vibrant Visuals: reuse the colored outline shader for the hull and
         // restore every temporary material field immediately after submission.
-        auto* renderMaterial = outlineMaterial
-            ? const_cast<mce::RenderMaterial*>(outlineMaterial.operator->())
-            : nullptr;
+        auto* renderMaterial = tryRenderMaterial(outlineMaterial);
         MaterialStateRestore restore;
-        if (renderMaterial && blendMaterial) {
+        auto* blendRenderMaterial = tryRenderMaterial(blendMaterial);
+        if (renderMaterial && blendRenderMaterial) {
             restore.material = renderMaterial;
             restore.blend = renderMaterial->blendStateDescription.get();
             restore.primitive = renderMaterial->mPrimitiveMode;
@@ -320,33 +349,32 @@ void submitProjectionMeshPass(
             restore.restorePrimitive = true;
             renderMaterial->mPrimitiveMode = mce::PrimitiveMode::QuadList;
             renderMaterial->blendStateDescription.get()
-                = blendMaterial->blendStateDescription.get();
+                = blendRenderMaterial->blendStateDescription.get();
             renderMaterial->mDepthBias = 100.0f;
             renderMaterial->mSlopeScaledDepthBias = 15.0f;
             renderOverlayMeshes(state.warningFillSectionMeshes, outlineMaterial, missingSeeThrough);
             renderOverlayMeshes(state.wrongFillSectionMeshes, outlineMaterial, correctionSeeThrough);
         }
-    } else if (warningMaterial) {
+    } else if (materialExists(warningMaterial)) {
         // Vanilla selection overlay has the required depth bias. Temporarily
         // borrow SourceAlpha/OneMinusSourceAlpha from blend-block material.
-        auto* renderMaterial = levelRenderer
-            ? const_cast<mce::RenderMaterial*>(warningMaterial.operator->())
-            : nullptr;
+        auto* renderMaterial = levelRenderer ? tryRenderMaterial(warningMaterial) : nullptr;
         MaterialStateRestore restore;
-        if (renderMaterial && blendMaterial) {
+        auto* blendRenderMaterial = tryRenderMaterial(blendMaterial);
+        if (renderMaterial && blendRenderMaterial) {
             restore.material = renderMaterial;
             restore.blend = renderMaterial->blendStateDescription.get();
             restore.depthBias = renderMaterial->mDepthBias;
             restore.slopeBias = renderMaterial->mSlopeScaledDepthBias;
             renderMaterial->blendStateDescription.get()
-                = blendMaterial->blendStateDescription.get();
+                = blendRenderMaterial->blendStateDescription.get();
             renderMaterial->mDepthBias = 100.0f;
             renderMaterial->mSlopeScaledDepthBias = 15.0f;
         }
         renderOverlayMeshes(state.warningFillSectionMeshes, warningMaterial, missingSeeThrough);
         renderOverlayMeshes(state.wrongFillSectionMeshes, warningMaterial, correctionSeeThrough);
     }
-    if (outlineMaterial) {
+    if (materialExists(outlineMaterial)) {
         renderOverlayMeshes(state.correctionOutlineSectionMeshes, outlineMaterial, missingSeeThrough);
         renderOverlayMeshes(state.wrongOutlineSectionMeshes, outlineMaterial, correctionSeeThrough);
     }

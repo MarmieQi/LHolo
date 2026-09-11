@@ -33,6 +33,8 @@
 #include "mc/world/level/block/actor/BlockActor.h"
 #include "mc/world/level/block/actor/BlockActorType.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
+#include "mc/world/level/block/actor/VanillaBlockActorFactory.h"
+#include "mc/world/level/block/actor/component/IVanillaRenderBlockActorComponent.h"
 #include "mc/world/level/levelgen/structure/LegacyStructureSettings.h"
 
 namespace lholo::projection::detail {
@@ -50,9 +52,9 @@ void pairProjectedChests(BlockSource& region, ProjectionState& state) {
         *state.expectedWorldBlocks, *state.expectedWorldBlockActors
     };
     for (auto const& [key, actor] : *state.expectedWorldBlockActors) {
-        if (!actor->isType(BlockActorType::Chest)) continue;
+        if (actor->mType != BlockActorType::Chest) continue;
         auto* chest = static_cast<ChestBlockActor*>(actor.get());
-        if (chest->isLargeChest()) continue;
+        if (chest->mLargeChestPaired != nullptr) continue;
 
         auto const [x, y, z] = key;
         for (auto const [dx, dz] : horizontalNeighbors) {
@@ -61,12 +63,12 @@ void pairProjectedChests(BlockSource& region, ProjectionState& state) {
                 std::tuple{neighbor.x, neighbor.y, neighbor.z}
             );
             if (found == state.expectedWorldBlockActors->end()
-                || !found->second->isType(BlockActorType::Chest)) {
+                || found->second->mType != BlockActorType::Chest) {
                 continue;
             }
 
             chest->_tryToPairWith(region, neighbor);
-            if (chest->isLargeChest()) break;
+            if (chest->mLargeChestPaired != nullptr) break;
         }
     }
 }
@@ -128,18 +130,21 @@ void rebuildProjectionPlacement(
         if (transformedBlock) {
             state.expectedWorldBlocks->emplace(worldKey, transformedBlock);
             if (transformedBlock->getBlockEntityType() != BlockActorType::Undefined) {
-                auto blockActor = transformedBlock->getBlockType().newBlockEntity(
-                    worldPosition, *transformedBlock
+                auto blockActor = VanillaBlockActorFactory::createBlockActor(
+                    worldPosition, transformedBlock->getBlockType()
                 );
                 if (blockActor) {
                     if (entry.blockEntityNbt) {
-                        NewUniqueIdsDataLoadHelper dataLoadHelper{*state.level};
+                        NewUniqueIdsDataLoadHelper dataLoadHelper;
+                        dataLoadHelper.mLevel = state.level;
                         blockActor->load(*state.level, *entry.blockEntityNbt, dataLoadHelper);
-                        blockActor->moveTo(worldPosition);
+                        blockActor->mPosition = worldPosition;
                     }
                     auto* actor = blockActor.get();
                     state.expectedWorldBlockActors->emplace(worldKey, std::move(blockActor));
-                    if (dispatcher.getRenderer(*actor)) {
+                    auto* renderComponent = actor->_getRenderComponent();
+                    if (renderComponent
+                        && dispatcher.mRenderers.get()[renderComponent->getRendererId()]) {
                         state.projectedBlockActors.push_back({
                             worldPosition, transformedBlock, actor, index
                         });

@@ -160,23 +160,18 @@ Block const*                                      gWaterSource{};
 
 StatePairs readBlockStates(Block const& block) {
     StatePairs states;
-    for (auto const& [key, value] : block.getSerializationId()) {
+    for (auto const& [key, value] : block.mSerializationId.get()) {
         if (key != "states" || !value.hold<::CompoundTag>()) continue;
         for (auto const& [stateKey, stateValue] : value.get<::CompoundTag>()) {
-            switch (stateValue.getId()) {
-            case ::Tag::Type::Byte:
+            auto const type = stateValue.getId();
+            if (type == ::Tag::Type::Byte) {
                 states.emplace_back(
                     stateKey, std::to_string(static_cast<int>(stateValue.get<::ByteTag>().data))
                 );
-                break;
-            case ::Tag::Type::Int:
+            } else if (type == ::Tag::Type::Int) {
                 states.emplace_back(stateKey, std::to_string(stateValue.get<::IntTag>().data));
-                break;
-            case ::Tag::Type::String:
+            } else if (type == ::Tag::Type::String) {
                 states.emplace_back(stateKey, static_cast<std::string const&>(stateValue.get<::StringTag>()));
-                break;
-            default:
-                break;
             }
         }
         break;
@@ -189,12 +184,12 @@ PermutationTable const& permutationsFor(std::string const& name) {
     if (cached != gPermutationCache.end()) return cached->second;
 
     PermutationTable table;
-    auto const& defaultBlock = BlockTypeRegistry::get().getDefaultBlockState(HashedString(name), false);
-    if (defaultBlock.getTypeName() == name) {
-        defaultBlock.getBlockType().forEachBlockPermutation([&](Block const& permutation) {
-            table.permutations.emplace_back(readBlockStates(permutation), &permutation);
-            return true;
-        });
+    auto const defaultBlock = Block::tryGetFromRegistry(HashedString(name));
+    if (defaultBlock && defaultBlock->getTypeName() == name) {
+        for (auto const& permutation : defaultBlock->getBlockType().mBlockPermutations.get()) {
+            if (!permutation) continue;
+            table.permutations.emplace_back(readBlockStates(*permutation), permutation.get());
+        }
     }
     return gPermutationCache.emplace(name, std::move(table)).first->second;
 }
@@ -211,20 +206,16 @@ Block const* resolvePermutation(PermutationTable const& table, StatePairs const&
 
 Block const* waterSource() {
     if (!gWaterSource) {
-        auto const& water = BlockTypeRegistry::get().getDefaultBlockState(
-            HashedString("minecraft:water"), false
-        );
-        if (!water.isAir()) gWaterSource = &water;
+        auto const water = Block::tryGetFromRegistry(HashedString("minecraft:water"));
+        if (water && !water->isAir()) gWaterSource = &*water;
     }
     return gWaterSource;
 }
 
 Block const* resolveExactBedrockBlock(std::string const& bedrockName) {
     if (bedrockName.empty()) return nullptr;
-    auto const& block = BlockTypeRegistry::get().getDefaultBlockState(
-        HashedString(bedrockName), false
-    );
-    if (block.getTypeName() == bedrockName && !block.isAir()) return &block;
+    auto const block = Block::tryGetFromRegistry(HashedString(bedrockName));
+    if (block && block->getTypeName() == bedrockName && !block->isAir()) return &*block;
     return nullptr;
 }
 
@@ -242,7 +233,7 @@ ResolvedJavaBlock resolveJavaBlockState(
         if (!resolved || resolved->isAir()) return {};
 
         ResolvedJavaBlock result{.mapped = true};
-        if (resolved->getMaterial().isLiquid()) {
+        if (resolved->getBlockType().mMaterial.mLiquid) {
             result.liquid = resolved;
         } else {
             result.block = resolved;
@@ -261,7 +252,7 @@ ResolvedJavaBlock resolveJavaBlockState(
     if (!resolved || resolved->isAir()) return {};
 
     ResolvedJavaBlock result{.mapped = true};
-    if (resolved->getMaterial().isLiquid()) {
+    if (resolved->getBlockType().mMaterial.mLiquid) {
         result.liquid = resolved;
     } else {
         result.block = resolved;

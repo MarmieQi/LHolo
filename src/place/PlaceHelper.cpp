@@ -38,6 +38,7 @@
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/Tick.h"
 #include "mc/world/level/block/Block.h"
+#include "mc/world/level/block/BlockType.h"
 
 #include <Windows.h>
 
@@ -101,7 +102,7 @@ void cancelPendingManualPress() {
 bool aimedBlockAcceptsRightClick(GameMode& gm, BlockPos const& pos) {
     // Defer to Bedrock's official interaction classification so new vanilla and
     // custom interactive blocks do not require an LHolo name allow-list.
-    return gm.mPlayer.getDimensionBlockSource().getBlock(pos).isInteractiveBlock();
+    return gm.mPlayer.getDimensionBlockSource().getBlock(pos).getBlockType().isInteractiveBlock();
 }
 
 // Manual-mode press edge. If the aimed block is interactive (chest, repeater,
