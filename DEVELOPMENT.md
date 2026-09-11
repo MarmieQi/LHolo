@@ -4,8 +4,8 @@
 
 当前基线：
 
-- Minecraft Bedrock Windows：`1.26.20.04`
-- LeviLamina：`26.20.7`，目标类型 `client`
+- Minecraft Bedrock Windows：`1.26.40.05`
+- LeviLamina：`26.40.0`，目标类型 `client`
 - 架构：Windows x64
 - 图形接口：Minecraft D3D12 + LHolo D3D11On12 + Dear ImGui DX11 后端
 - 模组名称、DLL、目录和内部命名空间：`LHolo` / `LHolo.dll` / `mods/LHolo` / `lholo`
@@ -146,6 +146,7 @@ LHolo/
 ├─ build/                       xmake 中间产物，不发布
 └─ bin/LHolo/                   唯一发布目录
    ├─ LHolo.dll
+   ├─ LHolo.pdb                  set_symbols("debug") 产物，用于符号化崩溃栈
    ├─ manifest.json
    └─ LICENSE
 ```
@@ -403,7 +404,7 @@ Java→Bedrock 映射不再手工散落维护。`GeneratedChunkerMappings.inc` �
 
 “创建结构”不经过 `LoadedStructure`，也不会自动载入投影。选区端点先按每轴最小值/最大值归一化，两个端点都包含在内；导出前由 `BlockSource::areChunksFullyLoaded(min, max)` 拒绝客户端尚未完整加载的范围。
 
-捕获只使用 LeviLamina 26.20.7 客户端头文件确认的原版接口：
+捕获只使用 LeviLamina 26.40.0 客户端头文件确认的原版接口：
 
 1. `ll::service::getClientInstance()` 和 `ClientInstance::getLocalPlayer()` 获取当前客户端玩家。
 2. `Actor::getDimensionBlockSource()` 取得当前维度的 `BlockSource`。
@@ -876,15 +877,24 @@ mods/LHolo/config/config.json
 
 ### 14.1 依赖
 
-- Visual Studio 2022 C++ 工具链
+- Visual Studio 2022 C++ 工具链（提供链接器与 Windows SDK）
+- LLVM 22（`clang-cl`）
 - xmake
-- LeviLamina 26.20.7 client
+- LeviLamina 26.40.0 client
 - levibuildscript
 - Dear ImGui 1.91.9，Win32 + DX11，静态
 - MinHook
 - zlib
 
-编译设置：C++20、MD runtime、UTF-8、警告等级 `/W4`。
+编译设置：C++20、MD runtime、UTF-8、警告等级 `/W4`、工具链 `clang-cl`。
+
+链接设置：`/DELAYLOAD:bedrock_runtime.dll` + `delayimp`。clang-cl 下只有 `/EHs` 生效，`/EHa` 会被静默忽略；`ProjectionRenderFrame.cpp` 依赖 C++ 异常，缺少 `/EH` 时会直接编译失败。
+
+本机若出现 `LNK1181 无法打开输入文件 user32.lib`，说明 xmake 没有找到 Windows SDK 库目录（常见于 SDK 装在非默认盘、或注册表 64 位视图的 `KitsRoot10` 指向了不存在的路径）。此时在运行 xmake 前补上 `LIB` 环境变量即可，无需改仓库：
+
+```powershell
+$env:LIB = "<SDK>\Lib\<版本>\um\x64;<SDK>\Lib\<版本>\ucrt\x64;<VS>\VC\Tools\MSVC\<版本>\lib\x64"
+```
 
 ### 14.2 干净 Release 构建
 
@@ -911,7 +921,7 @@ bin/LHolo/
 测试路径：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.20.04\mods\LHolo
+D:\games\LeviLauncher\MC\versions\1.26.40.05\mods\LHolo
 ```
 
 部署前确认 `Minecraft.Windows.exe` 未运行。复制 DLL 后对构建产物和部署文件计算 SHA256，必须一致。
@@ -1127,14 +1137,14 @@ D:\games\LeviLauncher\MC\versions\1.26.20.04\mods\LHolo
 测试实例日志：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.20.04\logs\latest.log
+D:\games\LeviLauncher\MC\versions\1.26.40.05\logs\latest.log
 ```
 
 崩溃文件：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.20.04\logs\crash\trace_*.log
-D:\games\LeviLauncher\MC\versions\1.26.20.04\logs\crash\minidump_*.dmp
+D:\games\LeviLauncher\MC\versions\1.26.40.05\logs\crash\trace_*.log
+D:\games\LeviLauncher\MC\versions\1.26.40.05\logs\crash\minidump_*.dmp
 ```
 
 排障优先级：
