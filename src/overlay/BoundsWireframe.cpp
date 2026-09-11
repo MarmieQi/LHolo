@@ -18,11 +18,11 @@ namespace lholo::overlay {
 namespace {
 
 Vec3 renderCameraPosition(BaseActorRenderContext const& renderContext) {
-    // ScreenContext inherits mce::MeshContext, which owns the render camera.
-    // The world matrix used below is built from this same camera, so bounds
-    // stay in the coordinate space Bedrock renders them in.
-    auto const& position = renderContext.mScreenContext.camera.mPosition.get();
-    return {position.x, position.y, position.z};
+    // Same source as the projection pass: see renderCameraPosition() in
+    // ProjectionRenderFrame.cpp for why this reads through Impl on 1.26.40.
+    auto const* impl = reinterpret_cast<float const*>(renderContext.mImpl.get());
+    if (!impl) return {};
+    return {impl[10], impl[11], impl[12]};
 }
 
 OffscreenCaptureDescription const& emptyOffscreenCaptureDescription() {

@@ -55,11 +55,17 @@ namespace lholo::projection::detail {
 namespace {
 
 Vec3 renderCameraPosition(BaseActorRenderContext const& renderContext) {
-    // ScreenContext inherits mce::MeshContext, which owns the render camera.
-    // The projection is submitted through that same camera's world matrix, so
-    // both must read the position from this one source.
-    auto const& position = renderContext.mScreenContext.camera.mPosition.get();
-    return {position.x, position.y, position.z};
+    // 1.26.40 no longer exports BaseActorRenderContext::getCameraPosition(), and
+    // its backing member mCameraPosition moved into the opaque Impl together
+    // with mCameraTargetPosition/mWorldClipRegion. The generated header exposes
+    // no accessor, so the position is read back from Impl.
+    //
+    // Verified in game: float slots 10..12 mirror the eye position every frame
+    // (they tracked the player exactly), while mce::Camera::mPosition reads 0
+    // for both the ScreenContext camera and IClientInstance::getCamera().
+    auto const* impl = reinterpret_cast<float const*>(renderContext.mImpl.get());
+    if (!impl) return {};
+    return {impl[10], impl[11], impl[12]};
 }
 
 auto& logger() {
@@ -142,13 +148,9 @@ void renderProjection(
     auto* player  = client.getLocalPlayer();
 
     auto& tessellator = renderContext.mScreenContext.tessellator;
-    tessellator.begin(Tessellator::DebugContextCallback{}, mce::PrimitiveMode::QuadList, 128, false);
     Vec3 const camera = renderCameraPosition(renderContext);
 
-    if (!state.blockTessellator) {
-        tessellator.clear();
-        return;
-    }
+    if (!state.blockTessellator) return;
     if (!renderAlphaLayer) {
         auto const mirrorMode = structure::getMirrorMode();
         auto const rotationTurns = structure::getRotationQuarterTurns();
@@ -250,11 +252,6 @@ void renderProjection(
         state.anchor.z + structure::getOffsetZ()
     };
     auto const structureOpacity = ProjectionSession::getInstance().opacity();
-    if (renderAlphaLayer) {
-        // The transparent pass only submits meshes built during the preceding
-        // opaque pass. Do not leave the shared immediate tessellator active.
-        tessellator.clear();
-    }
 
     submitProjectedBlockActorPass(
         state,
@@ -273,13 +270,9 @@ void renderProjection(
 
     auto& itemRenderer = renderContext.mItemInHandRenderer;
     auto const& blendMaterial = itemRenderer.mMatBlendBlock.get();
-    if (blendMaterial.mRenderMaterialInfoPtr.get() == nullptr) {
-        tessellator.clear();
-        return;
-    }
+    if (blendMaterial.mRenderMaterialInfoPtr.get() == nullptr) return;
 
     if (!state.terrainTextureVariant) {
-        tessellator.clear();
         logger().error("Projection terrain texture is not available");
         return;
     }
@@ -323,12 +316,10 @@ void renderProjection(
         );
     } catch (std::exception const& exception) {
         logger().error("Projection immediate mesh submission failed: {}", exception.what());
-        tessellator.clear();
         resetProjectionState(state);
         return;
     } catch (...) {
         logger().error("Projection immediate mesh submission failed with an unknown exception");
-        tessellator.clear();
         resetProjectionState(state);
         return;
     }

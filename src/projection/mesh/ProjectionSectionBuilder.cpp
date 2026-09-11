@@ -224,7 +224,6 @@ void buildProjectionSection(
     for (std::size_t bucketIndex = 0;
          bucketIndex < static_cast<std::size_t>(RenderBucket::Count);
          ++bucketIndex) {
-        tessellator.clear();
         tessellator.begin(
             Tessellator::DebugContextCallback{},
             mce::PrimitiveMode::QuadList,
@@ -284,7 +283,11 @@ void buildProjectionSection(
         }
         auto& destination = state.sections[section].meshes[bucketIndex];
         if (!bucketTessellated) {
-            tessellator.clear();
+            tessellator.end(
+                Tessellator::UploadMode::Never,
+                meshNames[bucketIndex],
+                SupplementaryFieldAutoGenerationMode{0}
+            );
             destination.reset();
             continue;
         }
@@ -317,7 +320,6 @@ void buildProjectionSection(
     detail::buildStructureBoundsMesh(
         state, tessellator, uploadMode, sectionBuildSettings
     );
-    if (tessellator.mTessellating) tessellator.clear();
 }
 
 void buildLiquidProxySectionMesh(
