@@ -822,18 +822,21 @@ void buildStructureBoundsMesh(
     auto const width = static_cast<float>(rotated ? state.structure->sizeZ : state.structure->sizeX);
     auto const height = static_cast<float>(state.structure->sizeY);
     auto const depth = static_cast<float>(rotated ? state.structure->sizeX : state.structure->sizeZ);
-    constexpr float expansion = 0.01f;
-    float const x0 = -expansion, y0 = -expansion, z0 = -expansion;
-    float const x1 = width + expansion;
-    float const y1 = height + expansion;
-    float const z1 = depth + expansion;
+    // The wireframe wraps the structure extent exactly, with no outward
+    // expansion.
+    float const x0 = 0.0f, y0 = 0.0f, z0 = 0.0f;
+    float const x1 = width;
+    float const y1 = height;
+    float const z1 = depth;
     tessellator.begin(
         Tessellator::DebugContextCallback{}, mce::PrimitiveMode::LineList, 24, false
     );
     setColorAbgr(tessellator, 0xFFFFD633U);
     auto addBoundsEdge = [&](Vec3 const& a, Vec3 const& b) {
-        tessellator.vertex(a.x, a.y, a.z);
-        tessellator.vertex(b.x, b.y, b.z);
+        // Center of the pure-white texture: the overlay material's alpha test
+        // samples it and never discards.
+        tessellator.tex2({0.5f, 0.5f}); tessellator.vertex(a.x, a.y, a.z);
+        tessellator.tex2({0.5f, 0.5f}); tessellator.vertex(b.x, b.y, b.z);
     };
     addBoundsEdge({x0,y0,z0},{x1,y0,z0}); addBoundsEdge({x1,y0,z0},{x1,y1,z0});
     addBoundsEdge({x1,y1,z0},{x0,y1,z0}); addBoundsEdge({x0,y1,z0},{x0,y0,z0});

@@ -1,5 +1,7 @@
 #include "overlay/BoundsWireframe.h"
 
+#include "render/OverlayMaterials.h"
+
 #include "mc/client/game/IClientInstance.h"
 #include "mc/client/gui/screens/ScreenContext.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
@@ -9,8 +11,6 @@
 #include "mc/client/renderer/game/LevelRendererPlayer.h"
 #include "mc/deps/minecraft_renderer/framebuilder/dragon/RenderMetadata.h"
 #include "mc/deps/minecraft_renderer/renderer/Mesh.h"
-#include "mc/deps/minecraft_renderer/resources/ClientTexture.h"
-#include "mc/deps/minecraft_renderer/resources/ServerTexture.h"
 #include "mc/deps/renderer/Camera.h"
 
 namespace lholo::overlay {
@@ -79,8 +79,10 @@ void BoundsWireframe::render(BaseActorRenderContext& renderContext, bool renderA
         );
         setColorAbgr(tessellator, mColor);
         auto const addEdge = [&](Vec3 const& a, Vec3 const& b) {
-            tessellator.vertex(a.x, a.y, a.z);
-            tessellator.vertex(b.x, b.y, b.z);
+            // Center of the pure-white texture: the overlay material's alpha
+            // test samples it and never discards.
+            tessellator.tex2({0.5f, 0.5f}); tessellator.vertex(a.x, a.y, a.z);
+            tessellator.tex2({0.5f, 0.5f}); tessellator.vertex(b.x, b.y, b.z);
         };
         addEdge({x0,y0,z0},{x1,y0,z0}); addEdge({x1,y0,z0},{x1,y1,z0});
         addEdge({x1,y1,z0},{x0,y1,z0}); addEdge({x0,y1,z0},{x0,y0,z0});
@@ -100,8 +102,15 @@ void BoundsWireframe::render(BaseActorRenderContext& renderContext, bool renderA
     auto& client = renderContext.mClientInstance;
     auto* levelRenderer = client.getLevelRenderer();
     if (!levelRenderer) return;
-    auto const& material = levelRenderer->mLevelRendererPlayer->mOutlineSelectionMaterial.get();
+    // The box color lives in vertex data; prefer the glow sign text material
+    // whose shader outputs it as-is, keeping the vanilla selection outline
+    // (uniform-driven color) as fallback.
+    auto const* glowMaterial = render::resolveGlowSignMaterial();
+    auto const& material = glowMaterial
+        ? *glowMaterial
+        : levelRenderer->mLevelRendererPlayer->mOutlineSelectionMaterial.get();
     if (material.mRenderMaterialInfoPtr.get() == nullptr) return;
+    auto const texture = render::resolveWhiteTextureVariant(levelRenderer);
 
     Vec3 const camera = renderCameraPosition(renderContext);
     auto matrix = renderContext.mScreenContext.camera.worldMatrixStack.get().push(false);
@@ -113,7 +122,7 @@ void BoundsWireframe::render(BaseActorRenderContext& renderContext, bool renderA
     mMesh->renderMesh(
         renderContext.mScreenContext,
         material,
-        std::variant<std::monostate, mce::TexturePtr, mce::ClientTexture, mce::ServerTexture>{},
+        texture,
         0,
         mMesh->mVertexCount.get().value_or(0u),
         emptyOffscreenCaptureDescription(),
