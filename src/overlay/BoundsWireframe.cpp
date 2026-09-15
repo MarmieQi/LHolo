@@ -1,14 +1,46 @@
 #include "overlay/BoundsWireframe.h"
 
+#include "render/OverlayMaterials.h"
+
 #include "mc/client/game/IClientInstance.h"
 #include "mc/client/gui/screens/ScreenContext.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
+#include "mc/client/renderer/SupplementaryFieldAutoGenerationMode.h"
 #include "mc/client/renderer/Tessellator.h"
 #include "mc/client/renderer/game/LevelRenderer.h"
 #include "mc/client/renderer/game/LevelRendererPlayer.h"
+#include "mc/deps/minecraft_renderer/framebuilder/dragon/RenderMetadata.h"
 #include "mc/deps/minecraft_renderer/renderer/Mesh.h"
+#include "mc/deps/renderer/Camera.h"
 
 namespace lholo::overlay {
+
+namespace {
+
+Vec3 renderCameraPosition(BaseActorRenderContext const& renderContext) {
+    // Same source as the projection pass: see renderCameraPosition() in
+    // ProjectionRenderFrame.cpp for why this reads through Impl on 1.26.40.
+    auto const* impl = reinterpret_cast<float const*>(renderContext.mImpl.get());
+    if (!impl) return {};
+    return {impl[10], impl[11], impl[12]};
+}
+
+OffscreenCaptureDescription const& emptyOffscreenCaptureDescription() {
+    using Storage = decltype(dragon::RenderMetadata::mOffscreenCaptureDescription);
+    static Storage empty{};
+    return empty.get();
+}
+
+void setColorAbgr(Tessellator& tessellator, std::uint32_t colorAbgr) {
+    tessellator.color(
+        static_cast<float>((colorAbgr >> 0) & 0xFF) / 255.0f,
+        static_cast<float>((colorAbgr >> 8) & 0xFF) / 255.0f,
+        static_cast<float>((colorAbgr >> 16) & 0xFF) / 255.0f,
+        static_cast<float>((colorAbgr >> 24) & 0xFF) / 255.0f
+    );
+}
+
+} // namespace
 
 BoundsWireframe::~BoundsWireframe() = default;
 
@@ -38,17 +70,19 @@ void BoundsWireframe::render(BaseActorRenderContext& renderContext, bool renderA
         float const y1 = static_cast<float>(mMax.y - mMin.y + 1) + expansion;
         float const z1 = static_cast<float>(mMax.z - mMin.z + 1) + expansion;
 
-        auto& tessellator = renderContext.getTessellator();
+        auto& tessellator = renderContext.mScreenContext.tessellator;
         tessellator.begin(
             Tessellator::DebugContextCallback{},
             mce::PrimitiveMode::LineList,
             24,
             false
         );
-        tessellator.colorABGR(static_cast<int>(mColor));
+        setColorAbgr(tessellator, mColor);
         auto const addEdge = [&](Vec3 const& a, Vec3 const& b) {
-            tessellator.vertex(a);
-            tessellator.vertex(b);
+            // Center of the pure-white texture: the overlay material's alpha
+            // test samples it and never discards.
+            tessellator.tex2({0.5f, 0.5f}); tessellator.vertex(a.x, a.y, a.z);
+            tessellator.tex2({0.5f, 0.5f}); tessellator.vertex(b.x, b.y, b.z);
         };
         addEdge({x0,y0,z0},{x1,y0,z0}); addEdge({x1,y0,z0},{x1,y1,z0});
         addEdge({x1,y1,z0},{x0,y1,z0}); addEdge({x0,y1,z0},{x0,y0,z0});
@@ -59,31 +93,39 @@ void BoundsWireframe::render(BaseActorRenderContext& renderContext, bool renderA
         mMesh = std::make_unique<mce::Mesh>(tessellator.end(
             Tessellator::UploadMode::Buffered,
             "LHoloSelectionBounds",
-            Tessellator::SupplementaryFieldAutoGenerationMode::None
+            SupplementaryFieldAutoGenerationMode{0}
         ));
         return;
     }
 
     if (!renderAlphaLayer || !mMesh || !mMesh->isValid()) return;
-    auto& client = renderContext.getClient();
+    auto& client = renderContext.mClientInstance;
     auto* levelRenderer = client.getLevelRenderer();
     if (!levelRenderer) return;
-    auto const& material = levelRenderer->getLevelRendererPlayer().mOutlineSelectionMaterial.get();
-    if (!material) return;
+    // The box color lives in vertex data; prefer the glow sign text material
+    // whose shader outputs it as-is, keeping the vanilla selection outline
+    // (uniform-driven color) as fallback.
+    auto const* glowMaterial = render::resolveGlowSignMaterial();
+    auto const& material = glowMaterial
+        ? *glowMaterial
+        : levelRenderer->mLevelRendererPlayer->mOutlineSelectionMaterial.get();
+    if (material.mRenderMaterialInfoPtr.get() == nullptr) return;
+    auto const texture = render::resolveWhiteTextureVariant(levelRenderer);
 
-    auto const& camera = renderContext.getCameraPosition();
-    auto matrix = renderContext.getWorldMatrix().push(false);
-    matrix->translate(
+    Vec3 const camera = renderCameraPosition(renderContext);
+    auto matrix = renderContext.mScreenContext.camera.worldMatrixStack.get().push(false);
+    matrix.mat->translate(
         static_cast<float>(mMin.x) - camera.x,
         static_cast<float>(mMin.y) - camera.y,
         static_cast<float>(mMin.z) - camera.z
     );
     mMesh->renderMesh(
-        renderContext.getScreenContext(),
+        renderContext.mScreenContext,
         material,
+        texture,
         0,
-        static_cast<uint>(mMesh->getMeshVertexCount()),
-        renderContext.mOffscreenCaptureDescription.get(),
+        mMesh->mVertexCount.get().value_or(0u),
+        emptyOffscreenCaptureDescription(),
         nullptr
     );
 }

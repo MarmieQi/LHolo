@@ -82,7 +82,7 @@ public:
         bool
     ) override {
         if (&source != gAttachedChunkSource.load(std::memory_order_acquire)) return;
-        auto const& chunkPosition = chunk.getPosition();
+        auto const& chunkPosition = chunk.mPosition.get();
         std::lock_guard lock(gPendingEventsMutex);
         gIncomingLoadedSubChunks.emplace_back(
             chunkPosition.x,

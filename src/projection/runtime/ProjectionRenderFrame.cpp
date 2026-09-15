@@ -37,10 +37,12 @@
 #include <utility>
 
 #include "mc/client/game/IClientInstance.h"
+#include "mc/client/gui/screens/ScreenContext.h"
 #include "mc/client/player/LocalPlayer.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
 #include "mc/client/renderer/Tessellator.h"
 #include "mc/client/renderer/game/ItemInHandRenderer.h"
+#include "mc/deps/renderer/Camera.h"
 #include "mc/world/actor/Actor.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
@@ -51,6 +53,20 @@
 
 namespace lholo::projection::detail {
 namespace {
+
+Vec3 renderCameraPosition(BaseActorRenderContext const& renderContext) {
+    // 1.26.40 no longer exports BaseActorRenderContext::getCameraPosition(), and
+    // its backing member mCameraPosition moved into the opaque Impl together
+    // with mCameraTargetPosition/mWorldClipRegion. The generated header exposes
+    // no accessor, so the position is read back from Impl.
+    //
+    // Verified in game: float slots 10..12 mirror the eye position every frame
+    // (they tracked the player exactly), while mce::Camera::mPosition reads 0
+    // for both the ScreenContext camera and IClientInstance::getCamera().
+    auto const* impl = reinterpret_cast<float const*>(renderContext.mImpl.get());
+    if (!impl) return {};
+    return {impl[10], impl[11], impl[12]};
+}
 
 auto& logger() {
     return LHolo::getInstance().getSelf().getLogger();
@@ -63,7 +79,7 @@ bool enableStructureProjection(
 ) {
     ProjectionState next;
     if (!prepareProjectionState(next, renderContext, std::move(loaded))) return false;
-    auto& client = renderContext.getClient();
+    auto& client = renderContext.mClientInstance;
     auto* player = client.getLocalPlayer();
     if (auto const anchor = ProjectionSession::getInstance().consumeAnchor()) {
         next.anchor = BlockPos{anchor->x, anchor->y, anchor->z};
@@ -128,24 +144,24 @@ void renderProjection(
     BaseActorRenderContext&   renderContext,
     bool                      renderAlphaLayer
 ) {
-    auto& client = renderContext.getClient();
+    auto& client = renderContext.mClientInstance;
     auto* player  = client.getLocalPlayer();
 
-    auto& tessellator = renderContext.getTessellator();
-    tessellator.begin(Tessellator::DebugContextCallback{}, 128, false);
+    auto& tessellator = renderContext.mScreenContext.tessellator;
+    Vec3 const camera = renderCameraPosition(renderContext);
 
-    if (!state.blockTessellator) {
-        tessellator.cancel();
-        return;
-    }
+    if (!state.blockTessellator) return;
     if (!renderAlphaLayer) {
         auto const mirrorMode = structure::getMirrorMode();
         auto const rotationTurns = structure::getRotationQuarterTurns();
         auto const mirror = getProjectionMirror(mirrorMode);
         auto const rotation = getProjectionRotation(rotationTurns);
-        LegacyStructureSettings transformSettings;
-        transformSettings.setMirror(mirror);
-        transformSettings.setRotation(rotation);
+        LegacyStructureSettings transformSettings{
+            mirror,
+            rotation,
+            nullptr,
+            BoundingBox{}
+        };
         bool const identityTransform = mirrorMode == 0 && rotationTurns == 0;
         auto const offsetX = structure::getOffsetX();
         auto const offsetY = structure::getOffsetY();
@@ -218,7 +234,7 @@ void renderProjection(
             state,
             tessellator,
             player->getDimensionBlockSource(),
-            renderContext.getCameraPosition(),
+            camera,
             transformSettings,
             sectionBuildSettings,
             layerDisplayMode,
@@ -236,12 +252,6 @@ void renderProjection(
         state.anchor.z + structure::getOffsetZ()
     };
     auto const structureOpacity = ProjectionSession::getInstance().opacity();
-    auto const& camera = renderContext.getCameraPosition();
-    if (renderAlphaLayer) {
-        // The transparent pass only submits meshes built during the preceding
-        // opaque pass. Do not leave the shared immediate tessellator active.
-        tessellator.cancel();
-    }
 
     submitProjectedBlockActorPass(
         state,
@@ -251,22 +261,18 @@ void renderProjection(
         renderAlphaLayer
     );
 
-    auto matrix = renderContext.getWorldMatrix().push(false);
-    matrix->translate(
+    auto matrix = renderContext.mScreenContext.camera.worldMatrixStack.get().push(false);
+    matrix.mat->translate(
         static_cast<float>(renderOrigin.x) - camera.x,
         static_cast<float>(renderOrigin.y) - camera.y,
         static_cast<float>(renderOrigin.z) - camera.z
     );
 
-    auto& itemRenderer = renderContext.getItemInHandRenderer();
+    auto& itemRenderer = renderContext.mItemInHandRenderer;
     auto const& blendMaterial = itemRenderer.mMatBlendBlock.get();
-    if (!blendMaterial) {
-        tessellator.cancel();
-        return;
-    }
+    if (blendMaterial.mRenderMaterialInfoPtr.get() == nullptr) return;
 
     if (!state.terrainTextureVariant) {
-        tessellator.cancel();
         logger().error("Projection terrain texture is not available");
         return;
     }
@@ -310,12 +316,10 @@ void renderProjection(
         );
     } catch (std::exception const& exception) {
         logger().error("Projection immediate mesh submission failed: {}", exception.what());
-        tessellator.cancel();
         resetProjectionState(state);
         return;
     } catch (...) {
         logger().error("Projection immediate mesh submission failed with an unknown exception");
-        tessellator.cancel();
         resetProjectionState(state);
         return;
     }
@@ -382,13 +386,13 @@ void renderProjectionFrame(BaseActorRenderContext& renderContext, bool renderAlp
             captureBounds.render(renderContext, renderAlphaLayer);
 
             if (auto loaded = structure::getLoaded(); loaded && loaded->generation != state.structureGeneration) {
-                auto& client = renderContext.getClient();
+                auto& client = renderContext.mClientInstance;
                 auto* player = client.getLocalPlayer();
                 if (!player) return;
                 auto& session = ProjectionSession::getInstance();
                 auto const activationStatus = session.prepareDimensionActivation(
                     loaded->generation,
-                    player->getDimensionId().value()
+                    static_cast<int>(player->getDimensionId())
                 );
                 if (activationStatus == DimensionActivationStatus::Deferred) {
                     return;
@@ -409,7 +413,7 @@ void renderProjectionFrame(BaseActorRenderContext& renderContext, bool renderAlp
             }
 
             if (!state.enabled) return;
-            auto& client = renderContext.getClient();
+            auto& client = renderContext.mClientInstance;
             auto const contextStatus = classifyProjectionContext(
                 state,
                 client,

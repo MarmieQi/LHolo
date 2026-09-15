@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- 适配 Minecraft Bedrock `1.26.40.05` 与 LeviLamina `26.40.0`（进行中，尚未发布；`tooth.json` 的版本与依赖范围等验证完成后再一起更新）。
+- 构建工具链切换到 clang-cl（LLVM 22），与 LeviLamina 26.40 自身保持一致；`bedrock_runtime.dll` 改为延迟加载，`/EHs` 取代 clang-cl 会静默忽略的 `/EHa`。
+- 1.26.40 由 Mojang 以 O3 优化构建，大量小访问器被内联，LeviLamina 不再导出对应符号。相关调用改为读取同名数据成员（如 `mSerializationId`、`mNetworkId`、`mVertexCount`）或改用等价的公开入口（如 `ItemStack::reinit`、`InventoryTransactionPacketPayload`、`VanillaBlockActorFactory::createBlockActor`）。投影、纠错、放置与结构解析行为不变。
+
 ## [26.20.10] - 2026-09-11
 
 ### Fixed

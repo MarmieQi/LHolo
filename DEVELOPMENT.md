@@ -4,8 +4,8 @@
 
 当前基线：
 
-- Minecraft Bedrock Windows：`1.26.20.04`
-- LeviLamina：`26.20.7`，目标类型 `client`
+- Minecraft Bedrock Windows：`1.26.40.05`
+- LeviLamina：`26.40.0`，目标类型 `client`
 - 架构：Windows x64
 - 图形接口：Minecraft D3D12 + LHolo D3D11On12 + Dear ImGui DX11 后端
 - 模组名称、DLL、目录和内部命名空间：`LHolo` / `LHolo.dll` / `mods/LHolo` / `lholo`
@@ -76,6 +76,8 @@ LHolo/
 │  │  ├─ ImGuiOverlay.cpp       DXGI/D3D11On12、WndProc、GUI/HUD 帧提交
 │  │  ├─ ImGuiOverlay.h
 │  │  └─ BoundsWireframe.*      创建结构选区的红色整体线框
+│  ├─ render/
+│  │  └─ OverlayMaterials.h    结构外框/抓取线框共享的 glow_sign_text 材质与白纹理查找
 │  ├─ structure/
 │  │  ├─ capture/               客户端选区状态、原版结构捕获与 `.mcstructure` 导出
 │  │  ├─ formats/               结构格式解析与 generation 分配
@@ -146,6 +148,7 @@ LHolo/
 ├─ build/                       xmake 中间产物，不发布
 └─ bin/LHolo/                   唯一发布目录
    ├─ LHolo.dll
+   ├─ LHolo.pdb                  set_symbols("debug") 产物，用于符号化崩溃栈
    ├─ manifest.json
    └─ LICENSE
 ```
@@ -403,7 +406,7 @@ Java→Bedrock 映射不再手工散落维护。`GeneratedChunkerMappings.inc` �
 
 “创建结构”不经过 `LoadedStructure`，也不会自动载入投影。选区端点先按每轴最小值/最大值归一化，两个端点都包含在内；导出前由 `BlockSource::areChunksFullyLoaded(min, max)` 拒绝客户端尚未完整加载的范围。
 
-捕获只使用 LeviLamina 26.20.7 客户端头文件确认的原版接口：
+捕获只使用 LeviLamina 26.40.0 客户端头文件确认的原版接口：
 
 1. `ll::service::getClientInstance()` 和 `ClientInstance::getLocalPlayer()` 获取当前客户端玩家。
 2. `Actor::getDimensionBlockSource()` 取得当前维度的 `BlockSource`。
@@ -459,7 +462,15 @@ world = anchor + userOffset + transform(local, mirror, rotation)
 LHolo 不自制草方块、楼梯等材质模型。它使用：
 
 - `BlockTessellator::tessellateInWorld()` 生成原版方块几何。
-- Worker 中每个 biome-tinted 方块（草和四种 foliage tint）在 Tessellate 前都调用 `BlockTessellator::buildBiomeWeights()`，禁止复用空缓存或上一方块位置的群系权重。独立投影 Tessellator 不经过原版区块管线的树叶着色步骤，因此四种 foliage tint 还使用 `BiomeColorSampling::getTessellationPolicy()` 计算原版群系颜色并与网格顶点色相乘；草方块仍由原版 Tessellator 按面着色，不能把整块顶点统一乘绿色，否则泥土面也会变色。树叶类型和颜色不由 LHolo 维护。
+- biome-tinted 方块（草和四种 foliage tint）的群系颜色使用 `BiomeColorSampling::getTessellationPolicy()`
+  计算并与网格顶点色相乘。26.40 起 `BlockTessellator::buildBiomeWeights()` 不再导出、tessellator 内的
+  群系权重缓存无法填充，因此策略调用的 `BiomeTintCache` 参数传 `nullptr`，让策略按坐标现场从
+  `BlockSource` 采样群系色（禁止把未填充的缓存指针传进去，那会得到白色/空染色）。草方块仍由原版
+  Tessellator 按面着色，不能把整块顶点统一乘绿色，否则泥土面也会变色。树叶类型和颜色不由 LHolo 维护。
+- 渲染虚像的 opaque/alpha/alpha-one-sided 桶必须使用 ItemInHandRenderer 的 **Colored 系材质**
+  （`mMatOpaqueBlockColor`/`mMatAlphaColoredBlock`/`mMatAlphaOneSidedColoredBlock`）：26.40 的
+  entity 族着色器输入签名没有 COLOR0，普通版材质（`opaque_block`/`entity_alphatest` 等）会把顶点色
+  整体丢弃，树叶等灰度贴图方块会显示成白色。Colored 缺失时回退普通版。
 - Minecraft level atlas 提供纹理。
 - `BlockGraphics::getRenderLayer()` 取得实际渲染层。
 - `VanillaBlockStateTransformUtils::transformBlock()` 取得旋转/镜像后的方块状态。
@@ -535,6 +546,10 @@ LHolo 不自制草方块、楼梯等材质模型。它使用：
 - 默认透明度 100%，范围 0～100%。
 - 使用原版 outline selection material，保证普通和灵动视效路径可见。
 - 整体结构边框是独立网格，不受纠错描边透明度控制。
+- 整体结构边框与创建结构选区的红色线框使用 `glow_sign_text` 材质（读顶点色、
+  自发光、原生深度偏置）加原版 2×2 纯白纹理绘制，使线框显示写入的顶点色而非
+  引擎 uniform 色；材质缺失时回退原版 outline selection material。共享查找在
+  `render/OverlayMaterials.h`。
 
 ### 7.5 准心选中闪烁修复
 
@@ -876,15 +891,24 @@ mods/LHolo/config/config.json
 
 ### 14.1 依赖
 
-- Visual Studio 2022 C++ 工具链
+- Visual Studio 2022 C++ 工具链（提供链接器与 Windows SDK）
+- LLVM 22（`clang-cl`）
 - xmake
-- LeviLamina 26.20.7 client
+- LeviLamina 26.40.0 client
 - levibuildscript
 - Dear ImGui 1.91.9，Win32 + DX11，静态
 - MinHook
 - zlib
 
-编译设置：C++20、MD runtime、UTF-8、警告等级 `/W4`。
+编译设置：C++20、MD runtime、UTF-8、警告等级 `/W4`、工具链 `clang-cl`。
+
+链接设置：`/DELAYLOAD:bedrock_runtime.dll` + `delayimp`。clang-cl 下只有 `/EHs` 生效，`/EHa` 会被静默忽略；`ProjectionRenderFrame.cpp` 依赖 C++ 异常，缺少 `/EH` 时会直接编译失败。
+
+本机若出现 `LNK1181 无法打开输入文件 user32.lib`，说明 xmake 没有找到 Windows SDK 库目录（常见于 SDK 装在非默认盘、或注册表 64 位视图的 `KitsRoot10` 指向了不存在的路径）。此时在运行 xmake 前补上 `LIB` 环境变量即可，无需改仓库：
+
+```powershell
+$env:LIB = "<SDK>\Lib\<版本>\um\x64;<SDK>\Lib\<版本>\ucrt\x64;<VS>\VC\Tools\MSVC\<版本>\lib\x64"
+```
 
 ### 14.2 干净 Release 构建
 
@@ -911,7 +935,7 @@ bin/LHolo/
 测试路径：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.20.04\mods\LHolo
+D:\games\LeviLauncher\MC\versions\1.26.40.05\mods\LHolo
 ```
 
 部署前确认 `Minecraft.Windows.exe` 未运行。复制 DLL 后对构建产物和部署文件计算 SHA256，必须一致。
@@ -1127,14 +1151,14 @@ D:\games\LeviLauncher\MC\versions\1.26.20.04\mods\LHolo
 测试实例日志：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.20.04\logs\latest.log
+D:\games\LeviLauncher\MC\versions\1.26.40.05\logs\latest.log
 ```
 
 崩溃文件：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.20.04\logs\crash\trace_*.log
-D:\games\LeviLauncher\MC\versions\1.26.20.04\logs\crash\minidump_*.dmp
+D:\games\LeviLauncher\MC\versions\1.26.40.05\logs\crash\trace_*.log
+D:\games\LeviLauncher\MC\versions\1.26.40.05\logs\crash\minidump_*.dmp
 ```
 
 排障优先级：

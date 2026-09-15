@@ -22,6 +22,7 @@
 #include "mc/client/renderer/BaseActorRenderContext.h"
 #include "mc/client/renderer/block/BlockTessellator.h"
 #include "mc/client/renderer/game/LevelRenderer.h"
+#include "mc/deps/minecraft_renderer/renderer/BedrockTextureData.h"
 #include "mc/deps/minecraft_renderer/renderer/IsMissingTexture.h"
 #include "mc/world/actor/Actor.h"
 
@@ -52,7 +53,8 @@ bool resolveTerrainTexture(IClientInstance& client, ProjectionState& state) {
     auto* levelRenderer = client.getLevelRenderer();
     if (!levelRenderer) return false;
     auto const& atlasTexture = levelRenderer->mAtlasTexture.get();
-    if (!atlasTexture || atlasTexture.isMissingTexture() == IsMissingTexture::Yes) return false;
+    auto const& atlasData = atlasTexture.mClientTexture;
+    if (!atlasData || atlasData->mIsMissingTexture == IsMissingTexture::Yes) return false;
     state.terrainTexture.emplace(atlasTexture);
     state.terrainTextureVariant.emplace(*state.terrainTexture);
     return true;
@@ -65,14 +67,14 @@ bool prepareProjectionState(
     BaseActorRenderContext&                       renderContext,
     std::shared_ptr<structure::LoadedStructure const> loaded
 ) {
-    auto& client = renderContext.getClient();
+    auto& client = renderContext.mClientInstance;
     auto* player = client.getLocalPlayer();
     if (!player || !loaded || loaded->renderBlocks.empty()) return false;
 
     state.client = &client;
     state.level = &player->getLevel();
     state.dimension = &player->getDimension();
-    state.dimensionId = player->getDimensionId().value();
+    state.dimensionId = static_cast<int>(player->getDimensionId());
     state.structure = std::move(loaded);
     state.structureGeneration = state.structure->generation;
     state.activationGeneration = sProjectionActivationGeneration.fetch_add(

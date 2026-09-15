@@ -25,7 +25,7 @@ namespace lholo::projection::detail {
 namespace {
 
 CompoundTag const* serializedBlockStates(Block const& block) {
-    for (auto const& [key, value] : block.getSerializationId()) {
+    for (auto const& [key, value] : block.mSerializationId.get()) {
         if (key == "states" && value.hold<CompoundTag>()) return &value.get<CompoundTag>();
     }
     return nullptr;
@@ -69,7 +69,7 @@ Block const* transformExpectedBlock(
     // rail_direction), while this path owns the complete rotation/mirror
     // handling used by current blocks.
     return VanillaBlockStateTransformUtils::transformBlock(
-        *block, settings.getRotation(), settings.getMirror()
+        *block, settings.mRotation, settings.mMirror
     );
 }
 
@@ -125,7 +125,7 @@ bool projectionStatesMatch(Block const& expected, Block const& actual) {
 // minecraft:cardinal_direction, so both are handled. Returns -1 when the block
 // has no horizontal facing.
 int blockFrontFace(Block const& block) {
-    for (auto const& [key, value] : block.getSerializationId()) {
+    for (auto const& [key, value] : block.mSerializationId.get()) {
         if (key != "states") continue;
         if (!value.hold<CompoundTag>()) break;
         for (auto const& [stateKey, stateValue] : value.get<CompoundTag>()) {
