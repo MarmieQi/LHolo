@@ -16,13 +16,20 @@
 #include "mc/client/game/IClientInstance.h"
 #include "mc/client/gui/screens/ScreenContext.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
+#include "mc/client/renderer/TextureGroup.h"
 #include "mc/client/renderer/blockactor/BlockActorRenderDispatcher.h"
 #include "mc/client/renderer/game/ItemInHandRenderer.h"
 #include "mc/client/renderer/game/LevelRenderer.h"
 #include "mc/client/renderer/game/LevelRendererPlayer.h"
+#include "mc/deps/core/file/PathView.h"
 #include "mc/deps/core/renderer/RenderMaterialInfo.h"
+#include "mc/deps/core/resource/ResourceLocation.h"
+#include "mc/deps/core_graphics/TextureSetLayerType.h"
 #include "mc/deps/minecraft_renderer/framebuilder/dragon/RenderMetadata.h"
+#include "mc/deps/minecraft_renderer/renderer/BedrockTextureData.h"
+#include "mc/deps/minecraft_renderer/renderer/IsMissingTexture.h"
 #include "mc/deps/minecraft_renderer/renderer/RenderMaterial.h"
+#include "mc/deps/minecraft_renderer/renderer/TexturePtr.h"
 #include "mc/deps/minecraft_renderer/resources/ClientTexture.h"
 #include "mc/deps/minecraft_renderer/resources/ServerTexture.h"
 #include "mc/deps/renderer/hal/interface/DepthStencilStateDescription.h"
@@ -46,6 +53,36 @@ OffscreenCaptureDescription const& emptyOffscreenCaptureDescription() {
     using Storage = decltype(dragon::RenderMetadata::mOffscreenCaptureDescription);
     static Storage empty{};
     return empty.get();
+}
+
+// The correction shells carry no real UVs, but their overlay materials still
+// sample texture slot 0 for the alpha test: an empty variant leaves the
+// missing-texture checkerboard bound there, so lookups depended on stale slot
+// state. Bind the vanilla 2x2 pure-white texture instead; the section builder
+// aims every overlay vertex at its center so the sampler reads exactly
+// (1,1,1,1) and never discards. Resolved once from the vanilla TextureGroup,
+// retried per frame until it shows up, and left empty when unavailable.
+TextureVariant resolveWhiteOverlayTexture(LevelRenderer* levelRenderer) {
+    static mce::TexturePtr cached{};
+    static bool            resolved = false;
+    if (!resolved && levelRenderer) {
+        auto const& textureGroup = levelRenderer->mTextureGroup.get();
+        if (textureGroup) {
+            auto texture = textureGroup->getTexture(
+                ResourceLocation{Core::PathView{"textures/ui/white_background"}},
+                false,
+                std::nullopt,
+                cg::TextureSetLayerType::Color
+            );
+            auto const& clientTexture = texture.mClientTexture;
+            if (clientTexture && clientTexture->mIsMissingTexture != IsMissingTexture::Yes) {
+                cached   = std::move(texture);
+                resolved = true;
+            }
+        }
+    }
+    if (resolved) return TextureVariant{cached};
+    return TextureVariant{};
 }
 
 // Temporarily turns off depth testing on a shared render material so correction
@@ -280,6 +317,7 @@ void submitProjectionMeshPass(
     auto const& outlineMaterial = levelRenderer
         ? levelRenderer->mLevelRendererPlayer->mOutlineSelectionMaterial.get()
         : itemRenderer.mMatBlendBlock.get();
+    auto const overlayTexture = resolveWhiteOverlayTexture(levelRenderer);
     if (materialExists(outlineMaterial) && structureBoundsEnabled
         && state.structureBoundsMesh && state.structureBoundsMesh->isValid()) {
         state.structureBoundsMesh->renderMesh(
@@ -309,7 +347,7 @@ void submitProjectionMeshPass(
             overlay->renderMesh(
                 renderContext.mScreenContext,
                 material,
-                std::variant<std::monostate, mce::TexturePtr, mce::ClientTexture, mce::ServerTexture>{},
+                overlayTexture,
                 0,
                 overlay->mVertexCount.get().value_or(0u),
                 emptyOffscreenCaptureDescription(),

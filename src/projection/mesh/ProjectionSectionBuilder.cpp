@@ -627,9 +627,12 @@ void buildCorrectionSectionMeshes(
 
     constexpr float outlineInset  = 0.0f;
     constexpr float outlineExtent = 1.0f;
+    // Every overlay vertex aims at the center of the vanilla 2x2 pure-white
+    // texture so the overlay materials' texture lookups stay a neutral opaque
+    // (1,1,1,1) instead of sampling the missing-texture checkerboard.
     auto addOutlineEdge = [&](Vec3 const& first, Vec3 const& second) {
-        tessellator.vertex(first.x, first.y, first.z);
-        tessellator.vertex(second.x, second.y, second.z);
+        tessellator.tex2({0.5f, 0.5f}); tessellator.vertex(first.x, first.y, first.z);
+        tessellator.tex2({0.5f, 0.5f}); tessellator.vertex(second.x, second.y, second.z);
     };
     // Use true LineList geometry rendered with the vanilla outline material.
     auto buildOutline = [&](bool wantWrong, std::size_t count) -> std::unique_ptr<mce::Mesh> {
@@ -706,10 +709,10 @@ void buildCorrectionSectionMeshes(
     // Litematica-style correction fill: an exact untextured 1x1x1 cell overlay.
     // Rasterizer bias supplies depth separation at submission time.
     auto addFillFace = [&](Vec3 const& a, Vec3 const& b, Vec3 const& c, Vec3 const& d) {
-        tessellator.vertex(a.x, a.y, a.z);
-        tessellator.vertex(b.x, b.y, b.z);
-        tessellator.vertex(c.x, c.y, c.z);
-        tessellator.vertex(d.x, d.y, d.z);
+        tessellator.tex2({0.5f, 0.5f}); tessellator.vertex(a.x, a.y, a.z);
+        tessellator.tex2({0.5f, 0.5f}); tessellator.vertex(b.x, b.y, b.z);
+        tessellator.tex2({0.5f, 0.5f}); tessellator.vertex(c.x, c.y, c.z);
+        tessellator.tex2({0.5f, 0.5f}); tessellator.vertex(d.x, d.y, d.z);
     };
     auto buildFill = [&](bool wantWrong, std::size_t count) -> std::unique_ptr<mce::Mesh> {
         if (count == 0) return nullptr;
