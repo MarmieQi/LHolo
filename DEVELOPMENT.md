@@ -76,6 +76,8 @@ LHolo/
 │  │  ├─ ImGuiOverlay.cpp       DXGI/D3D11On12、WndProc、GUI/HUD 帧提交
 │  │  ├─ ImGuiOverlay.h
 │  │  └─ BoundsWireframe.*      创建结构选区的红色整体线框
+│  ├─ render/
+│  │  └─ OverlayMaterials.h    结构外框/抓取线框共享的 glow_sign_text 材质与白纹理查找
 │  ├─ structure/
 │  │  ├─ capture/               客户端选区状态、原版结构捕获与 `.mcstructure` 导出
 │  │  ├─ formats/               结构格式解析与 generation 分配
@@ -536,6 +538,10 @@ LHolo 不自制草方块、楼梯等材质模型。它使用：
 - 默认透明度 100%，范围 0～100%。
 - 使用原版 outline selection material，保证普通和灵动视效路径可见。
 - 整体结构边框是独立网格，不受纠错描边透明度控制。
+- 整体结构边框与创建结构选区的红色线框使用 `glow_sign_text` 材质（读顶点色、
+  自发光、原生深度偏置）加原版 2×2 纯白纹理绘制，使线框显示写入的顶点色而非
+  引擎 uniform 色；材质缺失时回退原版 outline selection material。共享查找在
+  `render/OverlayMaterials.h`。
 
 ### 7.5 准心选中闪烁修复
 
