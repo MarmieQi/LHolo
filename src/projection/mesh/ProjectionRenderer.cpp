@@ -202,9 +202,20 @@ void submitProjectionMeshPass(
         auto transparentMeshes = collectBucket(blendBucket);
         sortBackToFront(transparentMeshes);
 
-        auto const& opaqueMaterial = itemRenderer.mMatOpaqueBlock.get();
-        auto const& alphaMaterial = itemRenderer.mMatAlphaBlock.get();
-        auto const& alphaOneSidedMaterial = itemRenderer.mMatAlphaOneSidedBlock.get();
+        // Biome-tinted blocks (leaves, grass tops) carry their color in vertex
+        // data, but the plain block materials' shaders have no COLOR input on
+        // 26.40, which rendered leaves as the raw grayscale texture (white).
+        // The engine's Colored block materials read COLOR0 and keep the tint;
+        // fall back to the plain ones if unavailable.
+        auto const& opaqueMaterial = materialExists(itemRenderer.mMatOpaqueBlockColor.get())
+            ? itemRenderer.mMatOpaqueBlockColor.get()
+            : itemRenderer.mMatOpaqueBlock.get();
+        auto const& alphaMaterial = materialExists(itemRenderer.mMatAlphaColoredBlock.get())
+            ? itemRenderer.mMatAlphaColoredBlock.get()
+            : itemRenderer.mMatAlphaBlock.get();
+        auto const& alphaOneSidedMaterial = materialExists(itemRenderer.mMatAlphaOneSidedColoredBlock.get())
+            ? itemRenderer.mMatAlphaOneSidedColoredBlock.get()
+            : itemRenderer.mMatAlphaOneSidedBlock.get();
         if (!renderAlphaLayer) {
             renderMeshes(
                 opaqueMeshes,

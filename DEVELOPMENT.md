@@ -462,7 +462,15 @@ world = anchor + userOffset + transform(local, mirror, rotation)
 LHolo 不自制草方块、楼梯等材质模型。它使用：
 
 - `BlockTessellator::tessellateInWorld()` 生成原版方块几何。
-- Worker 中每个 biome-tinted 方块（草和四种 foliage tint）在 Tessellate 前都调用 `BlockTessellator::buildBiomeWeights()`，禁止复用空缓存或上一方块位置的群系权重。独立投影 Tessellator 不经过原版区块管线的树叶着色步骤，因此四种 foliage tint 还使用 `BiomeColorSampling::getTessellationPolicy()` 计算原版群系颜色并与网格顶点色相乘；草方块仍由原版 Tessellator 按面着色，不能把整块顶点统一乘绿色，否则泥土面也会变色。树叶类型和颜色不由 LHolo 维护。
+- biome-tinted 方块（草和四种 foliage tint）的群系颜色使用 `BiomeColorSampling::getTessellationPolicy()`
+  计算并与网格顶点色相乘。26.40 起 `BlockTessellator::buildBiomeWeights()` 不再导出、tessellator 内的
+  群系权重缓存无法填充，因此策略调用的 `BiomeTintCache` 参数传 `nullptr`，让策略按坐标现场从
+  `BlockSource` 采样群系色（禁止把未填充的缓存指针传进去，那会得到白色/空染色）。草方块仍由原版
+  Tessellator 按面着色，不能把整块顶点统一乘绿色，否则泥土面也会变色。树叶类型和颜色不由 LHolo 维护。
+- 渲染虚像的 opaque/alpha/alpha-one-sided 桶必须使用 ItemInHandRenderer 的 **Colored 系材质**
+  （`mMatOpaqueBlockColor`/`mMatAlphaColoredBlock`/`mMatAlphaOneSidedColoredBlock`）：26.40 的
+  entity 族着色器输入签名没有 COLOR0，普通版材质（`opaque_block`/`entity_alphatest` 等）会把顶点色
+  整体丢弃，树叶等灰度贴图方块会显示成白色。Colored 缺失时回退普通版。
 - Minecraft level atlas 提供纹理。
 - `BlockGraphics::getRenderLayer()` 取得实际渲染层。
 - `VanillaBlockStateTransformUtils::transformBlock()` 取得旋转/镜像后的方块状态。

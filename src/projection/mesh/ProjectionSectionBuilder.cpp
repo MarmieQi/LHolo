@@ -242,13 +242,14 @@ void buildProjectionSection(
                 || tintMethod == TintMethod::EvergreenFoliage
                 || tintMethod == TintMethod::DryFoliage) {
                 // BlockTessellator::buildBiomeWeights() is not exported by
-                // 1.26.40, so the weights are read as-is from the task's own
-                // tessellator. Revisit if foliage tint drifts per section.
+                // 1.26.40 and the tessellator's biome weight cache is never
+                // populated, so pass null and let the policy sample the biome
+                // color fresh from the region for this position.
                 foliageTint = toAbgr(BiomeColorSampling::getTessellationPolicy(tintMethod).get(
                     *layered.block,
                     region,
                     layered.position,
-                    &blockTessellator.mBiomeWeights.get()
+                    nullptr
                 ));
             }
             auto const firstPosition = tessellator.mMeshData->mPositions.get().size();
