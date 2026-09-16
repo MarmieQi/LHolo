@@ -61,7 +61,6 @@ target("LHolo")
 
     set_kind("shared")
     set_languages("c++20")
-    set_symbols("debug")
 
     add_files("src/**.cpp")
     add_includedirs("src")

@@ -149,7 +149,6 @@ LHolo/
 ├─ build/                       xmake 中间产物，不发布
 └─ bin/LHolo/                   唯一发布目录
    ├─ LHolo.dll
-   ├─ LHolo.pdb                  set_symbols("debug") 产物，用于符号化崩溃栈
    ├─ manifest.json
    └─ LICENSE
 ```
