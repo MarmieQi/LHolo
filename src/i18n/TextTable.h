@@ -121,6 +121,7 @@ inline constexpr std::array<TextEntry, kTextKeyCount> kSimplifiedChineseEntries{
     {TextKey::SectionSeeThrough, "穿透显示"},
     {TextKey::CheckboxCorrectionSeeThrough, "错误标记穿透显示（X 光）"},
     {TextKey::CheckboxMissingSeeThrough, "未放置标记穿透显示（X 光）"},
+    {TextKey::HintVibrantVisuals, "使用本模组时，建议关闭灵动视效"},
 
     {TextKey::SectionHud, "HUD 信息显示"},
     {TextKey::CheckboxHudEnabled, "启用 HUD"},
@@ -330,6 +331,7 @@ inline constexpr std::array<TextEntry, kTextKeyCount> kEnglishEntries{{
     {TextKey::SectionSeeThrough, "See-through"},
     {TextKey::CheckboxCorrectionSeeThrough, "See-through wrong-block markers (X-ray)"},
     {TextKey::CheckboxMissingSeeThrough, "See-through missing markers (X-ray)"},
+    {TextKey::HintVibrantVisuals, "Recommended: turn off Vibrant Visuals while using this mod"},
 
     {TextKey::SectionHud, "HUD"},
     {TextKey::CheckboxHudEnabled, "Enable HUD"},
