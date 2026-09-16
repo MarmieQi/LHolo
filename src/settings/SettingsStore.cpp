@@ -60,8 +60,30 @@ bool loadSettingsFile(std::filesystem::path const& path, Settings& out) {
     out.closeProjectionHotkey = json.value("closeProjectionHotkey", out.closeProjectionHotkey);
     out.closeProjectionHotkeyModifiers
         = json.value("closeProjectionHotkeyModifiers", out.closeProjectionHotkeyModifiers);
+    out.altWheelOffsetEnabled
+        = json.value("altWheelOffsetEnabled", out.altWheelOffsetEnabled);
 
+    // Slot order: left, right, forward, backward, up, down. These are the
+    // directions the slots produce now; configs written while the slots were
+    // world-axis offsets carry the old names and are still read as a fallback,
+    // so upgrading never resets a binding.
     static char const* moveKeyNames[]{
+        "moveLeftHotkey",
+        "moveRightHotkey",
+        "moveForwardHotkey",
+        "moveBackwardHotkey",
+        "moveUpHotkey",
+        "moveDownHotkey"
+    };
+    static char const* moveModifierNames[]{
+        "moveLeftHotkeyModifiers",
+        "moveRightHotkeyModifiers",
+        "moveForwardHotkeyModifiers",
+        "moveBackwardHotkeyModifiers",
+        "moveUpHotkeyModifiers",
+        "moveDownHotkeyModifiers"
+    };
+    static char const* legacyMoveKeyNames[]{
         "moveXMinusHotkey",
         "moveXPlusHotkey",
         "moveZMinusHotkey",
@@ -69,7 +91,7 @@ bool loadSettingsFile(std::filesystem::path const& path, Settings& out) {
         "moveYPlusHotkey",
         "moveYMinusHotkey"
     };
-    static char const* moveModifierNames[]{
+    static char const* legacyMoveModifierNames[]{
         "moveXMinusHotkeyModifiers",
         "moveXPlusHotkeyModifiers",
         "moveZMinusHotkeyModifiers",
@@ -78,9 +100,14 @@ bool loadSettingsFile(std::filesystem::path const& path, Settings& out) {
         "moveYMinusHotkeyModifiers"
     };
     for (std::size_t index = 0; index < out.moveHotkeys.size(); ++index) {
-        out.moveHotkeys[index] = json.value(moveKeyNames[index], out.moveHotkeys[index]);
-        out.moveHotkeyModifiers[index]
-            = json.value(moveModifierNames[index], out.moveHotkeyModifiers[index]);
+        out.moveHotkeys[index] = json.value(
+            moveKeyNames[index],
+            json.value(legacyMoveKeyNames[index], out.moveHotkeys[index])
+        );
+        out.moveHotkeyModifiers[index] = json.value(
+            moveModifierNames[index],
+            json.value(legacyMoveModifierNames[index], out.moveHotkeyModifiers[index])
+        );
     }
 
     out.hasSavedProjection = json.value("hasSavedProjection", out.hasSavedProjection);
@@ -105,7 +132,7 @@ void saveSettingsFile(std::filesystem::path const& path, Settings const& setting
     if (error) throw std::runtime_error(error.message());
 
     nlohmann::ordered_json const json{
-        {"version", 11},
+        {"version", 12},
         {"lastStructurePath", settings.lastStructurePath},
         {"language", settings.language},
         {"uiScale", settings.uiScale},
@@ -140,18 +167,19 @@ void saveSettingsFile(std::filesystem::path const& path, Settings const& setting
         {"loadProjectionHotkeyModifiers", settings.loadProjectionHotkeyModifiers},
         {"closeProjectionHotkey", settings.closeProjectionHotkey},
         {"closeProjectionHotkeyModifiers", settings.closeProjectionHotkeyModifiers},
-        {"moveXMinusHotkey", settings.moveHotkeys[0]},
-        {"moveXPlusHotkey", settings.moveHotkeys[1]},
-        {"moveZMinusHotkey", settings.moveHotkeys[2]},
-        {"moveZPlusHotkey", settings.moveHotkeys[3]},
-        {"moveYPlusHotkey", settings.moveHotkeys[4]},
-        {"moveYMinusHotkey", settings.moveHotkeys[5]},
-        {"moveXMinusHotkeyModifiers", settings.moveHotkeyModifiers[0]},
-        {"moveXPlusHotkeyModifiers", settings.moveHotkeyModifiers[1]},
-        {"moveZMinusHotkeyModifiers", settings.moveHotkeyModifiers[2]},
-        {"moveZPlusHotkeyModifiers", settings.moveHotkeyModifiers[3]},
-        {"moveYPlusHotkeyModifiers", settings.moveHotkeyModifiers[4]},
-        {"moveYMinusHotkeyModifiers", settings.moveHotkeyModifiers[5]},
+        {"altWheelOffsetEnabled", settings.altWheelOffsetEnabled},
+        {"moveLeftHotkey", settings.moveHotkeys[0]},
+        {"moveRightHotkey", settings.moveHotkeys[1]},
+        {"moveForwardHotkey", settings.moveHotkeys[2]},
+        {"moveBackwardHotkey", settings.moveHotkeys[3]},
+        {"moveUpHotkey", settings.moveHotkeys[4]},
+        {"moveDownHotkey", settings.moveHotkeys[5]},
+        {"moveLeftHotkeyModifiers", settings.moveHotkeyModifiers[0]},
+        {"moveRightHotkeyModifiers", settings.moveHotkeyModifiers[1]},
+        {"moveForwardHotkeyModifiers", settings.moveHotkeyModifiers[2]},
+        {"moveBackwardHotkeyModifiers", settings.moveHotkeyModifiers[3]},
+        {"moveUpHotkeyModifiers", settings.moveHotkeyModifiers[4]},
+        {"moveDownHotkeyModifiers", settings.moveHotkeyModifiers[5]},
         {"hasSavedProjection", settings.hasSavedProjection},
         {"savedAnchorX", settings.savedAnchorX},
         {"savedAnchorY", settings.savedAnchorY},

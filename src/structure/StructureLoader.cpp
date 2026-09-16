@@ -17,6 +17,7 @@
 #include "structure/StructureLoader.h"
 
 #include "i18n/Message.h"
+#include "input/ViewMoveBasis.h"
 #include "settings/SettingsStore.h"
 #include "structure/MaterialTracker.h"
 #include "structure/formats/StructureFormatLoaders.h"
@@ -38,7 +39,6 @@
 #include <algorithm>
 #include <array>
 #include <bit>
-#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <cwctype>
@@ -92,6 +92,20 @@ void resetWorldSession();
 
 unsigned int currentHotkeyModifiers() {
     return uiState().currentHotkeyModifiers();
+}
+
+// Resolve one move hotkey into a world-space step and queue it. The direction
+// depends on where the player is facing, so it is resolved here - the only
+// layer that may touch game objects - while the rules themselves live in the
+// pure input/ViewMoveBasis module the logic tests cover.
+bool queueViewRelativeMove(input::HotkeyId move) {
+    auto client = ll::service::getClientInstance();
+    auto* player = client ? client->getLocalPlayer() : nullptr;
+    if (!player) return false;
+    auto const step = input::viewRelativeMoveStep(move, player->getRotation().y);
+    if (!step.valid) return false;
+    uiState().queueOffsetDelta(step.dx, step.dy, step.dz);
+    return true;
 }
 
 } // namespace
@@ -158,9 +172,11 @@ bool handleGuiHotkeyKeyDown(unsigned int virtualKey) {
     }
 
     // The projection-offset trigger is the fixed Alt key. Only claim the bare
-    // key while an active projection can actually consume its wheel gesture;
-    // otherwise preserve Minecraft and system Alt handling unchanged.
+    // key while the gesture is enabled and an active projection can actually
+    // consume its wheel; otherwise preserve Minecraft and system Alt handling
+    // unchanged.
     if ((virtualKey == VK_MENU || virtualKey == VK_LMENU || virtualKey == VK_RMENU)
+        && uiState().altWheelOffsetEnabled()
         && detail::StructureSession::getInstance().hasLoaded()) {
         return true;
     }
@@ -184,7 +200,9 @@ bool handleGuiHotkeyKeyDown(unsigned int virtualKey) {
         if (hotkey.key == virtualKey && hotkey.modifiers == modifiers) {
             if (GetTickCount64() >= uiState().ignoreHotkeyUntil()
                 && uiState().tryPressHotkey(index + input::kMoveHotkeyFirst)) {
-                uiState().queueMove(index);
+                queueViewRelativeMove(
+                    static_cast<input::HotkeyId>(index + input::kMoveHotkeyFirst)
+                );
             }
             return true;
         }
@@ -249,7 +267,7 @@ bool handleGuiHotkeyKeyUp(unsigned int virtualKey) {
 }
 
 bool handleProjectionOffsetWheel(short wheelDelta) {
-    if (isGuiVisible() || !uiState().altHeld()
+    if (isGuiVisible() || !uiState().altWheelOffsetEnabled() || !uiState().altHeld()
         || !detail::StructureSession::getInstance().hasLoaded()) {
         return false;
     }
@@ -261,11 +279,9 @@ bool handleProjectionOffsetWheel(short wheelDelta) {
     auto const steps = static_cast<int>(wheelDelta) / WHEEL_DELTA;
     if (steps == 0) return false;
     auto const view = player->getViewVector(1.0f);
-    auto const deltaX = static_cast<int>(std::round(view.x));
-    auto const deltaY = static_cast<int>(std::round(view.y));
-    auto const deltaZ = static_cast<int>(std::round(view.z));
-    if (deltaX == 0 && deltaY == 0 && deltaZ == 0) return false;
-    uiState().queueOffsetDelta(deltaX * steps, deltaY * steps, deltaZ * steps);
+    auto const step = input::viewForwardStep(view.x, view.y, view.z, steps);
+    if (!step.valid) return false;
+    uiState().queueOffsetDelta(step.dx, step.dy, step.dz);
     return true;
 }
 
@@ -778,6 +794,7 @@ void loadSettings() {
             std::clamp(settings.guiHotkey, 0, 255),
             std::clamp(settings.guiHotkeyModifiers, 0, 7)
         );
+        uiState().setAltWheelOffsetEnabled(settings.altWheelOffsetEnabled);
         uiState().setHotkey(
             kLayerIncreaseHotkeyIndex,
             std::clamp(settings.layerIncreaseHotkey, 0, 255),
@@ -885,6 +902,7 @@ void saveSettings() {
         settings.loadProjectionHotkeyModifiers = loadProjectionHotkey.modifiers;
         settings.closeProjectionHotkey = closeProjectionHotkey.key;
         settings.closeProjectionHotkeyModifiers = closeProjectionHotkey.modifiers;
+        settings.altWheelOffsetEnabled = uiState().altWheelOffsetEnabled();
         settings.hasSavedProjection = sessionSnapshot.saved.available;
         settings.savedAnchorX = sessionSnapshot.saved.anchorX;
         settings.savedAnchorY = sessionSnapshot.saved.anchorY;
@@ -930,14 +948,16 @@ void recordProjectionAnchor(int x, int y, int z) {
     saveSettings();
 }
 
-// Hotbar lock for the Alt+wheel projection offset: engages only while a
-// projection is loaded AND the Alt key is held. Deliberately
-// reads the same event-tracked Alt state the wheel handler uses, so the lock
-// and the projection move engage under exactly the same condition and cost
-// nothing while idle. The selectSlot hook (place/) consults this to suppress
-// wheel-driven hotbar changes at the Bedrock mouse-input boundary.
+// Hotbar lock for the Alt+wheel projection offset: engages only while the
+// gesture is enabled, a projection is loaded AND the Alt key is held.
+// Deliberately reads the same event-tracked Alt state the wheel handler uses,
+// so the lock and the projection move engage under exactly the same condition
+// and cost nothing while idle. The mouse-input hook (input/MenuInputGuard)
+// consults this to suppress wheel-driven hotbar changes at the Bedrock input
+// boundary, so disabling the gesture releases the wheel immediately instead of
+// waiting for a key-up.
 bool scrollLockActive() {
-    return getLoaded() != nullptr && uiState().altHeld();
+    return getLoaded() != nullptr && uiState().altWheelOffsetEnabled() && uiState().altHeld();
 }
 
 void restoreSavedProjection() {

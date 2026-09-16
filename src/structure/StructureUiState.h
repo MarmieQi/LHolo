@@ -123,13 +123,20 @@ public:
     // Raw modifier tracking (event-driven keydown/keyup), not tied to any
     // rebindable hotkey slot. Drives the fixed Alt+wheel projection offset.
     [[nodiscard]] bool altHeld() const;
+    // Preference for that fixed gesture: the key handler, the wheel handler
+    // and the hotbar lock all consult it, so turning it off releases all three
+    // at once instead of leaving a half-claimed Alt or a stuck hotbar lock.
+    [[nodiscard]] bool altWheelOffsetEnabled() const;
+    bool setAltWheelOffsetEnabled(bool enabled);
     [[nodiscard]] bool tryPressHotkey(std::size_t index);
     [[nodiscard]] bool releaseHotkeysForKey(unsigned int key, std::uint64_t now);
     void resetHotkeyState();
     [[nodiscard]] std::uint64_t ignoreHotkeyUntil() const;
     void setIgnoreHotkeyUntil(std::uint64_t deadline);
 
-    void queueMove(std::size_t index);
+    // Accumulates a world-space step. The direction of a move hotkey depends on
+    // the player's facing, so it is resolved by the caller in input/ViewMoveBasis
+    // and only the resulting delta reaches this state.
     void queueOffsetDelta(int deltaX, int deltaY, int deltaZ);
     void queueLayerDelta(int delta);
     void queueLoadProjection();
@@ -203,6 +210,7 @@ private:
     std::atomic_bool mControlHeld{false};
     std::atomic_bool mAltHeld{false};
     std::atomic_bool mShiftHeld{false};
+    std::atomic_bool mAltWheelOffsetEnabled{true};
     std::array<std::atomic_uint64_t, 256> mConsumeKeyReleaseUntil{};
 
     std::atomic_int      mPendingOffsetX{0};
