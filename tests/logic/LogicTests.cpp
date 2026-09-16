@@ -10,6 +10,7 @@
 #include "block/BlockPlacementRules.h"
 #include "i18n/Message.h"
 #include "i18n/Translator.h"
+#include "input/ViewMoveBasis.h"
 #include "place/PlacementState.h"
 #include "projection/core/ProjectionRules.h"
 #include "projection/runtime/ProjectionProgress.h"
@@ -195,6 +196,7 @@ void testSettingsStore() {
     settings.correctionSeeThrough = true;
     settings.materialHudEnabled = true;
     settings.materialHudPosition = 3;
+    settings.altWheelOffsetEnabled = false;
     settings.moveHotkeys[4] = 0x57; // W
     settings.hasSavedProjection = true;
     settings.savedAnchorX = 12;
@@ -204,8 +206,14 @@ void testSettingsStore() {
         std::ifstream saved(path);
         std::ostringstream contents;
         contents << saved.rdbuf();
-        LHOLO_CHECK(contents.str().find("\"version\": 11") != std::string::npos);
+        LHOLO_CHECK(contents.str().find("\"version\": 12") != std::string::npos);
         LHOLO_CHECK(contents.str().find("\"language\": 1") != std::string::npos);
+        LHOLO_CHECK(contents.str().find("\"altWheelOffsetEnabled\": false") != std::string::npos);
+        LHOLO_CHECK(contents.str().find("\"moveUpHotkey\": 87") != std::string::npos);
+        // The axis-era move key names are gone from new files; they are only
+        // read as a fallback (see the legacy config below).
+        LHOLO_CHECK(contents.str().find("moveXMinusHotkey") == std::string::npos);
+        LHOLO_CHECK(contents.str().find("moveYPlusHotkey") == std::string::npos);
         LHOLO_CHECK(contents.str().find("toggleManualHotkey") == std::string::npos);
         LHOLO_CHECK(contents.str().find("toggleEasyHotkey") == std::string::npos);
         LHOLO_CHECK(contents.str().find("toggleRangeHotkey") == std::string::npos);
@@ -223,6 +231,7 @@ void testSettingsStore() {
     LHOLO_CHECK(loaded.correctionSeeThrough);
     LHOLO_CHECK(loaded.materialHudEnabled);
     LHOLO_CHECK(loaded.materialHudPosition == 3);
+    LHOLO_CHECK(!loaded.altWheelOffsetEnabled);
     LHOLO_CHECK(loaded.moveHotkeys[4] == 0x57);
     LHOLO_CHECK(loaded.hasSavedProjection);
     LHOLO_CHECK(loaded.savedAnchorX == 12);
@@ -232,7 +241,7 @@ void testSettingsStore() {
     // block-entity label migrates to the projected-block label.
     {
         std::ofstream legacy(path, std::ios::trunc);
-        legacy << R"({"hudShowBlockEntity":false,"toggleManualHotkey":82,"toggleEasyHotkey":70,"toggleRangeHotkey":89})";
+        legacy << R"({"hudShowBlockEntity":false,"toggleManualHotkey":82,"toggleEasyHotkey":70,"toggleRangeHotkey":89,"moveXMinusHotkey":65,"moveXMinusHotkeyModifiers":2,"moveYPlusHotkey":87})";
     }
     lholo::settings::Settings migrated;
     LHOLO_CHECK(lholo::settings::loadSettingsFile(path, migrated));
@@ -244,6 +253,14 @@ void testSettingsStore() {
     LHOLO_CHECK(migrated.materialHudPosition == 3);
     // A config written before the language field existed keeps the default.
     LHOLO_CHECK(migrated.language == 0);
+    // Likewise, a config written before the Alt+wheel switch existed keeps the
+    // gesture enabled, so upgrading never silently changes input behavior.
+    LHOLO_CHECK(migrated.altWheelOffsetEnabled);
+    // Move bindings survive the rename of the move slots from world axes to
+    // view-relative directions: the old key names are still read as a fallback.
+    LHOLO_CHECK(migrated.moveHotkeys[0] == 65);
+    LHOLO_CHECK(migrated.moveHotkeyModifiers[0] == 2);
+    LHOLO_CHECK(migrated.moveHotkeys[4] == 87);
 
     lholo::settings::Settings missing;
     std::filesystem::remove(path, error);
@@ -461,6 +478,11 @@ void testStructureUiState() {
     state.stopHotkeyCapture();
     (void)state.consumePendingHotkeyActions();
     state.clearMaterials();
+    LHOLO_CHECK(state.altWheelOffsetEnabled());
+    LHOLO_CHECK(state.setAltWheelOffsetEnabled(false));
+    LHOLO_CHECK(!state.setAltWheelOffsetEnabled(false));
+    LHOLO_CHECK(state.setAltWheelOffsetEnabled(true));
+    LHOLO_CHECK(state.altWheelOffsetEnabled());
 
     auto hud = state.hud();
     hud.enabled = false;
@@ -479,24 +501,24 @@ void testStructureUiState() {
 
     state.resetHotkeys();
     auto const guiSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::Gui);
-    auto const moveXMinusSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::MoveXMinus);
-    auto const moveXPlusSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::MoveXPlus);
+    auto const moveLeftSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::MoveLeft);
+    auto const moveRightSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::MoveRight);
     auto const layerIncreaseSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::LayerIncrease);
     auto const loadProjectionSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::LoadProjection);
     auto const closeProjectionSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::CloseProjection);
     LHOLO_CHECK(state.hotkey(guiSlot).key == 'M');
     LHOLO_CHECK(state.hotkey(guiSlot).modifiers == lholo::ui::kHotkeyModifierAlt);
-    LHOLO_CHECK(state.hotkey(moveXMinusSlot).key == VK_LEFT);
+    LHOLO_CHECK(state.hotkey(moveLeftSlot).key == VK_LEFT);
     LHOLO_CHECK(state.hotkey(layerIncreaseSlot).key == VK_UP);
     LHOLO_CHECK(state.hotkey(loadProjectionSlot).key == 0);
     LHOLO_CHECK(state.hotkey(closeProjectionSlot).key == 0);
 
-    state.beginHotkeyCapture(moveXMinusSlot);
-    LHOLO_CHECK(state.capturingHotkey() == moveXMinusSlot);
-    state.setHotkey(moveXPlusSlot, 'K', lholo::ui::kHotkeyModifierControl);
-    state.bindCapturedHotkey(moveXMinusSlot, 'K', lholo::ui::kHotkeyModifierControl);
-    LHOLO_CHECK(state.hotkey(moveXMinusSlot).key == 'K');
-    LHOLO_CHECK(state.hotkey(moveXPlusSlot).key == 0);
+    state.beginHotkeyCapture(moveLeftSlot);
+    LHOLO_CHECK(state.capturingHotkey() == moveLeftSlot);
+    state.setHotkey(moveRightSlot, 'K', lholo::ui::kHotkeyModifierControl);
+    state.bindCapturedHotkey(moveLeftSlot, 'K', lholo::ui::kHotkeyModifierControl);
+    LHOLO_CHECK(state.hotkey(moveLeftSlot).key == 'K');
+    LHOLO_CHECK(state.hotkey(moveRightSlot).key == 0);
     LHOLO_CHECK(!state.capturingHotkey());
 
     state.setControlHeld(true);
@@ -515,8 +537,9 @@ void testStructureUiState() {
     LHOLO_CHECK(state.releaseHotkeysForKey('M', 150));
     LHOLO_CHECK(!state.releaseHotkeysForKey('M', 201));
 
-    state.queueMove(0);
-    state.queueMove(4);
+    // The state only accumulates a delta now; which world direction a move
+    // hotkey produces is resolved in ViewMoveBasis from the player's facing.
+    state.queueOffsetDelta(-1, 1, 0);
     state.queueLayerDelta(-1);
     state.queueLoadProjection();
     state.queueCloseProjection();
@@ -589,13 +612,14 @@ void testStructureUiState() {
     state.setGuiVisible(true);
     state.setOpeningInputBlockFrames(3);
     state.setBlockGameInputUntil(900);
-    state.beginHotkeyCapture(moveXMinusSlot);
+    state.beginHotkeyCapture(moveLeftSlot);
     state.setControlHeld(true);
-    state.queueMove(1);
+    state.queueOffsetDelta(1, 0, 0);
     state.queueLayerDelta(1);
     state.queueLoadProjection();
     state.queueCloseProjection();
     state.requestSettingsSave();
+    state.setAltWheelOffsetEnabled(false);
     state.replaceMaterialRequirements({
         {.displayName = "Stone", .typeName = "minecraft:stone",
          .itemId = "minecraft:stone", .count = 4}
@@ -628,9 +652,14 @@ void testStructureUiState() {
     LHOLO_CHECK(state.experimentalConsentGiven());
     LHOLO_CHECK(state.materialHudEnabled());
     LHOLO_CHECK(state.materialHudPosition() == 3);
+    // The fixed-gesture switch is a user preference, so leaving a world keeps
+    // it whereas the transient flags above are cleared.
+    LHOLO_CHECK(!state.altWheelOffsetEnabled());
 
     state.setGuiVisible(false);
     state.resetHotkeys();
+    // "Reset all hotkeys" also restores the fixed-gesture switch.
+    LHOLO_CHECK(state.altWheelOffsetEnabled());
     state.resetHotkeyState();
     state.clearMaterials();
     LHOLO_CHECK(!state.materialListReady());
@@ -657,6 +686,90 @@ void testHotkeyFormat() {
     auto const chord = lholo::ui::hotkeyChordName(lholo::ui::kHotkeyModifierControl, 'M');
     LHOLO_CHECK(chord.rfind("Ctrl + ", 0) == 0);
     LHOLO_CHECK(chord.size() > 7);
+}
+
+void testViewMoveBasis() {
+    using lholo::input::HotkeyId;
+    using lholo::input::viewForwardStep;
+    using lholo::input::viewRelativeMoveStep;
+
+    // Facing follows the game's yaw convention: 0 = south (+Z), 90 = west (-X),
+    // 180 = north (-Z), -90 = east (+X). Left and right are the facing turned a
+    // quarter turn, so facing north puts east on the right and facing east puts
+    // south on the right.
+    auto const south = viewRelativeMoveStep(HotkeyId::MoveForward, 0.0f);
+    LHOLO_CHECK(south.valid && south.dx == 0 && south.dy == 0 && south.dz == 1);
+    auto const southBackward = viewRelativeMoveStep(HotkeyId::MoveBackward, 0.0f);
+    LHOLO_CHECK(southBackward.valid && southBackward.dz == -1);
+    auto const southRight = viewRelativeMoveStep(HotkeyId::MoveRight, 0.0f);
+    LHOLO_CHECK(southRight.valid && southRight.dx == -1 && southRight.dz == 0);
+    auto const southLeft = viewRelativeMoveStep(HotkeyId::MoveLeft, 0.0f);
+    LHOLO_CHECK(southLeft.valid && southLeft.dx == 1 && southLeft.dz == 0);
+
+    auto const north = viewRelativeMoveStep(HotkeyId::MoveForward, 180.0f);
+    LHOLO_CHECK(north.valid && north.dx == 0 && north.dz == -1);
+    auto const northRight = viewRelativeMoveStep(HotkeyId::MoveRight, 180.0f);
+    LHOLO_CHECK(northRight.valid && northRight.dx == 1 && northRight.dz == 0);
+
+    auto const east = viewRelativeMoveStep(HotkeyId::MoveForward, -90.0f);
+    LHOLO_CHECK(east.valid && east.dx == 1 && east.dz == 0);
+    auto const eastRight = viewRelativeMoveStep(HotkeyId::MoveRight, -90.0f);
+    LHOLO_CHECK(eastRight.valid && eastRight.dx == 0 && eastRight.dz == 1);
+
+    auto const west = viewRelativeMoveStep(HotkeyId::MoveForward, 90.0f);
+    LHOLO_CHECK(west.valid && west.dx == -1 && west.dz == 0);
+    auto const westRight = viewRelativeMoveStep(HotkeyId::MoveRight, 90.0f);
+    LHOLO_CHECK(westRight.valid && westRight.dx == 0 && westRight.dz == -1);
+
+    // Only the dominant axis steps: 30 degrees still moves along Z, 60 degrees
+    // moves along X, and an exactly diagonal facing resolves to X.
+    auto const shallow = viewRelativeMoveStep(HotkeyId::MoveForward, 30.0f);
+    LHOLO_CHECK(shallow.valid && shallow.dx == 0 && shallow.dz == 1);
+    auto const steep = viewRelativeMoveStep(HotkeyId::MoveForward, 60.0f);
+    LHOLO_CHECK(steep.valid && steep.dx == -1 && steep.dz == 0);
+    auto const diagonal = viewRelativeMoveStep(HotkeyId::MoveForward, 45.0f);
+    LHOLO_CHECK(diagonal.valid && diagonal.dx == -1 && diagonal.dz == 0);
+    // Facing north-east (-135) and stepping backward faces south-west, which the
+    // dominant-axis rule resolves to west on the X axis.
+    auto const diagonalBackward = viewRelativeMoveStep(HotkeyId::MoveBackward, -135.0f);
+    LHOLO_CHECK(diagonalBackward.valid && diagonalBackward.dx == -1 && diagonalBackward.dz == 0);
+
+    // The vertical slots stay on the world Y axis whatever the facing is.
+    auto const up = viewRelativeMoveStep(HotkeyId::MoveUp, 45.0f);
+    LHOLO_CHECK(up.valid && up.dx == 0 && up.dy == 1 && up.dz == 0);
+    auto const down = viewRelativeMoveStep(HotkeyId::MoveDown, 203.0f);
+    LHOLO_CHECK(down.valid && down.dx == 0 && down.dy == -1 && down.dz == 0);
+
+    // Pitch never participates: every facing yields a usable step, the four
+    // horizontal slots stay horizontal and change exactly one coordinate.
+    float const yaws[]{0.0f, 45.0f, 90.0f, 135.0f, 180.0f, -135.0f, -90.0f, -45.0f, 359.5f};
+    for (auto const yaw : yaws) {
+        for (auto const move : {HotkeyId::MoveLeft, HotkeyId::MoveRight,
+                                HotkeyId::MoveForward, HotkeyId::MoveBackward}) {
+            auto const step = viewRelativeMoveStep(move, yaw);
+            LHOLO_CHECK(step.valid);
+            LHOLO_CHECK(step.dy == 0);
+            LHOLO_CHECK((step.dx != 0) != (step.dz != 0));
+        }
+        LHOLO_CHECK(viewRelativeMoveStep(HotkeyId::MoveUp, yaw).valid);
+        LHOLO_CHECK(viewRelativeMoveStep(HotkeyId::MoveDown, yaw).valid);
+    }
+    // Slots that are not move slots have no direction to produce.
+    LHOLO_CHECK(!viewRelativeMoveStep(HotkeyId::Gui, 0.0f).valid);
+    LHOLO_CHECK(!viewRelativeMoveStep(HotkeyId::LayerIncrease, 0.0f).valid);
+
+    // The fixed Alt+wheel gesture keeps its own rule: pitch participates and a
+    // diagonal view still produces a diagonal step.
+    auto const ahead = viewForwardStep(0.0f, 0.0f, -1.0f, 1);
+    LHOLO_CHECK(ahead.valid && ahead.dx == 0 && ahead.dy == 0 && ahead.dz == -1);
+    auto const aheadAndDown = viewForwardStep(0.0f, -0.5f, -0.5f, 1);
+    LHOLO_CHECK(aheadAndDown.valid && aheadAndDown.dy == -1 && aheadAndDown.dz == -1);
+    auto const diagonalWheel = viewForwardStep(0.707f, 0.0f, -0.707f, 1);
+    LHOLO_CHECK(diagonalWheel.valid && diagonalWheel.dx == 1 && diagonalWheel.dz == -1);
+    auto const twoNotches = viewForwardStep(0.0f, 1.0f, 0.0f, 2);
+    LHOLO_CHECK(twoNotches.valid && twoNotches.dy == 2);
+    LHOLO_CHECK(!viewForwardStep(0.0f, 0.0f, 0.0f, 1).valid);
+    LHOLO_CHECK(!viewForwardStep(0.0f, 0.0f, -1.0f, 0).valid);
 }
 
 void testBlockPlacementRules() {
@@ -782,6 +895,7 @@ int main() {
     testPlacementState();
     testStructureUiState();
     testHotkeyFormat();
+    testViewMoveBasis();
     testBlockPlacementRules();
     testJavaTextComponents();
     testI18n();

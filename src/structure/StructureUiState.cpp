@@ -39,6 +39,11 @@ constexpr std::array<DefaultHotkey, input::kHotkeyCount> kDefaultHotkeys{{
     {0,       0},
 }};
 
+// "Reset all hotkeys" restores this together with the bindings: it is an input
+// preference of the same page, and the gesture it turns off cannot be reached
+// through any other controls, so the page needs one way back to the default.
+constexpr bool kDefaultAltWheelOffsetEnabled = true;
+
 } // namespace
 
 StructureUiState::StructureUiState() {
@@ -220,6 +225,7 @@ void StructureUiState::resetHotkeys() {
         mHotkeys[index].key.store(kDefaultHotkeys[index].key, std::memory_order_relaxed);
         mHotkeys[index].modifiers.store(kDefaultHotkeys[index].modifiers, std::memory_order_relaxed);
     }
+    mAltWheelOffsetEnabled.store(kDefaultAltWheelOffsetEnabled, std::memory_order_relaxed);
     stopHotkeyCapture();
 }
 
@@ -255,6 +261,14 @@ bool StructureUiState::altHeld() const {
     return mAltHeld.load(std::memory_order_acquire);
 }
 
+bool StructureUiState::altWheelOffsetEnabled() const {
+    return mAltWheelOffsetEnabled.load(std::memory_order_acquire);
+}
+
+bool StructureUiState::setAltWheelOffsetEnabled(bool enabled) {
+    return updateRelaxed(mAltWheelOffsetEnabled, enabled);
+}
+
 bool StructureUiState::releaseHotkeysForKey(unsigned int key, std::uint64_t now) {
     bool consumed{};
     for (auto& hotkey : mHotkeys) {
@@ -287,18 +301,6 @@ std::uint64_t StructureUiState::ignoreHotkeyUntil() const {
 
 void StructureUiState::setIgnoreHotkeyUntil(std::uint64_t deadline) {
     mIgnoreHotkeyUntil.store(deadline, std::memory_order_release);
-}
-
-void StructureUiState::queueMove(std::size_t index) {
-    switch (index) {
-    case 0: mPendingOffsetX.fetch_sub(1, std::memory_order_relaxed); break;
-    case 1: mPendingOffsetX.fetch_add(1, std::memory_order_relaxed); break;
-    case 2: mPendingOffsetZ.fetch_sub(1, std::memory_order_relaxed); break;
-    case 3: mPendingOffsetZ.fetch_add(1, std::memory_order_relaxed); break;
-    case 4: mPendingOffsetY.fetch_add(1, std::memory_order_relaxed); break;
-    case 5: mPendingOffsetY.fetch_sub(1, std::memory_order_relaxed); break;
-    default: break;
-    }
 }
 
 void StructureUiState::queueOffsetDelta(int deltaX, int deltaY, int deltaZ) {

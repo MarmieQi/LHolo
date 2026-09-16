@@ -2,8 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- 热键页新增“`Alt + 滚轮调整结构位置`”开关，可整体关闭固定的 Alt+滚轮结构偏移：关闭后模组不再认领裸 `Alt`、不接管滚轮、也不锁定快捷栏，滚轮恢复切换手持栏位；单击该页的“恢复默认快捷键”会连同该开关一起恢复为开启。
+
 ### Changed
 
+- 配置文件版本 12：新增 `altWheelOffsetEnabled`（固定 Alt+滚轮结构偏移开关），并把移动快捷键的键名从世界轴改为方向名（`moveXMinusHotkey` 等 → `moveLeftHotkey` 等）。旧配置缺少字段或仍沿用旧键名时会自动回退读取，开关默认开启、绑定全部保留，无需手工迁移。
+- 移动快捷键改为按玩家朝向移动：`Ctrl + 方向键` 相对玩家朝向产生水平位移（左右垂直于朝向、前后沿朝向），忽略俯仰且只取主轴的整块步进，不再固定对齐世界 X/Z 轴；`Shift + ↑/↓` 仍为世界垂直方向。默认键位与绑定方式不变，固定 Alt+滚轮仍沿视线方向移动（含俯仰，斜视时保持对角步进）；热键页文案由“结构偏移 X -1”等改为“结构左移/右移/前移/后移/上移/下移”。
 - 适配 Minecraft Bedrock `1.26.40.05` 与 LeviLamina `26.40.0`（进行中，尚未发布；`tooth.json` 的版本与依赖范围等验证完成后再一起更新）。
 - 构建工具链切换到 clang-cl（LLVM 22），与 LeviLamina 26.40 自身保持一致；`bedrock_runtime.dll` 改为延迟加载，`/EHs` 取代 clang-cl 会静默忽略的 `/EHa`。
 - 1.26.40 由 Mojang 以 O3 优化构建，大量小访问器被内联，LeviLamina 不再导出对应符号。相关调用改为读取同名数据成员（如 `mSerializationId`、`mNetworkId`、`mVertexCount`）或改用等价的公开入口（如 `ItemStack::reinit`、`InventoryTransactionPacketPayload`、`VanillaBlockActorFactory::createBlockActor`）。投影、纠错、放置与结构解析行为不变。

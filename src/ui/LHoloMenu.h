@@ -113,6 +113,9 @@ struct MenuModel {
     int maxLayerX{};
     int materialCount{};
 
+    // Fixed-gesture input switch on the hotkeys page. Deliberately outside
+    // hotkeys[]: the trigger key is fixed to Alt, so it has no rebindable slot.
+    bool altWheelOffsetEnabled{true};
     std::array<HotkeyRow, input::kHotkeyCount> hotkeys{};
     bool hudEnabled{true};
     int hudPosition{1};

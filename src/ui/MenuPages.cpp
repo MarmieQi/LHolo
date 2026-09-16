@@ -697,6 +697,16 @@ void renderHotkeysPage(MenuModel& model, MenuActions const& actions, UiMetrics c
             ImGui::PopID();
         }
         ImGui::PopStyleVar();
+        // The fixed Alt+wheel gesture has no rebindable slot of its own, so it
+        // sits between the binding rows and the page-wide reset that also
+        // restores it.
+        renderCheckboxRow(
+            "##AltWheelOffset",
+            i18n::tr(i18n::TextKey::CheckboxAltWheelOffset),
+            model.altWheelOffsetEnabled,
+            metrics
+        );
+        ImGui::Dummy(ImVec2(0.0f, metrics.gap * 0.35f));
         if (ImGui::Button(i18n::tr(i18n::TextKey::ButtonResetAllHotkeys)) && actions.resetHotkeys) {
             actions.resetHotkeys();
         }

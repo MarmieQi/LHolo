@@ -52,12 +52,12 @@ MenuPage               gActivePage{MenuPage::Projection};
 struct HotkeyDefinition { HotkeyId id; i18n::TextKey label; };
 constexpr std::array<HotkeyDefinition, input::kHotkeyCount> kHotkeyDefinitions{{
     {HotkeyId::Gui, i18n::TextKey::HotkeyOpenMenu},
-    {HotkeyId::MoveXMinus, i18n::TextKey::HotkeyMoveXMinus},
-    {HotkeyId::MoveXPlus, i18n::TextKey::HotkeyMoveXPlus},
-    {HotkeyId::MoveZMinus, i18n::TextKey::HotkeyMoveZMinus},
-    {HotkeyId::MoveZPlus, i18n::TextKey::HotkeyMoveZPlus},
-    {HotkeyId::MoveYPlus, i18n::TextKey::HotkeyMoveYPlus},
-    {HotkeyId::MoveYMinus, i18n::TextKey::HotkeyMoveYMinus},
+    {HotkeyId::MoveLeft, i18n::TextKey::HotkeyMoveLeft},
+    {HotkeyId::MoveRight, i18n::TextKey::HotkeyMoveRight},
+    {HotkeyId::MoveForward, i18n::TextKey::HotkeyMoveForward},
+    {HotkeyId::MoveBackward, i18n::TextKey::HotkeyMoveBackward},
+    {HotkeyId::MoveUp, i18n::TextKey::HotkeyMoveUp},
+    {HotkeyId::MoveDown, i18n::TextKey::HotkeyMoveDown},
     {HotkeyId::LayerIncrease, i18n::TextKey::HotkeyLayerIncrease},
     {HotkeyId::LayerDecrease, i18n::TextKey::HotkeyLayerDecrease},
     {HotkeyId::LoadProjection, i18n::TextKey::HotkeyLoadProjection},
@@ -139,6 +139,7 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
     model.hudShowWrongType = hud.showWrongType;
     model.hudShowExtraBlocks = hud.showExtraBlocks;
     model.hudShowProjectedBlockName = hud.showProjectedBlockName;
+    model.altWheelOffsetEnabled = uiState().altWheelOffsetEnabled();
     std::size_t rowIndex = 0;
     for (auto const& definition : kHotkeyDefinitions) {
         auto const binding = uiState().hotkey(static_cast<std::size_t>(definition.id));
@@ -244,6 +245,9 @@ void applyStructureMenuModel(MenuModel const& model, float effectiveUiScale) {
     hud.showExtraBlocks = model.hudShowExtraBlocks;
     hud.showProjectedBlockName = model.hudShowProjectedBlockName;
     changed = uiState().applyHud(hud) || changed;
+    // The fixed Alt+wheel gesture is an input preference of the hotkeys page;
+    // flipping it is a setting change like any other and must be persisted.
+    changed = uiState().setAltWheelOffsetEnabled(model.altWheelOffsetEnabled) || changed;
     if (structure::materialHudEnabled() != model.materialHudEnabled) {
         structure::setMaterialHudEnabled(model.materialHudEnabled);
         changed = true;
@@ -333,6 +337,8 @@ MenuActions buildStructureMenuActions(bool& refreshModel) {
         structure::saveSettings();
     };
     actions.resetHotkeys = [] {
+        // Also restores the fixed Alt+wheel gesture to its default (enabled),
+        // which no other control on the page can bring back on its own.
         uiState().resetHotkeys();
         structure::resetHotkeyState();
         structure::saveSettings();
