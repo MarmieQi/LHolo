@@ -71,6 +71,11 @@ constexpr std::size_t kLayerDecreaseHotkeyIndex = input::hotkeyIndex(input::Hotk
 constexpr std::size_t kLoadProjectionHotkeyIndex = input::hotkeyIndex(input::HotkeyId::LoadProjection);
 constexpr std::size_t kCloseProjectionHotkeyIndex = input::hotkeyIndex(input::HotkeyId::CloseProjection);
 constexpr float kActionHintVerticalScreenRatio = 0.80f;
+// Background alpha shared by the projection HUD, the material HUD and the
+// transient action hint. The three on-screen bars deliberately share one
+// value so they read as a single overlay instead of three separate widgets;
+// the hint starts from this value and fades out from there.
+constexpr float kOverlayWindowBgAlpha = 0.68f;
 auto& logger() {
     return LHolo::getInstance().getSelf().getLogger();
 }
@@ -429,8 +434,13 @@ void renderActionHint() {
         ImGuiCond_Always,
         ImVec2(0.5f, 0.5f)
     );
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.36f, 0.20f, 0.42f, 0.86f * alpha));
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, alpha));
+    // Same neutral background as the HUDs: this bar used to carry its own
+    // purple accent, which no longer matched either the Fluent theme or the
+    // HUD next to it. Only the fade alpha is specific to the hint.
+    ImGui::SetNextWindowBgAlpha(kOverlayWindowBgAlpha * alpha);
+    auto hintText = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    hintText.w *= alpha;
+    ImGui::PushStyleColor(ImGuiCol_Text, hintText);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, metrics.rounding * 0.6f);
     ImGui::PushStyleVar(
         ImGuiStyleVar_WindowPadding, ImVec2(metrics.sectionPadding, metrics.gap)
@@ -448,7 +458,7 @@ void renderActionHint() {
     }
     ImGui::End();
     ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor(2);
+    ImGui::PopStyleColor();
 }
 
 void renderHud() {
@@ -503,7 +513,7 @@ void renderHud() {
         ImGuiCond_Always,
         ImVec2(right ? 1.0f : 0.0f, bottom ? 1.0f : 0.0f)
     );
-    ImGui::SetNextWindowBgAlpha(0.68f);
+    ImGui::SetNextWindowBgAlpha(kOverlayWindowBgAlpha);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, hudMetrics.rounding * 0.7f);
     ImGui::PushStyleVar(
         ImGuiStyleVar_WindowPadding,
@@ -695,7 +705,7 @@ void renderMaterialHud() {
     ImGui::SetNextWindowPos(
         ImVec2(anchorX, anchorY), ImGuiCond_Always, ImVec2(right ? 1.0f : 0.0f, bottom ? 1.0f : 0.0f)
     );
-    ImGui::SetNextWindowBgAlpha(0.68f);
+    ImGui::SetNextWindowBgAlpha(kOverlayWindowBgAlpha);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, metrics.rounding * 0.7f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(metrics.sectionPadding, metrics.gap));
     constexpr auto flags = ImGuiWindowFlags_NoDecoration
