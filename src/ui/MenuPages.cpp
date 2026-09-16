@@ -643,6 +643,14 @@ void renderRenderPage(MenuModel& model, MenuActions const& actions, UiMetrics co
             metrics
         );
     });
+
+    // Closing advice for the whole page: Vibrant Visuals changes the render
+    // path this mod hooks, so it is worth saying once, at the end, rather than
+    // hanging it off any single control above.
+    ImGui::Dummy(ImVec2(0.0f, metrics.gap * 0.4f));
+    ImGui::PushTextWrapPos(-1.0f);
+    ImGui::TextDisabled("%s", i18n::tr(i18n::TextKey::HintVibrantVisuals));
+    ImGui::PopTextWrapPos();
 }
 
 void renderHotkeysPage(MenuModel& model, MenuActions const& actions, UiMetrics const& metrics) {

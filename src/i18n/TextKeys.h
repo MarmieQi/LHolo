@@ -100,6 +100,8 @@ enum class TextKey : std::uint16_t {
     SectionSeeThrough,
     CheckboxCorrectionSeeThrough,
     CheckboxMissingSeeThrough,
+    // Closing note on the render page, not tied to a single control.
+    HintVibrantVisuals,
 
     // HUD page
     SectionHud,
