@@ -5,7 +5,7 @@
   "version": "26.40.0",
   "info": {
     "name": "LHolo",
-    "description": "Litematica-style structure projection for Minecraft Bedrock Windows clients.",
+    "description": "适用于 Minecraft Bedrock Windows 的客户端投影模组，文件格式支持 .mcstructure 和 .litematic。",
     "tags": [
       "platform:levilamina",
       "type:mod"
