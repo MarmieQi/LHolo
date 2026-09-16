@@ -15,9 +15,12 @@
 
 #include "mc/client/game/IClientInstance.h"
 #include "mc/client/gui/screens/ScreenContext.h"
+#include "mc/client/player/LocalPlayer.h"
+#include "mc/client/renderer/ActorShaderManager.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
 #include "mc/client/renderer/blockactor/BlockActorRenderDispatcher.h"
 #include "mc/client/renderer/game/ItemInHandRenderer.h"
+#include "mc/common/Brightness.h"
 #include "mc/client/renderer/game/LevelRenderer.h"
 #include "mc/client/renderer/game/LevelRendererPlayer.h"
 #include "mc/deps/core/renderer/RenderMaterialInfo.h"
@@ -140,6 +143,25 @@ void submitProjectionMeshPass(
 ) {
     auto& itemRenderer = renderContext.mItemInHandRenderer;
     auto const& blendMaterial = itemRenderer.mMatBlendBlock.get();
+
+    // The ItemInHand/Entity materials used for ghost blocks drive their
+    // diffuse lighting from TileLightColor in constant buffer CB0. When
+    // looking down at the ground with no block entities in the view frustum
+    // (especially in single-layer mode), CB0 retains stale or zeroed lighting
+    // from selection outlines, turning the projection black. Explicitly
+    // prime actor constants with full brightness (Brightness::MAX()) so
+    // projection meshes stay consistently illuminated in all view angles.
+    if (auto* player = client.getLocalPlayer()) {
+        ActorShaderManager::setupShaderParameters(
+            renderContext.mScreenContext,
+            renderContext,
+            *player,
+            mce::Color{1.0f, 1.0f, 1.0f, 0.0f},
+            1.0f,
+            Brightness::MAX(),
+            std::nullopt
+        );
+    }
 
     struct VisibleMesh {
         std::size_t bucket;
