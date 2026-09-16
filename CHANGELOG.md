@@ -1,6 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [26.40.0] - 2026-09-16
+
+适配 Minecraft Bedrock `1.26.40.05`。
+
+## [26.20.11] - 2026-09-16
 
 ### Added
 
@@ -11,9 +15,11 @@
 
 - 配置文件版本 12：新增 `altWheelOffsetEnabled`（固定 Alt+滚轮结构偏移开关），并把移动快捷键的键名从世界轴改为方向名（`moveXMinusHotkey` 等 → `moveLeftHotkey` 等）。旧配置缺少字段或仍沿用旧键名时会自动回退读取，开关默认开启、绑定全部保留，无需手工迁移。
 - 移动快捷键改为按玩家朝向移动：`Ctrl + 方向键` 相对玩家朝向产生水平位移（左右垂直于朝向、前后沿朝向），忽略俯仰且只取主轴的整块步进，不再固定对齐世界 X/Z 轴；`Shift + ↑/↓` 仍为世界垂直方向。默认键位与绑定方式不变，固定 Alt+滚轮仍沿视线方向移动（含俯仰，斜视时保持对角步进）；热键页文案由“结构偏移 X -1”等改为“结构左移/右移/前移/后移/上移/下移”。
-- 适配 Minecraft Bedrock `1.26.40.05` 与 LeviLamina `26.40.0`（进行中，尚未发布；`tooth.json` 的版本与依赖范围等验证完成后再一起更新）。
-- 构建工具链切换到 clang-cl（LLVM 22），与 LeviLamina 26.40 自身保持一致；`bedrock_runtime.dll` 改为延迟加载，`/EHs` 取代 clang-cl 会静默忽略的 `/EHa`。
-- 1.26.40 由 Mojang 以 O3 优化构建，大量小访问器被内联，LeviLamina 不再导出对应符号。相关调用改为读取同名数据成员（如 `mSerializationId`、`mNetworkId`、`mVertexCount`）或改用等价的公开入口（如 `ItemStack::reinit`、`InventoryTransactionPacketPayload`、`VanillaBlockActorFactory::createBlockActor`）。投影、纠错、放置与结构解析行为不变。
+- 底部提示条（关闭投影、退出世界、放置被拒时的提示）改用与两个 HUD 相同的主题中性底色与透明度，不再使用与界面主题不搭的紫色。
+
+### Fixed
+
+- 修复俯视地面（尤其是单层显示模式）时投影整片变黑：投影使用的 ItemInHand/Entity 材质从常量缓冲区 CB0 的 TileLightColor 取漫反射光照，视野内没有方块实体会残留选中描边写过的光照，现在提交投影网格前显式用 `Brightness::MAX()` 初始化 actor 常量，各视角下投影亮度保持一致。
 
 ## [26.20.10] - 2026-09-11
 
