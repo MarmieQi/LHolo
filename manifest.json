@@ -4,6 +4,6 @@
   "version": "${modVersion}",
   "type": "native",
   "platform": "${modPlatform}",
-  "description": "适用于 Minecraft Bedrock Windows 的客户端投影模组，支持 .mcstructure 和 .litematic。",
+  "description": "适用于 Minecraft Bedrock Windows 的客户端投影模组 / Client-side projection mod for Minecraft Bedrock Windows",
   "author": "Cat66"
 }
