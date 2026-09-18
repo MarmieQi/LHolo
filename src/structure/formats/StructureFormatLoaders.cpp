@@ -537,7 +537,12 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
         return nullptr;
     }
     auto const& nativePrimary = nativeData.mBlockIndices.get();
-    auto const& nativeSecondary = nativeData.mExtraBlockIndices.get();
+    auto const& nativeSecondaryStorage = nativeData.mExtraBlockIndices.get();
+    if (!nativeSecondaryStorage) {
+        error = "原版 StructureTemplate 缺少副方块索引层";
+        return nullptr;
+    }
+    auto const& nativeSecondary = *nativeSecondaryStorage;
     if (nativePrimary.size() != loaded->volume || nativeSecondary.size() != loaded->volume) {
         error = "原版 StructureTemplate 的方块索引数量与结构体积不一致";
         return nullptr;
@@ -782,7 +787,7 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
                 )
             );
             if (resolved.block && blockEntity != region.blockEntities.end()) {
-                auto const actorType = resolved.block->getBlockEntityType();
+                auto const actorType = resolved.block->getBlockType().getBlockEntityType();
                 if (actorType == BlockActorType::Sign || actorType == BlockActorType::HangingSign) {
                     if (auto const signData = readJavaSignBlockEntity(*blockEntity->second)) {
                         blockEntityNbt = convertJavaSignBlockEntity(

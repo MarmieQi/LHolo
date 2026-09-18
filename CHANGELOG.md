@@ -1,5 +1,9 @@
 # Changelog
 
+## [26.51.0] - 2026-09-19
+
+适配 Minecraft Bedrock `1.26.51.01`。
+
 ## [26.40.0] - 2026-09-16
 
 适配 Minecraft Bedrock `1.26.40.05`。

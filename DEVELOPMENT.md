@@ -4,8 +4,8 @@
 
 当前基线：
 
-- Minecraft Bedrock Windows：`1.26.40.05`
-- LeviLamina：`26.40.0`，目标类型 `client`
+- Minecraft Bedrock Windows：`1.26.51.01`
+- LeviLamina：`26.51.0`，目标类型 `client`
 - 架构：Windows x64
 - 图形接口：Minecraft D3D12 + LHolo D3D11On12 + Dear ImGui DX11 后端
 - 模组名称、DLL、目录和内部命名空间：`LHolo` / `LHolo.dll` / `mods/LHolo` / `lholo`
@@ -906,7 +906,7 @@ mods/LHolo/config/config.json
 - Visual Studio 2022 C++ 工具链（提供链接器与 Windows SDK）
 - LLVM 22（`clang-cl`）
 - xmake
-- LeviLamina 26.40.0 client
+- LeviLamina 26.51.0 client
 - levibuildscript
 - Dear ImGui 1.91.9，Win32 + DX11，静态
 - MinHook
@@ -947,7 +947,7 @@ bin/LHolo/
 测试路径：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.40.05\mods\LHolo
+D:\games\LeviLauncher\MC\versions\1.26.51.01\mods\LHolo
 ```
 
 部署前确认 `Minecraft.Windows.exe` 未运行。复制 DLL 后对构建产物和部署文件计算 SHA256，必须一致。
@@ -1163,14 +1163,14 @@ D:\games\LeviLauncher\MC\versions\1.26.40.05\mods\LHolo
 测试实例日志：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.40.05\logs\latest.log
+D:\games\LeviLauncher\MC\versions\1.26.51.01\logs\latest.log
 ```
 
 崩溃文件：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.40.05\logs\crash\trace_*.log
-D:\games\LeviLauncher\MC\versions\1.26.40.05\logs\crash\minidump_*.dmp
+D:\games\LeviLauncher\MC\versions\1.26.51.01\logs\crash\trace_*.log
+D:\games\LeviLauncher\MC\versions\1.26.51.01\logs\crash\minidump_*.dmp
 ```
 
 排障优先级：

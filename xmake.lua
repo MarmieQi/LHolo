@@ -14,7 +14,7 @@ option_end()
 
 add_repositories("levimc-repo " .. (get_config("levimc_repo") or "https://github.com/LiteLDev/xmake-repo.git"))
 
-add_requires("levilamina 26.40.0", {configs = {target_type = get_config("target_type") or "client"}})
+add_requires("levilamina 26.51.0", {configs = {target_type = get_config("target_type") or "client"}})
 add_requires("levibuildscript")
 add_requires("imgui v1.91.9", {configs = {shared = false, win32 = true, dx11 = true, no_demo_windows = true}})
 add_requires("minhook", {configs = {shared = false}})
@@ -24,13 +24,13 @@ if not has_config("vs_runtime") then
     set_runtimes("MD")
 end
 
--- LeviLamina 26.40 is built with clang-cl (LLVM 22); the generated Minecraft
+-- LeviLamina 26.51 is built with clang-cl (LLVM 22); the generated Minecraft
 -- headers rely on the clang frontend, so the mod must use the same toolchain.
 set_toolchains("clang-cl")
 
 target("LHolo")
     add_rules("@levibuildscript/linkrule")
-    add_rules("@levibuildscript/modpacker", {modVersion = "26.40.0"})
+    add_rules("@levibuildscript/modpacker", {modVersion = "26.51.0"})
     add_shflags("/DELAYLOAD:bedrock_runtime.dll", {force = true})
     add_cxflags(
         "/utf-8",

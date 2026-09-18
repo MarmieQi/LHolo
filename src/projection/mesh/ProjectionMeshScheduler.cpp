@@ -23,8 +23,11 @@
 #include <tuple>
 #include <utility>
 
+#include "mc/client/game/ClientInstance.h"
 #include "mc/client/renderer/Tessellator.h"
 #include "mc/client/renderer/block/BlockTessellator.h"
+#include "mc/client/player/LocalPlayer.h"
+#include "mc/world/actor/player/Player.h"
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/chunk/ChunkSource.h"
@@ -33,6 +36,7 @@
 #include "mc/world/level/chunk/LevelChunk.h"
 
 #include "ll/api/mod/NativeMod.h"
+#include "ll/api/service/Bedrock.h"
 
 namespace lholo::projection::detail {
 namespace {
@@ -224,9 +228,15 @@ void scheduleProjectionMeshBuild(
             snapshotDataFinished - snapshotStarted
         ).count()
     );
-    auto chunkView = std::make_shared<ChunkViewSource>(
-        region.getChunkSource(), ChunkSource::LoadMode::Deferred
-    );
+    // 26.51 removed the ChunkViewSource(ChunkSource&, LoadMode) export; the
+    // player chunk-view factory is the only remaining creation path.
+    auto* localPlayer = []() -> LocalPlayer* {
+        auto client = ll::service::getClientInstance();
+        return client ? client->getLocalPlayer() : nullptr;
+    }();
+    if (!localPlayer) return;
+    auto chunkView = localPlayer->$_createChunkSource(region.getChunkSource());
+    if (!chunkView) return;
     chunkView->move(
         minimum,
         maximum,
@@ -268,7 +278,7 @@ void scheduleProjectionMeshBuild(
             auto const workerStarted = std::chrono::steady_clock::now();
             try {
                 auto localRegion = std::make_unique<BlockSource>(
-                    *level, *dimension, *chunkView, false, true, false
+                    *level, *dimension, *chunkView, false, true, false, false
                 );
                 BlockTessellator localBlockTessellator(localRegion.get());
                 localBlockTessellator.mCachedGetBlock.get()

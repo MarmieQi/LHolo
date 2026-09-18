@@ -33,6 +33,7 @@
 #include "mc/client/player/LocalPlayer.h"
 #include "mc/world/gamemode/GameMode.h"
 #include "mc/world/actor/player/Player.h"
+#include "mc/world/item/HandSlot.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
@@ -117,12 +118,13 @@ LL_TYPE_INSTANCE_HOOK(
     &GameMode::$startBuildBlock,
     void,
     ::BlockPos const& pos,
-    uchar             face
+    uchar             face,
+    ::HandSlot        handSlot
 ) {
     if (isLocalManualBuild(*this)) {
         if (aimedBlockAcceptsRightClick(*this, pos)) {
             cancelPendingManualPress();
-            origin(pos, face);  // let vanilla open/use the block
+            origin(pos, face, handSlot);  // let vanilla open/use the block
             return;
         }
         auto const targetStatus = detail::manualTargetStatusUnderCrosshair();
@@ -139,7 +141,7 @@ LL_TYPE_INSTANCE_HOOK(
         }
         return;  // LHolo owns this press; vanilla places nothing.
     }
-    origin(pos, face);
+    origin(pos, face, handSlot);
 }
 
 // Right-clicking a floating projection targets air, so Bedrock calls useItem
@@ -151,13 +153,14 @@ LL_TYPE_INSTANCE_HOOK(
     GameMode,
     &GameMode::$useItem,
     bool,
-    ::ItemStack& item
+    ::ItemStack& item,
+    ::HandSlot   handSlot
 ) {
     if (isLocalManualBuild(*this)) {
         auto const targetStatus = detail::manualTargetStatusUnderCrosshair();
         if (targetStatus == detail::ManualTargetStatus::None) {
             cancelPendingManualPress();
-            return origin(item);
+            return origin(item, handSlot);
         }
         if (targetStatus == detail::ManualTargetStatus::Ready) {
             // Mark the button held so holding right-click over a floating
@@ -172,7 +175,7 @@ LL_TYPE_INSTANCE_HOOK(
         }
         return false;
     }
-    return origin(item);
+    return origin(item, handSlot);
 }
 
 // Manual-mode release edge: stop the repeat when the button is let go.
@@ -202,12 +205,13 @@ LL_TYPE_INSTANCE_HOOK(
     bool,
     ::BlockPos const& pos,
     uchar             face,
+    ::HandSlot        handSlot,
     bool const        isSimTick
 ) {
     if (isLocalManualBuild(*this)) {
         return false;
     }
-    return origin(pos, face, isSimTick);
+    return origin(pos, face, handSlot, isSimTick);
 }
 
 } // namespace

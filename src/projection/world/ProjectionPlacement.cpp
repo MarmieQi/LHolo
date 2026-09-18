@@ -129,7 +129,7 @@ void rebuildProjectionPlacement(
         auto const worldKey = std::tuple{worldPosition.x, worldPosition.y, worldPosition.z};
         if (transformedBlock) {
             state.expectedWorldBlocks->emplace(worldKey, transformedBlock);
-            if (transformedBlock->getBlockEntityType() != BlockActorType::Undefined) {
+            if (transformedBlock->getBlockType().getBlockEntityType() != BlockActorType::Undefined) {
                 auto blockActor = VanillaBlockActorFactory::createBlockActor(
                     worldPosition, transformedBlock->getBlockType()
                 );

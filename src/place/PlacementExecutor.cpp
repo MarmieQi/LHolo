@@ -41,8 +41,10 @@
 #include "mc/world/inventory/transaction/InventorySource.h"
 #include "mc/world/inventory/transaction/InventorySourceType.h"
 #include "mc/world/inventory/transaction/InventoryTransaction.h"
+#include "mc/world/inventory/transaction/InventoryTransactionItemGroup.h"
 #include "mc/world/inventory/transaction/ItemUseInventoryTransaction.h"
 #include "mc/world/item/ItemInstance.h"
+#include "mc/world/item/HandSlot.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
@@ -244,7 +246,9 @@ ItemFind findItemSlot(InventorySnapshot const& snapshot, Block const& block) {
 // or occupied, and the server keeps its item-stack-net bookkeeping consistent
 // (unlike a direct container mutation, which the net manager reverts).
 void sendInventorySwap(int fromSlot, int toSlot, ItemStack const& fromItem, ItemStack const& toItem) {
-    auto transaction = ComplexInventoryTransaction::fromType(ComplexInventoryTransaction::Type::NormalTransaction);
+    auto transaction = ComplexInventoryTransaction::fromType(
+        ComplexInventoryTransaction::Type::NormalTransaction, InventoryTransaction{}
+    );
     if (!transaction) return;
     auto& invTx = transaction->mTransaction.get();
     InventorySource const source{
@@ -409,7 +413,7 @@ bool placeBlock(LocalPlayer& player, ProjectionTarget const& target, int slot, I
     // only predicts locally and Player::sendNetworkPacket does not reach the
     // integrated server, so neither persists.
     auto transactionBase = ComplexInventoryTransaction::fromType(
-        ComplexInventoryTransaction::Type::ItemUseTransaction
+        ComplexInventoryTransaction::Type::ItemUseTransaction, InventoryTransaction{}
     );
     if (!transactionBase) return false;
     auto& transaction = static_cast<ItemUseInventoryTransaction&>(*transactionBase);
@@ -424,6 +428,7 @@ bool placeBlock(LocalPlayer& player, ProjectionTarget const& target, int slot, I
     // The item is always in the selected hotbar slot by the time we place:
     // hotbar items are selected directly, backpack items were swapped in.
     transaction.mSlot = slot;
+    transaction.mHand = HandSlot::Mainhand;
     transaction.mFromPos = player.getPosition();
     // ItemUseInventoryTransaction serializes the hit location relative to the
     // clicked block (mPos), while the planner stores an absolute world point for
