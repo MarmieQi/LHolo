@@ -16,8 +16,11 @@
 #include "mc/deps/nbt/StringTag.h"
 #include "mc/deps/nbt/Tag.h"
 #include "mc/world/Facing.h"
+#include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/Block.h"
+#include "mc/world/level/block/BlockType.h"
 #include "mc/world/level/block/VanillaStates.h"
+#include "mc/world/level/block/states/BuiltInBlockStates.h"
 #include "mc/world/level/block/states/VanillaBlockStateTransformUtils.h"
 #include "mc/world/level/levelgen/structure/LegacyStructureSettings.h"
 
@@ -71,6 +74,36 @@ Block const* transformExpectedBlock(
     return VanillaBlockStateTransformUtils::transformBlock(
         *block, settings.mRotation, settings.mMirror
     );
+}
+
+Block const& withFlattenedConnections(
+    Block const&    block,
+    BlockSource&    region,
+    BlockPos const& position
+) {
+    auto const& blockType = block.getBlockType();
+    if (!blockType.isFenceBlock() && !blockType.isThinFenceBlock()) return block;
+    Block const* result = &block;
+    auto const applyConnection = [&](
+        BuiltInBlockStateVariant<bool> const& state,
+        Facing::Name                          facing,
+        int                                   dx,
+        int                                   dz
+    ) {
+        BlockPos const neighborPosition{position.x + dx, position.y, position.z + dz};
+        auto const&    neighbor = region.getBlock(neighborPosition);
+        if (auto const updated = result->setState<bool>(
+                state, block.canConnect(neighbor, static_cast<uchar>(facing))
+            )) {
+            result = &updated.get();
+        }
+    };
+    // Bedrock directions: north is -Z, south +Z, west -X, east +X.
+    applyConnection(BuiltInBlockStates::ConnectionNorth(), Facing::Name::North, 0, -1);
+    applyConnection(BuiltInBlockStates::ConnectionSouth(), Facing::Name::South, 0, +1);
+    applyConnection(BuiltInBlockStates::ConnectionWest(), Facing::Name::West, -1, 0);
+    applyConnection(BuiltInBlockStates::ConnectionEast(), Facing::Name::East, +1, 0);
+    return *result;
 }
 
 bool projectionStatesMatch(Block const& expected, Block const& actual) {

@@ -37,10 +37,7 @@
 #include "mc/deps/minecraft_renderer/renderer/Mesh.h"
 #include "mc/world/Facing.h"
 #include "mc/world/level/BlockSource.h"
-#include "mc/world/level/NeighborBlockDirections.h"
 #include "mc/world/level/block/Block.h"
-#include "mc/world/level/block/BlockType.h"
-#include "mc/world/level/block/NeighborDirection.h"
 #include "mc/world/level/block/VanillaBlockTypeIds.h"
 #include "mc/world/level/biome/biome_color_sampling/BiomeColorSampling.h"
 #include "mc/world/level/material/Material.h"
@@ -259,27 +256,17 @@ void buildProjectionSection(
             // from the block's own connection states since 1.26.20, so a
             // palette permutation without those derived states tessellates as
             // a bare post no matter which neighbors are visible. Recompute the
-            // states against the virtual neighborhood through the vanilla
-            // connection update; inside this scope the hooked
-            // BlockSource::getBlock answers with the projected blocks.
-            Block const* renderBlock = layered.block;
-            auto const& renderType = renderBlock->getBlockType();
-            if (renderType.isFenceBlock() || renderType.isThinFenceBlock()) {
-                NeighborBlockDirections directions{};
-                auto& directionSet = directions.mDirections.get();
-                for (int direction = 0;
-                    direction < static_cast<int>(NeighborDirection::Count);
-                    ++direction) {
-                    directionSet.insert(static_cast<NeighborDirection>(direction));
-                }
-                renderBlock = &renderType.connectionUpdate(
-                    region, *renderBlock, layered.position, directions
-                );
-            }
+            // connection booleans against the virtual neighborhood; inside
+            // this scope the hooked BlockSource::getBlock answers with the
+            // projected blocks. The derivation only chains permutation
+            // lookups, so the real world is never written to.
+            Block const& renderBlock = withFlattenedConnections(
+                *layered.block, region, layered.position
+            );
             auto const firstPosition = tessellator.mMeshData->mPositions.get().size();
             auto const firstColor = tessellator.mMeshData->mColors.get().size();
             auto const rendered = blockTessellator.tessellateInWorld(
-                tessellator, *renderBlock, layered.position, true
+                tessellator, renderBlock, layered.position, true
             );
             // Several legacy shape tessellators (notably doors) return
             // false after successfully appending vertices. The return

@@ -141,7 +141,14 @@ CorrectionProgressChanges updateCorrectionTracker(
             nextState = CorrectionState::Missing;
         } else if (bodyTypeWrong || liquidTypeWrong || liquidCellOccupiedBySolid) {
             nextState = CorrectionState::WrongType;
-        } else if ((expected && !projectionStatesMatch(*expected, actual))
+        } else if ((expected && !projectionStatesMatch(
+                        // Real worlds maintain flattened fence connection
+                        // booleans on block updates while structure palettes
+                        // never store them, so a correctly built fence only
+                        // matches its block recomputed for this neighborhood.
+                        withFlattenedConnections(*expected, region, position),
+                        actual
+                    ))
             || (expectedLiquid && actualLiquid != *expectedLiquid)) {
             nextState = CorrectionState::WrongState;
         }
