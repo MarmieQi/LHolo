@@ -67,9 +67,8 @@ LHolo/
 │  │  └─ BlockPlacementRules.*  共享运行态方块身份与“方块→实际放置物品”规则
 │  ├─ i18n/
 │  │  ├─ TextKeys.h            文案键 X-macro（枚举 + 稳定键名）的唯一来源
-│  │  ├─ lang/                 一语言一文件的翻译 JSON（zh_CN / en_US）
-│  │  ├─ EmbeddedLanguages.h   生成物：内嵌 JSON 原始字符串（tools/i18n 生成，签入仓库）
-│  │  ├─ LanguageStore.*       内嵌 JSON 解析、查找表与回退链
+│  │  ├─ lang/                 一语言一文件的翻译 JSON；xmake 扫描并生成临时 RCDATA 资源清单
+│  │  ├─ LanguageStore.*       内置资源 JSON 解析、查找表与回退链
 │  │  ├─ Translator.*          当前语言选择与查表转发
 │  │  └─ Message.*             跨帧保存的“键 + 参数”消息
 │  ├─ settings/
@@ -207,13 +206,17 @@ LHolo/
 - `i18n/` 是界面文案的叶子模块：不依赖任何其它 LHolo 模块，只被展示边界（`ui/`、底部提示、
   文件对话框）使用。`i18n/TextKeys` 用 X-macro 同时定义 `TextKey` 枚举和并行的稳定字符串键名
   （如 `page.projection`）；键名是对外翻译格式的一部分，发布后禁止改名，弃用旧键、新增新键。
-  翻译存放在 `src/i18n/lang/*.json`（一语言一文件，纯数据），由 `tools/i18n/embed_languages.py`
-  包装成 `EmbeddedLanguages.h` 原始字符串常量随源码编译进 DLL，运行时不读写任何语言文件；
-  JSON 变更后必须重新生成该头文件并一起提交。`LanguageStore` 在 `AppKernel::load()` 时把内嵌
-  JSON 解析为按 `TextKey` 索引的查找表，之后 `tr()` 无锁只读；缺键或空串按“当前语言 →
+  翻译存放在 `src/i18n/lang/*.json`（一语言一文件，纯数据，也是唯一的翻译源）。xmake 在构建时扫描该目录，
+  自动生成被忽略的 `build/generated/i18n/Languages.rc`，再将每个 JSON 作为 Windows `RCDATA` 资源编入 DLL；
+  运行时不读写任何语言文件，也不需要生成头文件或 Python。文件名会规范化为资源 ID，例如
+  `zh_CN.json` 对应 `LHOLO_LANG_ZH_CN`；请使用由 ASCII 字母、数字、`_`、`-` 组成的稳定语言代码，
+  规范化后同名会使构建失败。`LanguageStore` 在 `AppKernel::load()` 时把内置 JSON 解析为按 `TextKey`
+  索引的查找表，之后 `tr()` 无锁只读；缺键或空串按“当前语言 →
   简体中文 → 空串”回退，绝不显示裸键名。完备性由 `LHoloLogicTests` 接管（原编译期
-  `static_assert` 校验已随 constexpr 表移除）：测试断言每个语言文件解析成功、无缺键/未知键/
-  非字符串项。新增界面文案必须登记键，不得在展示边界之外写用户可见字符串字面量。
+  `static_assert` 校验已随 constexpr 表移除）：测试断言当前已注册的每种语言解析成功、无缺键/
+  未知键/非字符串项。当前运行时语言注册表固定为 `zh_CN` 与 `en_US`：新增 JSON 会在下一次构建自动
+  内嵌，但在动态语言注册表完成前，不会自动出现在设置菜单，也不会参与测试。新增界面文案必须登记键，
+  不得在展示边界之外写用户可见字符串字面量。
   `TextKey::None` 是显式的“空消息”哨兵（枚举首项、各语言文件填空串），`i18n::Message` 默认用它，
   因此默认构造的消息渲染为空而不是撞上某个真实条目。
 - `structure`/`place`/`projection` 只保存 `i18n::Message`（键 + 语言中立参数）或 `TextKey`，
