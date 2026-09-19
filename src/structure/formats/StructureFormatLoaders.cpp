@@ -538,12 +538,17 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
     }
     auto const& nativePrimary = nativeData.mBlockIndices.get();
     auto const& nativeSecondaryStorage = nativeData.mExtraBlockIndices.get();
-    if (!nativeSecondaryStorage) {
-        error = "原版 StructureTemplate 缺少副方块索引层";
-        return nullptr;
-    }
-    auto const& nativeSecondary = *nativeSecondaryStorage;
-    if (nativePrimary.size() != loaded->volume || nativeSecondary.size() != loaded->volume) {
+    // Since 26.51 mExtraBlockIndices is std::optional: the vanilla loader
+    // collapses the second layer into an empty value whenever it holds nothing
+    // but NO_BLOCK_INDEX_VALUE entries. That reports "no water or waterlogged
+    // blocks in this structure", not corruption, so the layer must be treated
+    // as empty rather than as a load failure. The file's own second layer was
+    // already validated above, so an absent layer can only be legitimate when
+    // that raw pass counted no occupied cells; anything else stays inconsistent
+    // and is rejected by the size check below.
+    if (nativePrimary.size() != loaded->volume
+        || (!nativeSecondaryStorage && loaded->secondaryBlocks > 0)
+        || (nativeSecondaryStorage && nativeSecondaryStorage->size() != loaded->volume)) {
         error = "原版 StructureTemplate 的方块索引数量与结构体积不一致";
         return nullptr;
     }
@@ -559,7 +564,9 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
     auto const yz = static_cast<std::uint64_t>(loaded->sizeY) * static_cast<std::uint64_t>(loaded->sizeZ);
     for (std::uint64_t index = 0; index < loaded->volume; ++index) {
         auto const* primary = resolveNative(nativePrimary[static_cast<std::size_t>(index)]);
-        auto const* secondary = resolveNative(nativeSecondary[static_cast<std::size_t>(index)]);
+        auto const* secondary = nativeSecondaryStorage
+            ? resolveNative((*nativeSecondaryStorage)[static_cast<std::size_t>(index)])
+            : nullptr;
         Block const* block{};
         Block const* liquid{};
         auto const assign = [&](Block const* value) {
