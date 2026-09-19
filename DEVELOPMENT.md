@@ -372,7 +372,7 @@ LHolo/
 3. 校验 `size`、`structure.block_indices`、`palette.default.block_palette`。
 4. 校验两个 block index layer 的长度等于结构体积。
 5. 使用客户端 Level 的 unknown-block registry 构造原版 `StructureTemplate`，再把完整根 NBT 交给 `StructureTemplate::load()`。不要逐项调用 `Block::tryGetFromRegistry()`：那条捷径会绕开格式版本升级、世界方块调色板和 unknown-block registry，旧状态可能被错误解析成未知方块。
-6. 从加载后的 `StructureTemplateData` 取得原版已升级的主/副索引数组和 `StructureBlockPalette`，用 `StructureBlockPalette::tryGetBlock()` 解析方块。不要用 `StructureTemplate::tryGetBlockAtPos()` 遍历文件：26.20 客户端该接口的坐标访问约定与 `.mcstructure` 的线性索引布局不一致，曾导致门上下半块错位和水取成错误方块。
+6. 从加载后的 `StructureTemplateData` 取得原版已升级的主/副索引数组和 `StructureBlockPalette`，用 `StructureBlockPalette::tryGetBlock()` 解析方块。不要用 `StructureTemplate::tryGetBlockAtPos()` 遍历文件：26.20 客户端该接口的坐标访问约定与 `.mcstructure` 的线性索引布局不一致，曾导致门上下半块错位和水取成错误方块。26.51 起 `mExtraBlockIndices` 是 `std::optional`：副层没有任何方块（全部为原版 `NO_BLOCK_INDEX_VALUE`，即结构不含水/含水方块）时，原版加载器会把整层收成空值，这不是损坏，按全空索引处理；仅当副层为空但文件自身第二层仍统计出占用格子（数据自相矛盾），或层有值但长度不等于体积时，才按“索引数量与结构体积不一致”拒绝。
 7. 依照格式文档的 ZYX 顺序还原线性索引：`index = x * (sizeY * sizeZ) + y * sizeZ + z`。主副层分别解析后，同一坐标的非液体写入实体层、液体写入液体层。
 8. 门的上下半块本来就是两个坐标、两个完整 palette state，不做合并；格式升级后的上下半块、铰链、朝向和开关状态由原版加载器保留。
 9. 原版加载失败、原版尺寸与文件尺寸不一致时直接拒绝加载，不再带着未知方块继续渲染。
@@ -381,7 +381,9 @@ LHolo/
 
 渲染与纠错约束：
 
-- 实体模型走原版 `tessellateInWorld()`，并按原版 render layer 分桶。相邻实体方块只在 LHolo 生成网格的线程局部作用域内通过 `BlockSource::getBlock()` 暴露，供门、栅栏等邻居相关模型正确生成；作用域外始终调用原版函数，不改变世界。
+- 实体模型走原版 `tessellateInWorld()`，并按原版 render layer 分桶。相邻实体方块只在 LHolo 生成网格的线程局部作用域内通过 `BlockSource::getBlock()` 暴露，供门等邻居相关模型正确生成；作用域外始终调用原版函数，不改变世界。
+- 1.26.51 起栅栏、玻璃板、铁栏杆等连接方块的连接臂由原版从方块自身的派生连接状态读取，而结构调色板从不存储这些状态，直接网格化会全是光杆。网格化与纠错前经 `ProjectionRules::withFlattenedConnections()` 调用原版 `BlockType::connectionUpdate()` 重算连接：网格化时 `BlockSource::getBlock()` 钩子让重算读到投影虚拟邻域（旋转/镜像后方向因此仍正确），纠错时读真实邻域，使期望方块与真实方块的派生状态可比。不要退化回手搓 `canConnect()`/`setState()` 推导：那只能覆盖 `FenceBlock` 一族，玻璃板等数据驱动原型的连接不存储在内建 `Connection*` 状态里，只有原版更新认识其规则。
+- `connectionUpdate()` 会把重算结果写进传入的区域，直接调用曾把可选中、有碰撞的幽灵栅栏写进真实世界（重进世界才消失）。因此调用必须包在 `ScopedRegionWriteSuppression` 内（`ProjectionVirtualWorld`），`ProjectionGameHooks` 里的两个 `BlockSource::setBlock` 钩子在抑制期间吞掉写入并返回成功，只取更新的返回值；不要在抑制作用域外做任何依赖写入生效的操作。
 - 所有投影方块实体创建完成后，使用 `BlockActor::isType()` 识别箱子，并在同一虚拟世界作用域内调用原版 `ChestBlockActor::_tryToPairWith()` 配对。必须先建立完整的虚拟方块和方块实体表，再执行配对；结构 NBT 中的 `pairx`/`pairz` 是原世界绝对坐标，不能直接作为投影配对坐标使用。
 - 水和岩浆使用贴图 proxy 单元壳，完全由 LHolo 自绘，不与原版世界或区块管线交互：仅 Missing（未放置）状态的液体格绘制半透明截顶外壳，最上层液体格顶面固定为原版源液体高度 8/9（`getHeightFromDepth()` 在 1.26 上对源液体的返回值不可靠，不再使用；逐格流动深度不参与视觉，只参与纠错比较），上方有同液体时侧壁满格；相邻同种液体剔除共享面；UV 取自 `BlockGraphics::getForBlock(liquid)->getTexture(0, 0)` 的 terrain atlas 水/岩浆贴图；水顶点色为原版蓝 #3F76E4（atlas 水贴图无色），岩浆白色顶点色保留贴图原色；alpha 跟随投影透明度；经 `liquidProxySectionMeshes` 独立网格在 alpha pass 用 `mMatBlendBlock` + terrain atlas 提交（与玻璃同路径），按 section 距离排序。静态贴图无波浪动画是已知限制。纯液体格的 Missing 不再叠加蓝色纠错面/描边（proxy 本身即提示），WrongType/WrongState 仍保留红/黄纠错面。`.litematic` 加载时液体路由到 `RenderBlock::liquid` 字段，与 `.mcstructure` 语义一致。
 - `.litematic` 加载时把 `getMaterial().isLiquid()` 的方块路由到 `RenderBlock::liquid` 字段，与 `.mcstructure` 语义一致。
@@ -1126,6 +1128,9 @@ D:\games\LeviLauncher\MC\versions\1.26.51.01\mods\LHolo
 - [ ] 冷却时长的 0 秒和 60 秒边界正确，修改后重启仍保留；0 秒不登记新的破坏冷却。
 - [ ] 草方块颜色、顶面和侧面与原版一致。
 - [ ] 石头、玻璃、玻璃板、栅栏、楼梯、门等模型正常。
+- [ ] 栅栏、玻璃板在投影中互相连接；旋转/镜像后连接方向仍正确；不含水/含水方块的 `.mcstructure` 能正常加载。
+- [ ] 移动/旋转投影后原地不残留可选中、有碰撞的方块（真实世界未被写入幽灵方块）；退出世界再进入后投影区亦无残留实体方块。
+- [ ] 已按投影建好的栅栏、玻璃板纠错为绿色，不再误报“状态错误”（黄标）。
 - [ ] 透明度 100% 与低透明度均无整体黑块。
 - [ ] 蓝/红/黄提示及描边透明度输入 0、15、50、100 均正确。
 - [ ] 一键恢复默认得到提示 15%、描边 100%。
