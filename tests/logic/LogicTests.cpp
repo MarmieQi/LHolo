@@ -796,7 +796,7 @@ void testJavaTextComponents() {
 void testI18n() {
     using namespace lholo::i18n;
 
-    // The embedded JSON files must parse and cover every key: this is the
+    // The embedded language resources must parse and cover every key: this is the
     // runtime successor of the old compile-time isComplete() check.
     initLanguageStore();
     for (auto const candidate : {Language::SimplifiedChinese, Language::English}) {
