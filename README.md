@@ -4,6 +4,13 @@
 
 `LHolo` 是一个 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 客户端投影模组
 
+## 版本号说明
+
+示例版本：`v26.51.2`
+
+- `26.51`：对应的 Minecraft 游戏版本
+- `.2`：模组在该游戏版本下的第 2 个版本
+
 ## 快速上手
 
 [安装教程](https://www.bilibili.com/opus/1239631121935761412)
