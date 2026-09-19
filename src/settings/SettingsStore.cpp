@@ -17,7 +17,14 @@ bool loadSettingsFile(std::filesystem::path const& path, Settings& out) {
     auto const json = nlohmann::json::parse(input, nullptr, true, true);
 
     out.lastStructurePath = json.value("lastStructurePath", out.lastStructurePath);
-    out.language = json.value("language", out.language);
+    if (auto const language = json.find("language");
+        language != json.end() && language->is_string()) {
+        out.language = language->get<std::string>();
+    } else {
+        // Language preferences intentionally have no old integer migration:
+        // missing or malformed values use the default locale.
+        out.language = "zh_CN";
+    }
     out.uiScale = json.value("uiScale", out.uiScale);
     out.opacity = json.value("opacity", out.opacity);
     out.correctionFillOpacity = json.value("correctionFillOpacity", out.correctionFillOpacity);

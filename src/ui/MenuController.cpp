@@ -76,7 +76,9 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
     model.pathBufferSize = gPathBuffer.size();
     model.blockOpeningInput = uiState().openingInputBlocked();
     model.uiScale = effectiveUiScale;
-    model.language = i18n::toInt(i18n::language());
+    auto const currentLanguage = i18n::language();
+    model.language = i18n::isValidLanguage(currentLanguage)
+        ? static_cast<int>(currentLanguage) : 0;
     auto const captureSnapshot = structure::capture::getSnapshot();
     model.capture.mode = static_cast<int>(captureSnapshot.draft.mode);
     model.captureRevision = captureSnapshot.revision;
@@ -163,10 +165,18 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
 void applyStructureMenuModel(MenuModel const& model, float effectiveUiScale) {
     bool changed = false;
     auto& session = structure::detail::StructureSession::getInstance();
-    auto const language = i18n::languageFromInt(model.language);
-    if (language != i18n::language()) {
-        i18n::setLanguage(language);
-        changed = true;
+    auto const languageCount = i18n::languages().size();
+    if (languageCount != 0) {
+        auto const languageIndex = static_cast<std::size_t>(std::clamp(
+            model.language,
+            0,
+            static_cast<int>(languageCount - 1)
+        ));
+        auto const language = static_cast<i18n::Language>(languageIndex);
+        if (language != i18n::language()) {
+            i18n::setLanguage(language);
+            changed = true;
+        }
     }
     if (std::abs(model.uiScale - effectiveUiScale) > 0.001f) {
         auto const scale = std::clamp(model.uiScale, 1.0f, 5.0f);

@@ -16,9 +16,9 @@ namespace lholo::settings {
 
 struct Settings {
     std::string lastStructurePath;
-    // Interface language, stored as the stable integer encoding from
-    // i18n::Language (0 = Simplified Chinese, 1 = English).
-    int language{0};
+    // Interface language locale code, for example "zh_CN" or "en_US".
+    // Runtime language indices are never persisted.
+    std::string language{"zh_CN"};
     float uiScale{2.0f};
     float opacity{1.0f};
     float correctionFillOpacity{0.15f};
