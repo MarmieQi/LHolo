@@ -796,6 +796,17 @@ void testJavaTextComponents() {
 void testI18n() {
     using namespace lholo::i18n;
 
+    // The embedded JSON files must parse and cover every key: this is the
+    // runtime successor of the old compile-time isComplete() check.
+    initLanguageStore();
+    for (auto const candidate : {Language::SimplifiedChinese, Language::English}) {
+        auto const stats = languageStats(candidate);
+        LHOLO_CHECK(stats.parsed);
+        LHOLO_CHECK(stats.missing == 0);
+        LHOLO_CHECK(stats.unknown == 0);
+        LHOLO_CHECK(stats.nonString == 0);
+    }
+
     // Integer encoding round-trips and clamps unknown values to the default.
     LHOLO_CHECK(toInt(Language::SimplifiedChinese) == 0);
     LHOLO_CHECK(toInt(Language::English) == 1);
