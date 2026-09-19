@@ -3,6 +3,7 @@
 
 #include "app/AppKernel.h"
 
+#include "i18n/LanguageStore.h"
 #include "input/MenuInputGuard.h"
 #include "overlay/ImGuiOverlay.h"
 #include "place/PlaceHelper.h"
@@ -22,6 +23,7 @@ AppKernel& AppKernel::getInstance() {
 }
 
 bool AppKernel::load() {
+    i18n::initLanguageStore();
     structure::loadSettings();
     return true;
 }

@@ -66,10 +66,12 @@ LHolo/
 │  ├─ block/
 │  │  └─ BlockPlacementRules.*  共享运行态方块身份与“方块→实际放置物品”规则
 │  ├─ i18n/
-│  │  ├─ TextKeys.h             界面文案键的唯一来源（叶子层）
-│  │  ├─ TextTable.h            中英语言表与编译期完备性校验
-│  │  ├─ Translator.*           当前语言选择与查表
-│  │  └─ Message.*              跨帧保存的“键 + 参数”消息
+│  │  ├─ TextKeys.h            文案键 X-macro（枚举 + 稳定键名）的唯一来源
+│  │  ├─ lang/                 一语言一文件的翻译 JSON（zh_CN / en_US）
+│  │  ├─ EmbeddedLanguages.h   生成物：内嵌 JSON 原始字符串（tools/i18n 生成，签入仓库）
+│  │  ├─ LanguageStore.*       内嵌 JSON 解析、查找表与回退链
+│  │  ├─ Translator.*          当前语言选择与查表转发
+│  │  └─ Message.*             跨帧保存的“键 + 参数”消息
 │  ├─ settings/
 │  │  └─ SettingsStore.*        config.json 读写与字段映射
 │  ├─ overlay/
@@ -142,6 +144,7 @@ LHolo/
 │     ├─ MenuInputGuard.cpp     Bedrock 鼠标与 HID 键盘输入源拦截
 │     └─ MenuInputGuard.h       输入保护安装状态与生命周期接口
 ├─ tools/java_to_bedrock/       开发期映射生成器（运行时不需要 Java）
+├─ tools/i18n/                  语言 JSON 嵌入生成脚本（改翻译后运行，普通构建不运行）
 ├─ manifest.json                Mod Packer 模板
 ├─ xmake.lua                    依赖、编译选项和发布规则
 ├─ DEVELOPMENT.md               本文档
@@ -204,10 +207,16 @@ LHolo/
   只有 `StructureLoader` 读取玩家并把结果交给 `StructureUiState::queueOffsetDelta`，会话状态不得自行
   推导世界方向。
 - `i18n/` 是界面文案的叶子模块：不依赖任何其它 LHolo 模块，只被展示边界（`ui/`、底部提示、
-  文件对话框）使用。`i18n/TextKeys` 是文案键的唯一来源，两张语言表在编译期用 `static_assert`
-  校验“每个键恰好出现一次”，漏翻或重复直接编译失败；新增界面文案必须登记键，不得在展示边界
-  之外写用户可见字符串字面量。
-  `TextKey::None` 是显式的“空消息”哨兵（枚举首项、两张表填空串），`i18n::Message` 默认用它，
+  文件对话框）使用。`i18n/TextKeys` 用 X-macro 同时定义 `TextKey` 枚举和并行的稳定字符串键名
+  （如 `page.projection`）；键名是对外翻译格式的一部分，发布后禁止改名，弃用旧键、新增新键。
+  翻译存放在 `src/i18n/lang/*.json`（一语言一文件，纯数据），由 `tools/i18n/embed_languages.py`
+  包装成 `EmbeddedLanguages.h` 原始字符串常量随源码编译进 DLL，运行时不读写任何语言文件；
+  JSON 变更后必须重新生成该头文件并一起提交。`LanguageStore` 在 `AppKernel::load()` 时把内嵌
+  JSON 解析为按 `TextKey` 索引的查找表，之后 `tr()` 无锁只读；缺键或空串按“当前语言 →
+  简体中文 → 空串”回退，绝不显示裸键名。完备性由 `LHoloLogicTests` 接管（原编译期
+  `static_assert` 校验已随 constexpr 表移除）：测试断言每个语言文件解析成功、无缺键/未知键/
+  非字符串项。新增界面文案必须登记键，不得在展示边界之外写用户可见字符串字面量。
+  `TextKey::None` 是显式的“空消息”哨兵（枚举首项、各语言文件填空串），`i18n::Message` 默认用它，
   因此默认构造的消息渲染为空而不是撞上某个真实条目。
 - `structure`/`place`/`projection` 只保存 `i18n::Message`（键 + 语言中立参数）或 `TextKey`，
   禁止保存已翻译的句子，否则切换语言时旧文案不会更新。日志与异常消息保持英文技术描述，
@@ -1204,7 +1213,8 @@ xmake r LHoloLogicTests
 - `place/PlacementState`：模式开关、手动放置时间、节流时间、自动放置抑制和缓存到期边界与准心名称读写。
 - `structure/StructureUiState`：HUD 快照、快捷键绑定/去重、按键释放抑制、待处理动作与材料快照。
 - `ui/HotkeyFormat`：修饰键判定、未设置与 Ctrl/Alt/Shift 和弦字符串。
-- `i18n`：语言整数编码钳制、两张表每个键在两种语言下均非空、越界键返回空串、
-  切换语言后的查表结果与显式语言查询、消息占位符参数渲染。
+- `i18n`：语言整数编码钳制、内嵌 JSON 解析统计（解析成功、无缺键/未知键/非字符串项）、
+  每个键在两种语言下均非空、越界键返回空串、切换语言后的查表结果与显式语言查询、
+  消息占位符参数渲染。
 
 新增可独立链接的纯逻辑时必须同步补充对应断言；涉及 Minecraft 运行时对象（Block、BlockSource、Tessellator）的代码不进入该测试目标。
