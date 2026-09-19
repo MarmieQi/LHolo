@@ -3,7 +3,7 @@
 // Single source of truth for every user-visible interface string. The list
 // below is defined once through an X-macro and expands into both the TextKey
 // enum and a parallel table of stable string identifiers ("page.projection")
-// used by the embedded JSON language files in src/i18n/lang/.
+// used by the language JSON files in src/i18n/lang/.
 //
 // Stable-key contract: the identifiers are part of the published translation
 // format. Never rename an identifier; deprecate the entry and add a new one.

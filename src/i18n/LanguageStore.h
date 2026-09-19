@@ -1,7 +1,8 @@
-// LHolo - Language store built from the embedded JSON files
+// LHolo - Language store built from embedded Windows resource JSON files
 //
-// Parses the embedded language JSON (see EmbeddedLanguages.h) once at startup
-// into flat TextKey-indexed tables, then serves tr() lookups lock-free.
+// Parses the RCDATA JSON files listed in xmake's generated resource manifest
+// once at startup into flat TextKey-indexed tables, then serves tr() lookups
+// lock-free.
 //
 // Completeness: zh_CN and en_US must cover every key. This is enforced by the
 // logic tests (testI18n / testLanguageStore), which call the same init path
@@ -44,7 +45,7 @@ struct LanguageStats {
     bool        parsed{};    // the document parsed as a JSON object at all
 };
 
-// Parses every embedded language file and publishes the lookup tables.
+// Parses every embedded language resource and publishes the lookup tables.
 // Called once from AppKernel::load() before any tr() use; calling it again
 // replaces the tables (leaking the previous ones - startup-time only).
 // Lookups before the first call return "" for every key, never crash.
