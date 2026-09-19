@@ -18,8 +18,20 @@ namespace {
 
 thread_local ExpectedBlockMap const*      gTessellationBlocks{};
 thread_local ExpectedBlockActorMap const* gTessellationBlockActors{};
+thread_local bool                         gSuppressRegionWrites{};
 
 } // namespace
+
+ScopedRegionWriteSuppression::ScopedRegionWriteSuppression()
+: mPrevious(std::exchange(gSuppressRegionWrites, true)) {}
+
+ScopedRegionWriteSuppression::~ScopedRegionWriteSuppression() {
+    gSuppressRegionWrites = mPrevious;
+}
+
+bool regionWritesSuppressed() {
+    return gSuppressRegionWrites;
+}
 
 ScopedTessellationBlocks::ScopedTessellationBlocks(
     ExpectedBlockMap const&      blocks,

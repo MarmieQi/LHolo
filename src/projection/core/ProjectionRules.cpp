@@ -17,11 +17,15 @@
 #include "mc/deps/nbt/Tag.h"
 #include "mc/world/Facing.h"
 #include "mc/world/level/BlockSource.h"
+#include "mc/world/level/NeighborBlockDirections.h"
 #include "mc/world/level/block/Block.h"
+#include "mc/world/level/block/BlockType.h"
+#include "mc/world/level/block/NeighborDirection.h"
 #include "mc/world/level/block/VanillaStates.h"
-#include "mc/world/level/block/states/BuiltInBlockStates.h"
 #include "mc/world/level/block/states/VanillaBlockStateTransformUtils.h"
 #include "mc/world/level/levelgen/structure/LegacyStructureSettings.h"
+
+#include "projection/world/ProjectionVirtualWorld.h"
 
 namespace lholo::projection::detail {
 namespace {
@@ -80,31 +84,23 @@ Block const& withFlattenedConnections(
     BlockSource&    region,
     BlockPos const& position
 ) {
-    // Data-driven v1_26_20 archetypes (glass panes, iron bars, tripwire, ...)
-    // carry the connection states without overriding the C++ fence
-    // predicates, so gate on state presence rather than on block type.
-    if (!block.getState<bool>(BuiltInBlockStates::ConnectionNorth())) return block;
-    Block const* result = &block;
-    auto const applyConnection = [&](
-        BuiltInBlockStateVariant<bool> const& state,
-        Facing::Name                          facing,
-        int                                   dx,
-        int                                   dz
-    ) {
-        BlockPos const neighborPosition{position.x + dx, position.y, position.z + dz};
-        auto const&    neighbor = region.getBlock(neighborPosition);
-        if (auto const updated = result->setState<bool>(
-                state, block.canConnect(neighbor, static_cast<uchar>(facing))
-            )) {
-            result = &updated.get();
-        }
-    };
-    // Bedrock directions: north is -Z, south +Z, west -X, east +X.
-    applyConnection(BuiltInBlockStates::ConnectionNorth(), Facing::Name::North, 0, -1);
-    applyConnection(BuiltInBlockStates::ConnectionSouth(), Facing::Name::South, 0, +1);
-    applyConnection(BuiltInBlockStates::ConnectionWest(), Facing::Name::West, -1, 0);
-    applyConnection(BuiltInBlockStates::ConnectionEast(), Facing::Name::East, +1, 0);
-    return *result;
+    auto const& blockType = block.getBlockType();
+    if (!blockType.isFenceBlock() && !blockType.isThinFenceBlock()) return block;
+    // The vanilla connection update knows every family's connection rules,
+    // including the data-driven ones (glass panes, iron bars) whose arms are
+    // not stored in the builtin Connection states, so deriving states by hand
+    // cannot cover them. It also APPLIES the recomputed block to the region
+    // it is given — that filled the real world with ghost blocks — so run it
+    // with region writes suppressed and use only its return value. Neighbor
+    // reads still answer with the projected blocks while a tessellation scope
+    // is active, and with the real world during correction.
+    ScopedRegionWriteSuppression suppression;
+    NeighborBlockDirections      directions{};
+    auto&                        directionSet = directions.mDirections.get();
+    for (int direction = 0; direction < static_cast<int>(NeighborDirection::Count); ++direction) {
+        directionSet.insert(static_cast<NeighborDirection>(direction));
+    }
+    return blockType.connectionUpdate(region, block, position, directions);
 }
 
 bool projectionStatesMatch(Block const& expected, Block const& actual) {

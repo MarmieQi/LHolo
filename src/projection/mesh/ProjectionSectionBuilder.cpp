@@ -253,14 +253,13 @@ void buildProjectionSection(
                 ));
             }
             // Flattened connection blocks (fences, glass panes, iron bars,
-            // tripwire, ...) draw their arms from the block's own connection
-            // states since 1.26.20, so a palette permutation without those
-            // derived states tessellates as a bare post no matter which
-            // neighbors are visible. Recompute the connection booleans
-            // against the virtual neighborhood; inside this scope the hooked
-            // BlockSource::getBlock answers with the projected blocks. The
-            // derivation only chains permutation lookups, so the real world
-            // is never written to.
+            // ...) draw their arms from derived states the structure palette
+            // never stores, so a raw palette permutation tessellates as a
+            // bare post no matter which neighbors are visible. Recompute the
+            // connections with the vanilla update against the virtual
+            // neighborhood; inside this scope the hooked BlockSource::getBlock
+            // answers with the projected blocks, and the update's own region
+            // write is suppressed so the real world stays untouched.
             Block const& renderBlock = withFlattenedConnections(
                 *layered.block, region, layered.position
             );

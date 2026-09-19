@@ -9,6 +9,7 @@
 #include "structure/StructureLoader.h"
 
 #include <cstddef>
+#include <memory>
 #include <string_view>
 #include <variant>
 
@@ -16,8 +17,10 @@
 #include "mc/network/MinecraftPacketIds.h"
 #include "mc/network/Packet.h"
 #include "mc/network/packet/TextPacket.h"
+#include "mc/world/level/ActorBlockSyncMessage.h"
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/Block.h"
+#include "mc/world/level/block/BlockChangeContext.h"
 #include "mc/world/level/block/actor/BlockActor.h"
 
 #include "ll/api/memory/Hook.h"
@@ -97,6 +100,48 @@ LL_TYPE_INSTANCE_HOOK(
     return origin(position);
 }
 
+// BlockType::connectionUpdate recomputes flattened connection geometry
+// correctly for every block family, but it also writes the recomputed block
+// into the region it is handed. While a ScopedRegionWriteSuppression is
+// active on this thread the write is swallowed: the caller keeps only the
+// returned block, and the real world never sees the projected blocks.
+LL_TYPE_INSTANCE_HOOK(
+    BlockSourceSetBlockHook,
+    ll::memory::HookPriority::Normal,
+    BlockSource,
+    &BlockSource::$setBlock,
+    bool,
+    BlockPos const&                 position,
+    Block const&                    block,
+    int                             updateFlags,
+    ActorBlockSyncMessage const*    syncMsg,
+    BlockChangeContext const&       changeSourceContext
+) {
+    if (regionWritesSuppressed()) return true;
+    return origin(position, block, updateFlags, syncMsg, changeSourceContext);
+}
+
+LL_TYPE_INSTANCE_HOOK(
+    BlockSourceSetBlockWithActorHook,
+    ll::memory::HookPriority::Normal,
+    BlockSource,
+    static_cast<
+        bool (BlockSource::*)(
+            BlockPos const&, Block const&, int, std::shared_ptr<BlockActor>,
+            ActorBlockSyncMessage const*, BlockChangeContext const&
+        )>(&BlockSource::setBlock),
+    bool,
+    BlockPos const&                 position,
+    Block const&                    block,
+    int                             updateFlags,
+    std::shared_ptr<BlockActor>     blockEntity,
+    ActorBlockSyncMessage const*    syncMsg,
+    BlockChangeContext const&       changeSourceContext
+) {
+    if (regionWritesSuppressed()) return true;
+    return origin(position, block, updateFlags, blockEntity, syncMsg, changeSourceContext);
+}
+
 LL_TYPE_INSTANCE_HOOK(
     LoopbackPacketSenderSendToServerHook,
     ll::memory::HookPriority::Normal,
@@ -134,7 +179,22 @@ bool installProjectionGameHooks() {
         BlockSourceGetBlockHook::unhook();
         return false;
     }
+    if (BlockSourceSetBlockHook::hook() < 0) {
+        BlockSourceGetBlockEntityHook::unhook();
+        BlockSourceGetBlockLayerHook::unhook();
+        BlockSourceGetBlockHook::unhook();
+        return false;
+    }
+    if (BlockSourceSetBlockWithActorHook::hook() < 0) {
+        BlockSourceSetBlockHook::unhook();
+        BlockSourceGetBlockEntityHook::unhook();
+        BlockSourceGetBlockLayerHook::unhook();
+        BlockSourceGetBlockHook::unhook();
+        return false;
+    }
     if (LoopbackPacketSenderSendToServerHook::hook() < 0) {
+        BlockSourceSetBlockWithActorHook::unhook();
+        BlockSourceSetBlockHook::unhook();
         BlockSourceGetBlockEntityHook::unhook();
         BlockSourceGetBlockLayerHook::unhook();
         BlockSourceGetBlockHook::unhook();
@@ -142,6 +202,8 @@ bool installProjectionGameHooks() {
     }
     if (LoopbackPacketSenderSendHook::hook() < 0) {
         LoopbackPacketSenderSendToServerHook::unhook();
+        BlockSourceSetBlockWithActorHook::unhook();
+        BlockSourceSetBlockHook::unhook();
         BlockSourceGetBlockEntityHook::unhook();
         BlockSourceGetBlockLayerHook::unhook();
         BlockSourceGetBlockHook::unhook();
@@ -153,6 +215,8 @@ bool installProjectionGameHooks() {
 void uninstallProjectionGameHooks() {
     LoopbackPacketSenderSendHook::unhook();
     LoopbackPacketSenderSendToServerHook::unhook();
+    BlockSourceSetBlockWithActorHook::unhook();
+    BlockSourceSetBlockHook::unhook();
     BlockSourceGetBlockEntityHook::unhook();
     BlockSourceGetBlockLayerHook::unhook();
     BlockSourceGetBlockHook::unhook();
