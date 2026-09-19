@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <limits>
 #include <string>
+#include <vector>
 
 #include <imgui.h>
 
@@ -810,10 +811,13 @@ void renderInterfacePage(MenuModel& model, UiMetrics const& metrics) {
             "UiScaleValue", i18n::tr(i18n::TextKey::LabelUiScale), model.uiScale,
             1.0f, 5.0f, 0.1f, metrics
         );
-        char const* languageNames[]{
-            i18n::languageName(i18n::Language::SimplifiedChinese),
-            i18n::languageName(i18n::Language::English)
-        };
+        std::vector<char const*> languageNames;
+        auto const availableLanguages = i18n::languages();
+        languageNames.reserve(availableLanguages.size());
+        for (std::size_t index = 0; index < availableLanguages.size(); ++index) {
+            languageNames.push_back(i18n::languageName(index));
+        }
+        auto const languageCount = static_cast<int>(languageNames.size());
         // Label first, like the stepped row above: this page reads left to
         // right, so the value follows the name instead of preceding it.
         if (metrics.compact) {
@@ -823,10 +827,13 @@ void renderInterfacePage(MenuModel& model, UiMetrics const& metrics) {
             ImGui::TextUnformatted(i18n::tr(i18n::TextKey::LabelLanguage));
             ImGui::SameLine(0.0f, ImGui::GetStyle().ItemSpacing.x * 0.55f);
         }
-        ImGui::SetNextItemWidth(adaptiveComboWidth(languageNames, i18n::kLanguageCount));
-        // The selection is persisted by applyStructureMenuModel; the next frame
-        // then rebuilds every string from the new language.
-        ImGui::Combo("##Language", &model.language, languageNames, i18n::kLanguageCount);
+        if (languageCount > 0) {
+            model.language = std::clamp(model.language, 0, languageCount - 1);
+            ImGui::SetNextItemWidth(adaptiveComboWidth(languageNames.data(), languageCount));
+            // The selection is persisted by applyStructureMenuModel; the next
+            // frame then rebuilds every string from the new language.
+            ImGui::Combo("##Language", &model.language, languageNames.data(), languageCount);
+        }
     });
 }
 

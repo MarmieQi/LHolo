@@ -2,12 +2,12 @@
 //
 // The selected language is a plain persisted preference; there is no
 // follow-the-game mode, so lookup never resolves a locale at call time. The
-// language is stored as an integer in config.json and converted immediately at
-// the settings boundary, matching the LayerAxis convention.
+// language is stored as a stable locale code in config.json. Runtime Language
+// values are only indices into the dynamically discovered registry.
 //
-// Language, toInt/languageFromInt and the lookup tables live in
-// LanguageStore.h; this header keeps the selection state and the tr() entry
-// points the display boundary calls.
+// Language, the dynamic registry and the lookup tables live in LanguageStore.h;
+// this header keeps the selection state and the tr() entry points the display
+// boundary calls.
 //
 // Layering: leaf module. Only the display boundary (ui/, HUD rendering, action
 // hints, file dialogs) may call tr(); logic modules pass TextKey values around
@@ -24,6 +24,7 @@ namespace lholo::i18n {
 // persisted preference; a switch applies to the next rendered frame.
 Language language() noexcept;
 void     setLanguage(Language language) noexcept;
+bool     setLanguageByCode(std::string_view code) noexcept;
 
 char const* tr(TextKey key) noexcept;
 char const* tr(TextKey key, Language language) noexcept;

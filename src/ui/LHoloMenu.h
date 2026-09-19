@@ -79,8 +79,7 @@ struct MenuModel {
     int savedAnchorY{};
     int savedAnchorZ{};
     float uiScale{1.0f};
-    // i18n::Language encoding; the page control edits it and the model apply
-    // step persists it.
+    // Runtime i18n::Language index; the model never persists this value.
     int language{};
 
     CaptureDraftModel capture;

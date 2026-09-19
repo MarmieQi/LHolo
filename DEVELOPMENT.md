@@ -32,7 +32,7 @@ LHolo 的投影、纠错、HUD 和菜单都只存在于客户端，不产生碰�
 - `.mcstructure` 中带 NBT 的方块实体优先使用原版方块实体渲染器；没有可用渲染器或 Tessellation 结果的方块使用贴图占位外壳。
 - HUD 可显示文件名、显示层、建造进度、放置错误数、朝向错误数、多余方块数、准心指向的投影方块名称和当前辅助放置模式（手动/轻松/范围）；支持四角定位和单项关闭，各类错误可分别配置。
 - GUI 使用外部注入 Dear ImGui，不使用游戏表单。
-- 界面支持简体中文与 English，可在“界面设置”页切换，默认简体中文；语言选择随配置文件持久化。
+- 界面语言由 `src/i18n/lang/*.json` 自动发现，可在“界面设置”页切换，默认简体中文；语言代码随配置文件持久化。
 - 默认 `Alt + M` 打开菜单；聊天栏输入 `LHolo`（ASCII 大小写不敏感）也可打开，消息在客户端拦截，不发往服务器。
 - LHolo 菜单打开及关闭过渡期间，客户端阻止本地控制玩家开始或继续破坏方块；本地存档和远程服务器均有效，服务器无需安装 LHolo。
 - 默认结构移动：`Ctrl + 方向键` 按玩家朝向水平移动（左右垂直于朝向、前后沿朝向），`Shift + ↑/↓` 调整 Y。
@@ -67,7 +67,7 @@ LHolo/
 │  │  └─ BlockPlacementRules.*  共享运行态方块身份与“方块→实际放置物品”规则
 │  ├─ i18n/
 │  │  ├─ TextKeys.h            文案键 X-macro（枚举 + 稳定键名）的唯一来源
-│  │  ├─ lang/                 一语言一文件的翻译 JSON；xmake 扫描并生成临时 RCDATA 资源清单
+│  │  ├─ lang/                 一语言一文件的翻译 JSON；文件名就是 locale 代码
 │  │  ├─ LanguageStore.*       内置资源 JSON 解析、查找表与回退链
 │  │  ├─ Translator.*          当前语言选择与查表转发
 │  │  └─ Message.*             跨帧保存的“键 + 参数”消息
@@ -143,7 +143,6 @@ LHolo/
 │     ├─ MenuInputGuard.cpp     Bedrock 鼠标与 HID 键盘输入源拦截
 │     └─ MenuInputGuard.h       输入保护安装状态与生命周期接口
 ├─ tools/java_to_bedrock/       开发期映射生成器（运行时不需要 Java）
-├─ tools/i18n/                  语言 JSON 嵌入生成脚本（改翻译后运行，普通构建不运行）
 ├─ manifest.json                Mod Packer 模板
 ├─ xmake.lua                    依赖、编译选项和发布规则
 ├─ DEVELOPMENT.md               本文档
@@ -208,17 +207,18 @@ LHolo/
 - `i18n/` 是界面文案的叶子模块：不依赖任何其它 LHolo 模块，只被展示边界（`ui/`、底部提示、
   文件对话框）使用。`i18n/TextKeys` 用 X-macro 同时定义 `TextKey` 枚举和并行的稳定字符串键名
   （如 `page.projection`）；键名是对外翻译格式的一部分，发布后禁止改名，弃用旧键、新增新键。
-  翻译存放在 `src/i18n/lang/*.json`（一语言一文件，纯数据，也是唯一的翻译源）。xmake 在构建时扫描该目录，
-  自动生成被忽略的 `build/generated/i18n/Languages.rc`，再将每个 JSON 作为 Windows `RCDATA` 资源编入 DLL；
-  运行时不读写任何语言文件，也不需要生成头文件或 Python。文件名会规范化为资源 ID，例如
-  `zh_CN.json` 对应 `LHOLO_LANG_ZH_CN`；请使用由 ASCII 字母、数字、`_`、`-` 组成的稳定语言代码，
-  规范化后同名会使构建失败。`LanguageStore` 在 `AppKernel::load()` 时把内置 JSON 解析为按 `TextKey`
-  索引的查找表，之后 `tr()` 无锁只读；缺键或空串按“当前语言 →
-  简体中文 → 空串”回退，绝不显示裸键名。完备性由 `LHoloLogicTests` 接管（原编译期
-  `static_assert` 校验已随 constexpr 表移除）：测试断言当前已注册的每种语言解析成功、无缺键/
-  未知键/非字符串项。当前运行时语言注册表固定为 `zh_CN` 与 `en_US`：新增 JSON 会在下一次构建自动
-  内嵌，但在动态语言注册表完成前，不会自动出现在设置菜单，也不会参与测试。新增界面文案必须登记键，
-  不得在展示边界之外写用户可见字符串字面量。
+  翻译存放在 `src/i18n/lang/*.json`（一语言一文件，纯数据，也是唯一的翻译源）。每个文件的 basename
+  是稳定 locale 代码，例如 `zh_CN.json`；文件中 `_meta.displayName` 是语言选择器显示的自称名称。
+  xmake 每次加载项目时扫描该目录，自动生成被忽略的 `build/generated/i18n/Languages.rc` 和
+  `build/generated/i18n/LanguageRegistry.generated.h`，再将每个 JSON 作为 Windows `RCDATA` 资源编入 DLL；运行时不读写
+  语言文件，也不需要手动运行脚本。资源 ID 会由文件名规范化得到，例如 `zh_CN.json` 对应
+  `LHOLO_LANG_ZH_CN`；资源 ID 冲突或不符合 locale 文件名规则会使构建失败。新增语言只需要添加一个
+  JSON 文件并重新构建，不需要修改 C++ 注册表、菜单或测试枚举；`zh_CN.json` 是必需的默认/最终回退语言。
+  `LanguageStore` 在 `AppKernel::load()` 时把注册表中的每个内置 JSON 解析为按 `TextKey` 索引的查找表，
+  之后 `tr()` 无锁只读；缺键或空串按“当前语言 → 简体中文（`zh_CN`）→ 空串”回退，绝不显示裸键名。
+  完备性由 `LHoloLogicTests` 接管（原编译期 `static_assert` 校验已随 constexpr 表移除）：测试遍历当前
+  注册的每种语言，断言解析成功、元数据有效、无缺键/空值/未知键/非字符串项，并检查占位符一致。新增界面
+  文案必须登记键，不得在展示边界之外写用户可见字符串字面量。
   `TextKey::None` 是显式的“空消息”哨兵（枚举首项、各语言文件填空串），`i18n::Message` 默认用它，
   因此默认构造的消息渲染为空而不是撞上某个真实条目。
 - `structure`/`place`/`projection` 只保存 `i18n::Message`（键 + 语言中立参数）或 `TextKey`，
@@ -875,12 +875,12 @@ PreLoader/LeviLamina 的约定处理：`0` 表示成功，任何非 `0` 值都�
 mods/LHolo/config/config.json
 ```
 
-当前配置版本：`11`。
+当前配置版本：`12`。
 
 正式持久化字段：
 
 - `version`
-- `language`（界面语言：0 简体中文、1 English；缺字段默认 0）
+- `language`（界面语言 locale 代码，例如 `zh_CN`、`en_US`；缺失、非字符串、未知代码或旧整数值均在应用时回退 `zh_CN`）
 - `lastStructurePath`
 - `uiScale`
 - `opacity`
@@ -1062,11 +1062,11 @@ D:\games\LeviLauncher\MC\versions\1.26.51.01\mods\LHolo
 ### 界面语言
 
 - [ ] 默认语言为简体中文；首次启动与旧配置（无 `language` 字段）均显示中文。
-- [ ] “界面设置”页的“语言”下拉含简体中文与 English，切换后立即生效：导航、各页标签、
+- [ ] “界面设置”页的“语言”下拉包含所有 `src/i18n/lang/*.json` 的 `_meta.displayName`，切换后立即生效：导航、各页标签、
       按钮、复选说明与下拉选项全部切换。
 - [ ] 切换语言后，投影页状态行与底部提示同步切换，不残留上一语言。
 - [ ] 英文下逐页检查换行与溢出：导航栏、值行标签、材料清单表格列、实验性功能说明弹窗。
-- [ ] 重启游戏后语言保持；手工把 `config.json` 的 `language` 改成 0 / 1 后行为正确。
+- [ ] 重启游戏后语言代码保持；手工把 `config.json` 的 `language` 改成未知字符串、整数或缺失时均回退中文。
 - [ ] 材料清单中的水与熔岩名称随界面语言变化，其它方块名仍跟随游戏语言。
 - [ ] 聊天栏 `LHolo`、Alt+M 与快捷键绑定文案在英文下仍正确。
 - [ ] 投影 HUD 与材料 HUD 的文案随界面语言切换（文件名、层/显示范围、进度、错误计数、辅助放置模式、
@@ -1216,8 +1216,8 @@ xmake r LHoloLogicTests
 - `place/PlacementState`：模式开关、手动放置时间、节流时间、自动放置抑制和缓存到期边界与准心名称读写。
 - `structure/StructureUiState`：HUD 快照、快捷键绑定/去重、按键释放抑制、待处理动作与材料快照。
 - `ui/HotkeyFormat`：修饰键判定、未设置与 Ctrl/Alt/Shift 和弦字符串。
-- `i18n`：语言整数编码钳制、内嵌 JSON 解析统计（解析成功、无缺键/未知键/非字符串项）、
-  每个键在两种语言下均非空、越界键返回空串、切换语言后的查表结果与显式语言查询、
-  消息占位符参数渲染。
+- `i18n`：动态 locale 注册表、语言代码查找与未知代码回退、内嵌 JSON 解析统计（解析成功、元数据有效、
+  无缺键/空值/未知键/非字符串项）、每个键在所有已发现语言下均非空、越界键返回空串、切换语言后的查表结果
+  与显式语言查询、消息占位符参数渲染。
 
 新增可独立链接的纯逻辑时必须同步补充对应断言；涉及 Minecraft 运行时对象（Block、BlockSource、Tessellator）的代码不进入该测试目标。

@@ -186,7 +186,7 @@ void testSettingsStore() {
     std::filesystem::remove(path, error);
 
     lholo::settings::Settings settings;
-    settings.language = 1;
+    settings.language = "en_US";
     settings.uiScale = 1.25f;
     settings.guiHotkey = 'L';
     settings.guiHotkeyModifiers = 1;
@@ -207,7 +207,7 @@ void testSettingsStore() {
         std::ostringstream contents;
         contents << saved.rdbuf();
         LHOLO_CHECK(contents.str().find("\"version\": 12") != std::string::npos);
-        LHOLO_CHECK(contents.str().find("\"language\": 1") != std::string::npos);
+        LHOLO_CHECK(contents.str().find("\"language\": \"en_US\"") != std::string::npos);
         LHOLO_CHECK(contents.str().find("\"altWheelOffsetEnabled\": false") != std::string::npos);
         LHOLO_CHECK(contents.str().find("\"moveUpHotkey\": 87") != std::string::npos);
         // The axis-era move key names are gone from new files; they are only
@@ -221,7 +221,7 @@ void testSettingsStore() {
 
     lholo::settings::Settings loaded;
     LHOLO_CHECK(lholo::settings::loadSettingsFile(path, loaded));
-    LHOLO_CHECK(loaded.language == 1);
+    LHOLO_CHECK(loaded.language == "en_US");
     LHOLO_CHECK(loaded.uiScale == 1.25f);
     LHOLO_CHECK(loaded.guiHotkey == 'L');
     LHOLO_CHECK(loaded.guiHotkeyModifiers == 1);
@@ -251,8 +251,8 @@ void testSettingsStore() {
     LHOLO_CHECK(!migrated.correctionSeeThrough);
     LHOLO_CHECK(!migrated.materialHudEnabled);
     LHOLO_CHECK(migrated.materialHudPosition == 3);
-    // A config written before the language field existed keeps the default.
-    LHOLO_CHECK(migrated.language == 0);
+    // A config without a valid language field uses the Chinese default.
+    LHOLO_CHECK(migrated.language == "zh_CN");
     // Likewise, a config written before the Alt+wheel switch existed keeps the
     // gesture enabled, so upgrading never silently changes input behavior.
     LHOLO_CHECK(migrated.altWheelOffsetEnabled);
@@ -261,6 +261,14 @@ void testSettingsStore() {
     LHOLO_CHECK(migrated.moveHotkeys[0] == 65);
     LHOLO_CHECK(migrated.moveHotkeyModifiers[0] == 2);
     LHOLO_CHECK(migrated.moveHotkeys[4] == 87);
+
+    {
+        std::ofstream invalidLanguage(path, std::ios::trunc);
+        invalidLanguage << R"({"language":1})";
+    }
+    lholo::settings::Settings invalid;
+    LHOLO_CHECK(lholo::settings::loadSettingsFile(path, invalid));
+    LHOLO_CHECK(invalid.language == "zh_CN");
 
     lholo::settings::Settings missing;
     std::filesystem::remove(path, error);
@@ -796,29 +804,38 @@ void testJavaTextComponents() {
 void testI18n() {
     using namespace lholo::i18n;
 
-    // The embedded language resources must parse and cover every key: this is the
-    // runtime successor of the old compile-time isComplete() check.
+    // Every locale discovered by the generated registry must parse and cover
+    // every key: this is the runtime successor of the old compile-time check.
     initLanguageStore();
-    for (auto const candidate : {Language::SimplifiedChinese, Language::English}) {
+    auto const available = languages();
+    LHOLO_CHECK(available.size() >= 2);
+
+    auto const chinese = languageFromCode("zh_CN");
+    auto const english = languageFromCode("en_US");
+    LHOLO_CHECK(chinese != kInvalidLanguage);
+    LHOLO_CHECK(english != kInvalidLanguage);
+    LHOLO_CHECK(defaultLanguage() == chinese);
+    LHOLO_CHECK(languageFromCode("missing_LOCALE") == kInvalidLanguage);
+
+    for (std::size_t index = 0; index < available.size(); ++index) {
+        auto const candidate = static_cast<Language>(index);
         auto const stats = languageStats(candidate);
         LHOLO_CHECK(stats.parsed);
+        LHOLO_CHECK(stats.metadataValid);
         LHOLO_CHECK(stats.missing == 0);
         LHOLO_CHECK(stats.unknown == 0);
         LHOLO_CHECK(stats.nonString == 0);
+        LHOLO_CHECK(stats.empty == 0);
+        LHOLO_CHECK(!available[index].code.empty());
+        LHOLO_CHECK(!available[index].displayName.empty());
     }
 
-    // Integer encoding round-trips and clamps unknown values to the default.
-    LHOLO_CHECK(toInt(Language::SimplifiedChinese) == 0);
-    LHOLO_CHECK(toInt(Language::English) == 1);
-    LHOLO_CHECK(languageFromInt(0) == Language::SimplifiedChinese);
-    LHOLO_CHECK(languageFromInt(1) == Language::English);
-    LHOLO_CHECK(languageFromInt(7) == Language::SimplifiedChinese);
-
-    // Every key resolves to text in both languages; every key except the "no
+    // Every key resolves to text in every language; every key except the "no
     // message" sentinel must carry actual wording.
     for (std::size_t index = 0; index < kTextKeyCount; ++index) {
         auto const key = static_cast<TextKey>(index);
-        for (auto const candidate : {Language::SimplifiedChinese, Language::English}) {
+        for (std::size_t languageIndex = 0; languageIndex < available.size(); ++languageIndex) {
+            auto const candidate = static_cast<Language>(languageIndex);
             auto const* text = tr(key, candidate);
             LHOLO_CHECK(text != nullptr);
             LHOLO_CHECK(key == TextKey::None ? *text == '\0' : *text != '\0');
@@ -832,8 +849,8 @@ void testI18n() {
     LHOLO_CHECK(tr(static_cast<TextKey>(kTextKeyCount)) != nullptr);
     LHOLO_CHECK(*tr(static_cast<TextKey>(kTextKeyCount)) == '\0');
 
-    // Both languages must declare the same placeholders for a key. A
-    // translation that drops or adds one would consume arguments that are not
+    // Every language must declare the same placeholders as the default locale.
+    // A translation that drops or adds one would consume arguments that are not
     // there (or silently ignore one that is).
     auto const placeholders = [](std::string_view text) {
         std::size_t count = 0;
@@ -858,32 +875,38 @@ void testI18n() {
     };
     for (std::size_t index = 0; index < kTextKeyCount; ++index) {
         auto const key = static_cast<TextKey>(index);
-        LHOLO_CHECK(
-            placeholders(tr(key, Language::SimplifiedChinese))
-            == placeholders(tr(key, Language::English))
-        );
+        auto const expected = placeholders(tr(key, chinese));
+        for (std::size_t languageIndex = 0; languageIndex < available.size(); ++languageIndex) {
+            LHOLO_CHECK(
+                placeholders(tr(key, static_cast<Language>(languageIndex))) == expected
+            );
+        }
     }
 
-    // Switching the active language changes lookups and is reversible.
-    setLanguage(Language::SimplifiedChinese);
+    // Switching the active language by index or stable code changes lookups and
+    // is reversible. An unknown code falls back to Simplified Chinese.
+    setLanguage(chinese);
     auto const chineseClose = std::string{tr(TextKey::MenuClose)};
-    setLanguage(Language::English);
+    setLanguage(english);
     auto const englishClose = std::string{tr(TextKey::MenuClose)};
     LHOLO_CHECK(chineseClose != englishClose);
-    LHOLO_CHECK(std::string{tr(TextKey::MenuClose, Language::SimplifiedChinese)} == chineseClose);
-    LHOLO_CHECK(std::string{tr(TextKey::MenuClose, Language::English)} == englishClose);
-    setLanguage(Language::SimplifiedChinese);
+    LHOLO_CHECK(std::string{tr(TextKey::MenuClose, chinese)} == chineseClose);
+    LHOLO_CHECK(std::string{tr(TextKey::MenuClose, english)} == englishClose);
+    LHOLO_CHECK(setLanguageByCode("en_US"));
+    LHOLO_CHECK(language() == english);
+    LHOLO_CHECK(!setLanguageByCode("missing_LOCALE"));
+    LHOLO_CHECK(language() == chinese);
     LHOLO_CHECK(std::string{tr(TextKey::MenuClose)} == chineseClose);
 
     // Language names are shown in their own language, never translated.
-    LHOLO_CHECK(std::string{languageName(Language::English)} == "English");
-    LHOLO_CHECK(std::string{languageName(Language::SimplifiedChinese)} != std::string{languageName(Language::English)});
+    LHOLO_CHECK(std::string{languageName(english)} == available[english].displayName);
+    LHOLO_CHECK(std::string{languageName(chinese)} == available[chinese].displayName);
 
     // Messages keep their arguments and follow the active language.
-    setLanguage(Language::English);
+    setLanguage(english);
     auto const englishFailure = format(Message{TextKey::StatusLoadFailed, {"boom"}});
     LHOLO_CHECK(englishFailure.find("boom") != std::string::npos);
-    setLanguage(Language::SimplifiedChinese);
+    setLanguage(chinese);
     auto const chineseFailure = format(Message{TextKey::StatusLoadFailed, {"boom"}});
     LHOLO_CHECK(chineseFailure != englishFailure);
     LHOLO_CHECK(chineseFailure.find("boom") != std::string::npos);

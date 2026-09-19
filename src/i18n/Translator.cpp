@@ -9,16 +9,28 @@
 namespace lholo::i18n {
 namespace {
 
-std::atomic_int gLanguage{toInt(Language::SimplifiedChinese)};
+std::atomic<std::size_t> gLanguage{kInvalidLanguage};
 
 } // namespace
 
 Language language() noexcept {
-    return languageFromInt(gLanguage.load(std::memory_order_acquire));
+    auto const value = gLanguage.load(std::memory_order_acquire);
+    return isValidLanguage(value) ? value : defaultLanguage();
 }
 
 void setLanguage(Language value) noexcept {
-    gLanguage.store(toInt(value), std::memory_order_release);
+    if (!isValidLanguage(value)) value = defaultLanguage();
+    gLanguage.store(value, std::memory_order_release);
+}
+
+bool setLanguageByCode(std::string_view code) noexcept {
+    auto const value = languageFromCode(code);
+    if (value == kInvalidLanguage) {
+        setLanguage(defaultLanguage());
+        return false;
+    }
+    setLanguage(value);
+    return true;
 }
 
 char const* tr(TextKey key) noexcept { return tr(key, language()); }
@@ -28,7 +40,9 @@ char const* tr(TextKey key, Language value) noexcept {
 }
 
 char const* languageName(Language value) noexcept {
-    return value == Language::English ? "English" : "简体中文";
+    if (!isValidLanguage(value)) return "";
+    auto const& info = languages()[value];
+    return info.displayName.empty() ? info.code.c_str() : info.displayName.c_str();
 }
 
 } // namespace lholo::i18n
