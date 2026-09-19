@@ -229,6 +229,18 @@ void loadFonts() {
             &config,
             io.Fonts->GetGlyphRangesChineseFull()
         );
+
+        // Merge Cyrillic glyphs into the already loaded font. Use ImGui's
+        // stable built-in range pointer; atlas construction happens later,
+        // so a temporary range buffer must not be passed here.
+        ImFontConfig cyrillicConfig = config;
+        cyrillicConfig.MergeMode = true;
+        io.Fonts->AddFontFromFileTTF(
+            chineseFont,
+            36.0f,
+            &cyrillicConfig,
+            io.Fonts->GetGlyphRangesCyrillic()
+        );
     } else {
         io.Fonts->AddFontDefault();
     }
