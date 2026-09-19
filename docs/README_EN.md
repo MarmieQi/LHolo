@@ -1,8 +1,15 @@
 # LHolo
 
-[简体中文](README.md)
+[简体中文](../README.md)
 
 `LHolo` is a client-side structure projection mod for [LeviLamina](https://github.com/LiteLDev/LeviLamina)
+
+## Versioning
+
+Example version: `v26.51.2`
+
+- `26.51`: the corresponding Minecraft game version
+- `.2`: the mod's second version for that game version
 
 ## Quick Start
 
