@@ -18,7 +18,6 @@
 #include "mc/world/Facing.h"
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/Block.h"
-#include "mc/world/level/block/BlockType.h"
 #include "mc/world/level/block/VanillaStates.h"
 #include "mc/world/level/block/states/BuiltInBlockStates.h"
 #include "mc/world/level/block/states/VanillaBlockStateTransformUtils.h"
@@ -81,8 +80,10 @@ Block const& withFlattenedConnections(
     BlockSource&    region,
     BlockPos const& position
 ) {
-    auto const& blockType = block.getBlockType();
-    if (!blockType.isFenceBlock() && !blockType.isThinFenceBlock()) return block;
+    // Data-driven v1_26_20 archetypes (glass panes, iron bars, tripwire, ...)
+    // carry the connection states without overriding the C++ fence
+    // predicates, so gate on state presence rather than on block type.
+    if (!block.getState<bool>(BuiltInBlockStates::ConnectionNorth())) return block;
     Block const* result = &block;
     auto const applyConnection = [&](
         BuiltInBlockStateVariant<bool> const& state,

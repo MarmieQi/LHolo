@@ -34,15 +34,15 @@ Block const* transformExpectedBlock(
     bool                           identityTransform
 );
 
-// Flattened fence-family blocks keep their arm directions in v1_26_20
-// connection states that real worlds maintain on neighbor updates while
-// structure palettes never store them. Returns the block with those states
-// recomputed for the neighborhood the caller sees at `position` (the
-// projected virtual world while a tessellation scope is active, the real
-// world otherwise), or `block` itself when it is not a fence family block.
-// Pure: only derives permutations via Block::setState and never writes to
-// the region, unlike BlockType::connectionUpdate, which applies its result
-// to the world.
+// Flattened connection blocks (fences, glass panes, iron bars, tripwire,
+// ...) keep their arm directions in v1_26_20 connection states that real
+// worlds maintain on neighbor updates while structure palettes never store
+// them. Returns the block with those states recomputed for the neighborhood
+// the caller sees at `position` (the projected virtual world while a
+// tessellation scope is active, the real world otherwise), or `block` itself
+// when it carries no connection states. Pure: only derives permutations via
+// Block::setState and never writes to the region, unlike
+// BlockType::connectionUpdate, which applies its result to the world.
 Block const& withFlattenedConnections(
     Block const&    block,
     BlockSource&    region,
