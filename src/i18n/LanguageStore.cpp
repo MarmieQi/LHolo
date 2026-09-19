@@ -2,6 +2,8 @@
 
 #include "i18n/LanguageStore.h"
 
+#include "../../build/generated/i18n/LanguageRegistry.generated.h"
+
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -10,6 +12,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <array>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -32,22 +35,25 @@ std::unordered_map<std::string, TextKey> const& idToKey() {
 }
 
 // Storage for parsed strings. Published tables point into these strings, so
-// they must outlive every lookup. The array is allocated (never freed) by
+// they must outlive every lookup. The arrays are allocated (never freed) by
 // initLanguageStore() and fully written before publication.
 struct ParsedLanguage {
     std::vector<std::string> owned;
-    std::array<char const*, kTextKeyCount> table{};  // pointers into `owned`
-    LanguageStats             stats{};
+    std::array<char const*, kTextKeyCount> table{}; // pointers into `owned`
+    LanguageStats stats{};
 };
 
-ParsedLanguage* gParsedLanguages = nullptr;
+struct LanguageStoreState {
+    std::vector<LanguageInfo> infos;
+    std::vector<ParsedLanguage> parsed;
+    Language                   fallback{kInvalidLanguage};
+};
+
+LanguageStoreState* gState = nullptr;
 
 // Address used to locate the DLL containing these resources. Passing nullptr
 // to FindResourceW would look in the Bedrock executable instead of LHolo.dll.
 char const kResourceModuleAnchor = 0;
-
-// SimplifiedChinese is the default UI language and doubles as the fallback.
-constexpr Language kFallbackLanguage = Language::SimplifiedChinese;
 
 std::string_view embeddedLanguageJson(wchar_t const* resourceName) noexcept {
     HMODULE module = nullptr;
@@ -68,7 +74,14 @@ std::string_view embeddedLanguageJson(wchar_t const* resourceName) noexcept {
     return {static_cast<char const*>(data), size};
 }
 
-void buildLanguage(ParsedLanguage& entry, std::string_view json) {
+void buildLanguage(
+    LanguageInfo& info,
+    ParsedLanguage& entry,
+    std::string_view code,
+    std::string_view json
+) {
+    info.code        = code;
+    info.displayName = std::string{code}; // Safe UI fallback for broken metadata.
     entry.owned.reserve(kTextKeyCount + 16);
     entry.table.fill(nullptr);
 
@@ -80,8 +93,21 @@ void buildLanguage(ParsedLanguage& entry, std::string_view json) {
     }
     entry.stats.parsed = true;
 
+    auto const metadata = document.find("_meta");
+    if (metadata != document.end() && metadata->is_object()) {
+        auto const displayName = metadata->find("displayName");
+        if (displayName != metadata->end()
+            && displayName->is_string()
+            && !displayName->get_ref<nlohmann::json::string_t const&>().empty()) {
+            info.displayName = displayName->get_ref<nlohmann::json::string_t const&>();
+        }
+    }
+    entry.stats.metadataValid = !info.displayName.empty() && info.displayName != info.code;
+
     std::vector<bool> seen(kTextKeyCount, false);
     for (auto const& [identifier, value] : document.items()) {
+        if (identifier == "_meta") continue;
+
         auto const found = idToKey().find(identifier);
         if (found == idToKey().end()) {
             ++entry.stats.unknown;
@@ -92,8 +118,12 @@ void buildLanguage(ParsedLanguage& entry, std::string_view json) {
             continue;
         }
         auto const index = static_cast<std::size_t>(found->second);
+        auto const& text = value.get_ref<nlohmann::json::string_t const&>();
+        if (found->second != TextKey::None && text.empty()) {
+            ++entry.stats.empty;
+        }
         // A JSON object cannot repeat a key, so `seen` only tracks coverage.
-        entry.owned.emplace_back(value.get_ref<nlohmann::json::string_t const&>());
+        entry.owned.emplace_back(text);
         entry.table[index] = entry.owned.back().c_str();
         seen[index]        = true;
     }
@@ -111,41 +141,75 @@ char const* tableLookup(ParsedLanguage const& entry, TextKey key) noexcept {
 } // namespace
 
 void initLanguageStore() {
-    auto* parsed = new ParsedLanguage[static_cast<std::size_t>(kLanguageCount)];
+    auto* state = new LanguageStoreState;
+    auto const count = generated::kLanguageResources.size();
+    state->infos.resize(count);
+    state->parsed.resize(count);
 
-    buildLanguage(
-        parsed[static_cast<std::size_t>(toInt(Language::SimplifiedChinese))],
-        embeddedLanguageJson(L"LHOLO_LANG_ZH_CN")
-    );
-    buildLanguage(
-        parsed[static_cast<std::size_t>(toInt(Language::English))],
-        embeddedLanguageJson(L"LHOLO_LANG_EN_US")
-    );
+    for (std::size_t index = 0; index < count; ++index) {
+        auto const& resource = generated::kLanguageResources[index];
+        buildLanguage(
+            state->infos[index],
+            state->parsed[index],
+            resource.code,
+            embeddedLanguageJson(resource.resourceName)
+        );
+    }
+
+    for (std::size_t index = 0; index < count; ++index) {
+        if (state->infos[index].code == kDefaultLanguageCode) {
+            state->fallback = index;
+            break;
+        }
+    }
 
     // Published once, on the main thread, before any render or worker thread
     // can call lookupText(); plain publication is sufficient.
-    gParsedLanguages = parsed;
+    gState = state;
+}
+
+std::span<LanguageInfo const> languages() noexcept {
+    if (gState == nullptr) return {};
+    return {gState->infos.data(), gState->infos.size()};
+}
+
+Language defaultLanguage() noexcept {
+    return gState == nullptr ? kInvalidLanguage : gState->fallback;
+}
+
+Language languageFromCode(std::string_view code) noexcept {
+    if (gState == nullptr) return kInvalidLanguage;
+    for (std::size_t index = 0; index < gState->infos.size(); ++index) {
+        if (gState->infos[index].code == code) return index;
+    }
+    return kInvalidLanguage;
+}
+
+bool isValidLanguage(Language language) noexcept {
+    return gState != nullptr && language < gState->infos.size();
+}
+
+std::string_view languageCode(Language language) noexcept {
+    if (!isValidLanguage(language)) return {};
+    return gState->infos[language].code;
 }
 
 LanguageStats languageStats(Language language) noexcept {
-    if (gParsedLanguages == nullptr) return {};
-    auto const index = toInt(language);
-    if (index < 0 || index >= kLanguageCount) return {};
-    return gParsedLanguages[static_cast<std::size_t>(index)].stats;
+    if (!isValidLanguage(language)) return {};
+    return gState->parsed[language].stats;
 }
 
 char const* lookupText(TextKey key, Language language) noexcept {
-    if (gParsedLanguages != nullptr) {
-        auto const languageIndex = static_cast<std::size_t>(toInt(language));
-        if (languageIndex < static_cast<std::size_t>(kLanguageCount)) {
-            if (char const* text = tableLookup(gParsedLanguages[languageIndex], key);
+    if (gState != nullptr) {
+        if (isValidLanguage(language)) {
+            if (char const* text = tableLookup(gState->parsed[language], key);
                 text != nullptr && *text != '\0') {
                 return text;
             }
         }
-        auto const fallbackIndex = static_cast<std::size_t>(toInt(kFallbackLanguage));
-        if (fallbackIndex != languageIndex) {
-            if (char const* text = tableLookup(gParsedLanguages[fallbackIndex], key);
+        auto const fallback = gState->fallback;
+        if (fallback != kInvalidLanguage && fallback != language) {
+            if (char const* text = tableLookup(gState->parsed[fallback], key);
                 text != nullptr && *text != '\0') {
                 return text;
             }

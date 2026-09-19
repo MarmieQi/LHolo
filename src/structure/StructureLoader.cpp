@@ -763,7 +763,13 @@ void loadSettings() {
             saveSettings();
             return;
         }
-        i18n::setLanguage(i18n::languageFromInt(settings.language));
+        if (!i18n::setLanguageByCode(settings.language)) {
+            logger().warn(
+                "Invalid interface language '{}'; using '{}'",
+                settings.language,
+                i18n::kDefaultLanguageCode
+            );
+        }
         session.setLastPath(settings.lastStructurePath);
         uiState().setUiScale(std::clamp(settings.uiScale, 0.0f, 5.0f));
         projection::setOpacity(settings.opacity);
@@ -868,7 +874,7 @@ void saveSettings() {
         auto const hud = uiState().hud();
         lholo::settings::Settings settings;
         settings.lastStructurePath = sessionSnapshot.lastPath;
-        settings.language = i18n::toInt(i18n::language());
+        settings.language = std::string{i18n::languageCode(i18n::language())};
         settings.uiScale = hud.uiScale;
         settings.opacity = projection::getOpacity();
         settings.correctionFillOpacity = projection::getCorrectionFillOpacity();
