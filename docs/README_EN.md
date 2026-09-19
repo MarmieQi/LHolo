@@ -42,9 +42,7 @@
 **Language**
 
 - 简体中文 (Simplified Chinese)
-- 繁體中文 (Traditional Chinese)
 - English
-- Русский (Russian)
 
 ## Showcase
 
