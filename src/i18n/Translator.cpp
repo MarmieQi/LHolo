@@ -2,7 +2,7 @@
 
 #include "i18n/Translator.h"
 
-#include "i18n/TextTable.h"
+#include "i18n/LanguageStore.h"
 
 #include <atomic>
 
@@ -10,10 +10,6 @@ namespace lholo::i18n {
 namespace {
 
 std::atomic_int gLanguage{toInt(Language::SimplifiedChinese)};
-
-TextTable const& tableFor(Language language) noexcept {
-    return language == Language::English ? kEnglishTable : kSimplifiedChineseTable;
-}
 
 } // namespace
 
@@ -28,10 +24,7 @@ void setLanguage(Language value) noexcept {
 char const* tr(TextKey key) noexcept { return tr(key, language()); }
 
 char const* tr(TextKey key, Language value) noexcept {
-    auto const index = static_cast<std::size_t>(key);
-    if (index >= kTextKeyCount) return "";
-    auto const* text = tableFor(value)[index];
-    return text != nullptr ? text : "";
+    return lookupText(key, value);
 }
 
 char const* languageName(Language value) noexcept {
