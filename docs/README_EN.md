@@ -48,22 +48,22 @@
 
 **Mod menu**
 
-![image-20260918202008186](assets/zh-cn/image-20260918202008186.png)
+![image-20260918202008186](images/image-20260918202008186.png)
 
 **Loading a structure**
 
-![image-20260918200440220](assets/zh-cn/image-20260918200440220.png)
+![image-20260918200440220](images/image-20260918200440220.png)
 
 **Correction**
 
-![image-20260918201002570](assets/zh-cn/image-20260918201002570.png)
+![image-20260918201002570](images/image-20260918201002570.png)
 
 **Material list**
 
-![image-20260918201318315](assets/zh-cn/image-20260918201318315.png)
+![image-20260918201318315](images/image-20260918201318315.png)
 
 **Language setting**
 
 How to find it: open the mod main menu -> Interface -> Language
 
-![image-20260918202312106](assets/zh-cn/image-20260918202312106.png)
+![image-20260918202312106](images/image-20260918202312106.png)

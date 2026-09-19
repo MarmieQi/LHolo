@@ -1,6 +1,6 @@
 # LHolo
 
-[English](README_EN.md)
+[English](docs/README_EN.md)
 
 `LHolo` 是一个 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 客户端投影模组
 
@@ -50,25 +50,25 @@
 
 **模组菜单页面**
 
-![image-20260918202008186](assets/zh-cn/image-20260918202008186.png)
+![image-20260918202008186](docs/images/image-20260918202008186.png)
 
 **加载结构**
 
-![image-20260918200440220](assets/zh-cn/image-20260918200440220.png)
+![image-20260918200440220](docs/images/image-20260918200440220.png)
 
 **纠错**
 
-![image-20260918201002570](assets/zh-cn/image-20260918201002570.png)
+![image-20260918201002570](docs/images/image-20260918201002570.png)
 
 **材料清单**
 
-![image-20260918201318315](assets/zh-cn/image-20260918201318315.png)
+![image-20260918201318315](docs/images/image-20260918201318315.png)
 
 **语言设置**
 
 入口：打开模组主菜单 -> 界面设置 -> 语言
 
-![image-20260918202312106](assets/zh-cn/image-20260918202312106.png)
+![image-20260918202312106](docs/images/image-20260918202312106.png)
 
 
 
