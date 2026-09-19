@@ -16,7 +16,7 @@
 
 - Both `.mcstructure` and `.litematic` (Java Edition Litematica schematics) files
 
-**Correction system**
+**Correction**
 
 - Blue = projected block not placed yet
 - Red = wrong block placed

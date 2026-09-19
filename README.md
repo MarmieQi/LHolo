@@ -18,7 +18,7 @@
 
 - 支持 `.mcstructure` 和 `.litematic`(Java 版 Litematica 蓝图)两种文件
 
-**纠错系统**
+**纠错**
 
 - 蓝色 = 未放置投影方块
 - 红色 = 方块放置错误
