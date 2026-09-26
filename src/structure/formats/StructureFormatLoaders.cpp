@@ -617,6 +617,13 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
         };
         assign(primary);
         assign(secondary);
+        if (primary && primary->getTypeName() == "minecraft:bubble_column") {
+            block = primary;
+            liquid = (secondary && secondary->getBlockType().mMaterial.mLiquid) ? secondary : nullptr;
+        } else if (secondary && secondary->getTypeName() == "minecraft:bubble_column") {
+            block = secondary;
+            liquid = (primary && primary->getBlockType().mMaterial.mLiquid) ? primary : nullptr;
+        }
         if (!block && !liquid) continue;
         auto const x = index / yz;
         auto const remainder = index % yz;
