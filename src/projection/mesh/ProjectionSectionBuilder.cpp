@@ -54,7 +54,7 @@ constexpr std::uint32_t WrongBlockColorAbgrRgb = 0x003333FFU; // #FF3333
 constexpr std::uint32_t WrongStateColorAbgrRgb = 0x001090FFU; // #FF9010
 
 constexpr std::uint32_t LiquidWaterTintAbgrRgb = 0x00E4763FU; // #3F76E4
-constexpr std::uint32_t LiquidLavaTintAbgrRgb  = 0x00FFFFFFU; // white
+constexpr std::uint32_t LiquidLavaTintAbgrRgb  = 0x001080FFU; // #FF8010
 
 void setColorAbgr(Tessellator& tessellator, std::uint32_t colorAbgr) {
     tessellator.color(
@@ -97,6 +97,31 @@ int correctionPriority(CorrectionState state) {
         : state == CorrectionState::WrongState ? 3
         : state == CorrectionState::Missing ? 1
         : 0;
+}
+
+int getLiquidDepth(Block const& block) {
+    for (auto const& [key, value] : block.mSerializationId.get()) {
+        if (key != "states" || !value.hold<::CompoundTag>()) continue;
+        for (auto const& [stateKey, stateValue] : value.get<::CompoundTag>()) {
+            if (stateKey == "liquid_depth" && stateValue.getId() == ::Tag::Type::Int) {
+                return stateValue.get<::IntTag>().data;
+            }
+        }
+    }
+    return 0;
+}
+
+constexpr float getFluidHeight(int depth) {
+    if (depth <= 0) return 8.0f / 9.0f;   // source
+    if (depth >= 8) return 1.0f;          // falling counts as full
+    return (8.0f - static_cast<float>(depth)) / 9.0f;
+}
+
+std::uint32_t applyShade(std::uint32_t rgb, float factor, std::uint32_t alphaByte) {
+    auto const r = static_cast<std::uint32_t>(std::clamp(static_cast<int>(std::lround(((rgb >> 0) & 0xFFU) * factor)), 0, 255));
+    auto const g = static_cast<std::uint32_t>(std::clamp(static_cast<int>(std::lround(((rgb >> 8) & 0xFFU) * factor)), 0, 255));
+    auto const b = static_cast<std::uint32_t>(std::clamp(static_cast<int>(std::lround(((rgb >> 16) & 0xFFU) * factor)), 0, 255));
+    return (alphaByte << 24U) | (b << 16U) | (g << 8U) | r;
 }
 
 } // namespace
@@ -372,15 +397,45 @@ void buildLiquidProxySectionMesh(
             static_cast<int>(liquidProxyIndices.size() * 24),
             false
         );
-        auto const alpha = static_cast<uint>(std::lround(
-            std::clamp(structureOpacity, 0.05f, 1.0f) * 255.0f
-        ));
         for (auto const index : liquidProxyIndices) {
             auto const& entry = state.structure->renderBlocks[index];
             auto const* expectedLiquid = transformExpectedBlock(entry.liquid, sectionTransformSettings, identityTransform);
             if (!expectedLiquid) continue;
+
+            bool const isLava = expectedLiquid->getTypeName().find("lava") != std::string::npos
+                || expectedLiquid->getBlockType().mMaterial.mSuperHot;
+
+            // Route B: Water uses standard blue (#3F76E4) to tint grayscale water tiles.
+            // Lava uses fiery molten orange (#FF8010), ensuring grayscale flowing lava tiles
+            // and fallback tiles display rich, warm molten color rather than rendering white.
+            auto const baseRgb = isLava ? LiquidLavaTintAbgrRgb : LiquidWaterTintAbgrRgb;
+            float const effectiveAlpha = isLava
+                ? std::clamp(structureOpacity * 0.85f, 0.25f, 0.95f)
+                : std::clamp(structureOpacity * 0.65f, 0.15f, 0.85f);
+            auto const alphaByte = static_cast<std::uint32_t>(std::lround(effectiveAlpha * 255.0f));
+
+            // Directional shading preserves 3D volume perception in transparent mode.
+            auto const topColor    = applyShade(baseRgb, 1.00f, alphaByte);
+            auto const bottomColor = applyShade(baseRgb, 0.60f, alphaByte);
+            auto const nsColor     = applyShade(baseRgb, 0.85f, alphaByte);
+            auto const ewColor     = applyShade(baseRgb, 0.75f, alphaByte);
+
             auto const* graphics = BlockGraphics::getForBlock(*expectedLiquid);
-            auto const* uvSet = graphics ? &graphics->getTexture(0, 0) : nullptr;
+            auto const* uvSetStill = graphics ? &graphics->getTexture(0, 0) : nullptr;
+            auto const* uvSetFlow = graphics ? &graphics->getTexture(2, 0) : nullptr;
+            if (!uvSetFlow) uvSetFlow = uvSetStill;
+
+            float const u0_s = uvSetStill ? uvSetStill->_u0 : 0.0f;
+            float const v0_s = uvSetStill ? uvSetStill->_v0 : 0.0f;
+            float const u1_s = uvSetStill ? uvSetStill->_u1 : 0.0f;
+            float const v1_s = uvSetStill ? uvSetStill->_v1 : 0.0f;
+
+            float const u0_f = uvSetFlow ? uvSetFlow->_u0 : u0_s;
+            float const v0_f = uvSetFlow ? uvSetFlow->_v0 : v0_s;
+            float const u1_f = uvSetFlow ? uvSetFlow->_u1 : u1_s;
+            float const v1_f = uvSetFlow ? uvSetFlow->_v1 : v1_s;
+            float const dv_f = v1_f - v0_f;
+
             auto const p = transformStructurePosition(entry, *state.structure, mirrorMode, rotationTurns);
             BlockPos const worldPosition{
                 state.anchor.x + offsetX + p.x,
@@ -399,39 +454,29 @@ void buildLiquidProxySectionMesh(
                 auto const* neighbor = neighborEntry(dx, dy, dz);
                 if (!neighbor || !neighbor->liquid) return false;
                 auto const* transformed = transformExpectedBlock(neighbor->liquid, sectionTransformSettings, identityTransform);
-                return transformed && transformed->getTypeName() == expectedLiquid->getTypeName();
+                if (!transformed) return false;
+                auto const isLavaNeighbor = transformed->getTypeName().find("lava") != std::string::npos
+                    || transformed->getBlockType().mMaterial.mSuperHot;
+                return isLavaNeighbor == isLava;
             };
+
             // Flow-aware surface. Source and submerged cells stay full;
             // flowing cells taper by liquid_depth, and each top corner is
             // averaged from the surrounding same-liquid columns (an air
             // column pulls a corner down toward the spill). The result is
             // a surface that slopes downhill, showing the flow direction.
             constexpr float surface = 8.0f / 9.0f;
-            auto const liquidDepth = [](Block const& block) -> int {
-                for (auto const& [key, value] : block.mSerializationId.get()) {
-                    if (key != "states" || !value.hold<::CompoundTag>()) continue;
-                    for (auto const& [stateKey, stateValue] : value.get<::CompoundTag>()) {
-                        if (stateKey == "liquid_depth" && stateValue.getId() == ::Tag::Type::Int)
-                            return stateValue.get<::IntTag>().data;
-                    }
-                }
-                return 0;
-            };
-            auto const fluidHeight = [](int depth) -> float {
-                if (depth <= 0) return 8.0f / 9.0f;   // source
-                if (depth >= 8) return 1.0f;          // falling counts as full
-                return (8.0f - static_cast<float>(depth)) / 9.0f;
-            };
-            // Height (0..1) of the same-liquid column at (dx,dz); -1 for a
-            // solid/other block (ignored), 0 for air (spill).
             auto const columnHeight = [&](int dx, int dz) -> float {
                 auto const* n = (dx == 0 && dz == 0) ? &entry : neighborEntry(dx, 0, dz);
                 if (!n) return 0.0f;
                 if (!n->liquid) return -1.0f;
                 auto const* t = transformExpectedBlock(n->liquid, sectionTransformSettings, identityTransform);
-                if (!t || t->getTypeName() != expectedLiquid->getTypeName()) return -1.0f;
+                if (!t) return -1.0f;
+                auto const isLavaNeighbor = t->getTypeName().find("lava") != std::string::npos
+                    || t->getBlockType().mMaterial.mSuperHot;
+                if (isLavaNeighbor != isLava) return -1.0f;
                 if (neighborIsSameLiquid(dx, 1, dz)) return 1.0f;  // submerged
-                return fluidHeight(liquidDepth(*t));
+                return getFluidHeight(getLiquidDepth(*t));
             };
             auto const cornerHeight = [&](int dx, int dz) -> float {
                 float best = -1.0f, sum = 0.0f;
@@ -447,46 +492,75 @@ void buildLiquidProxySectionMesh(
                 if (best >= surface) return best;  // a source/full column keeps it high
                 return count > 0 ? sum / static_cast<float>(count) : surface;
             };
-            auto const tint = expectedLiquid->getBlockType().mMaterial.mSuperHot
-                ? (LiquidLavaTintAbgrRgb | (alpha << 24U))
-                : (LiquidWaterTintAbgrRgb | (alpha << 24U));
+
             float const x0 = static_cast<float>(p.x);
             float const y0 = static_cast<float>(p.y);
             float const z0 = static_cast<float>(p.z);
             float const x1 = static_cast<float>(p.x + 1);
             float const z1 = static_cast<float>(p.z + 1);
+
             // Per-corner top heights (world Y). c<x><z>: x0/x1, z0/z1.
             float const yc00 = y0 + cornerHeight(-1, -1);
             float const yc10 = y0 + cornerHeight( 1, -1);
             float const yc01 = y0 + cornerHeight(-1,  1);
             float const yc11 = y0 + cornerHeight( 1,  1);
-            // Full-tile UVs when the atlas tile is available; a tiny
-            // degenerate UV otherwise still renders as flat tint.
-            float const u0 = uvSet ? uvSet->_u0 : 0.0f;
-            float const v0 = uvSet ? uvSet->_v0 : 0.0f;
-            float const u1 = uvSet ? uvSet->_u1 : 0.0f;
-            float const v1 = uvSet ? uvSet->_v1 : 0.0f;
-            auto addLiquidFace = [&](
-                Vec3 const& a, Vec3 const& b, Vec3 const& c, Vec3 const& d
+
+            auto addQuad = [&](
+                Vec3 const& p0, float uA, float vA,
+                Vec3 const& p1, float uB, float vB,
+                Vec3 const& p2, float uC, float vC,
+                Vec3 const& p3, float uD, float vD,
+                std::uint32_t color
             ) {
-                setColorAbgr(tessellator, tint);
-                tessellator.tex2({u0, v0}); tessellator.vertex(a.x, a.y, a.z);
-                tessellator.tex2({u0, v1}); tessellator.vertex(b.x, b.y, b.z);
-                tessellator.tex2({u1, v1}); tessellator.vertex(c.x, c.y, c.z);
-                tessellator.tex2({u1, v0}); tessellator.vertex(d.x, d.y, d.z);
+                setColorAbgr(tessellator, color);
+                tessellator.tex2({uA, vA}); tessellator.vertex(p0.x, p0.y, p0.z);
+                tessellator.tex2({uB, vB}); tessellator.vertex(p1.x, p1.y, p1.z);
+                tessellator.tex2({uC, vC}); tessellator.vertex(p2.x, p2.y, p2.z);
+                tessellator.tex2({uD, vD}); tessellator.vertex(p3.x, p3.y, p3.z);
             };
-            if (!neighborEntry(0, -1, 0))
-                addLiquidFace({x0,y0,z1}, {x0,y0,z0}, {x1,y0,z0}, {x1,y0,z1});
-            if (!neighborIsSameLiquid(0, 1, 0))
-                addLiquidFace({x0,yc00,z0}, {x0,yc01,z1}, {x1,yc11,z1}, {x1,yc10,z0});
-            if (!neighborIsSameLiquid(0, 0, -1))
-                addLiquidFace({x0,y0,z0}, {x0,yc00,z0}, {x1,yc10,z0}, {x1,y0,z0});
-            if (!neighborIsSameLiquid(0, 0, 1))
-                addLiquidFace({x1,y0,z1}, {x1,yc11,z1}, {x0,yc01,z1}, {x0,y0,z1});
-            if (!neighborIsSameLiquid(-1, 0, 0))
-                addLiquidFace({x0,y0,z1}, {x0,yc01,z1}, {x0,yc00,z0}, {x0,y0,z0});
-            if (!neighborIsSameLiquid(1, 0, 0))
-                addLiquidFace({x1,y0,z0}, {x1,yc10,z0}, {x1,yc11,z1}, {x1,y0,z1});
+
+            auto const* bottom = neighborEntry(0, -1, 0);
+            bool const bottomIsSolid = bottom && bottom->block && !bottom->block->isAir();
+            bool const bottomIsSameLiquid = neighborIsSameLiquid(0, -1, 0);
+            if (!bottomIsSolid && !bottomIsSameLiquid) {
+                addQuad(
+                    {x0, y0, z1}, u0_s, v1_s,
+                    {x0, y0, z0}, u0_s, v0_s,
+                    {x1, y0, z0}, u1_s, v0_s,
+                    {x1, y0, z1}, u1_s, v1_s,
+                    bottomColor
+                );
+            }
+            if (!neighborIsSameLiquid(0, 1, 0)) {
+                addQuad(
+                    {x0, yc00, z0}, u0_s, v0_s,
+                    {x0, yc01, z1}, u0_s, v1_s,
+                    {x1, yc11, z1}, u1_s, v1_s,
+                    {x1, yc10, z0}, u1_s, v0_s,
+                    topColor
+                );
+            }
+
+            auto addSideFace = [&](
+                float xA, float zA, float ycA,
+                float xB, float zB, float ycB,
+                std::uint32_t color
+            ) {
+                float const hA = std::clamp(ycA - y0, 0.0f, 1.0f);
+                float const hB = std::clamp(ycB - y0, 0.0f, 1.0f);
+                addQuad(
+                    {xA, y0,  zA}, u0_f, v1_f,
+                    {xA, ycA, zA}, u0_f, v1_f - dv_f * hA,
+                    {xB, ycB, zB}, u1_f, v1_f - dv_f * hB,
+                    {xB, y0,  zB}, u1_f, v1_f,
+                    color
+                );
+            };
+
+            if (!neighborIsSameLiquid( 0, 0, -1)) addSideFace(x0, z0, yc00, x1, z0, yc10, nsColor);
+            if (!neighborIsSameLiquid( 0, 0,  1)) addSideFace(x1, z1, yc11, x0, z1, yc01, nsColor);
+            if (!neighborIsSameLiquid(-1, 0,  0)) addSideFace(x0, z1, yc01, x0, z0, yc00, ewColor);
+            if (!neighborIsSameLiquid( 1, 0,  0)) addSideFace(x1, z0, yc10, x1, z1, yc11, ewColor);
         }
         state.liquidProxySectionMeshes[section] = std::make_unique<mce::Mesh>(tessellator.end(
             uploadMode,
