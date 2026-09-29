@@ -634,6 +634,8 @@ bool resolveOrientedPlacement(
     int                     itemAux,
     ProjectionTarget&       out
 ) {
+    if (!region.getBlock(cell).isAir()) return false;
+
     Block const* expectedDoorUpper = nullptr;
     bool const   isDoor = isTwoBlockDoor(ghost);
 
@@ -750,6 +752,12 @@ void tickRangePlaceImpl(LocalPlayer& player, PlacementContext const& placementCo
     for (auto const& cand : candidates) {
         BlockPos const cell{cand.x, cand.y, cand.z};
 
+        // Real-world occupancy guard: if a block already occupies this cell in
+        // the world, skip it immediately. This skips already-placed blocks,
+        // waterlogged blocks whose solid body is in place, and saves expensive
+        // inventory scans, hashing, and placement resolution.
+        if (!region.getBlock(cell).isAir()) continue;
+
         // Empty suppression state takes one branch for the entire candidate
         // batch; hash lookups happen only during an active ten-second window.
         if (suppressionsActive
@@ -798,8 +806,11 @@ void tickRangePlaceImpl(LocalPlayer& player, PlacementContext const& placementCo
             return;
         }
         player.setSelectedSlot(found.slot);
-        if (placeBlock(player, target, found.slot, *found.item)) markPlaced(cell, now);
-        return;
+        if (placeBlock(player, target, found.slot, *found.item)) {
+            markPlaced(cell, now);
+            return;
+        }
+        cacheFailedPlan(failedKey, now);
     }
 }
 
