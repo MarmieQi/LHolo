@@ -105,12 +105,20 @@ Block const& withFlattenedConnections(
 
 bool projectionStatesMatch(Block const& expected, Block const& actual) {
     if (expected == actual) return true;
-    if (expected.getTypeName() != actual.getTypeName()) return false;
+    auto const& typeName = expected.getTypeName();
+    if (typeName != actual.getTypeName()) return false;
     // Litematic's Java `stage` maps to Bedrock's dynamic `age_bit`, which is
     // reset when a player places a sapling. Ignore only that growth bit; any
     // other present or future sapling state remains part of correction.
-    if (isVanillaSaplingType(expected.getTypeName())) {
+    if (isVanillaSaplingType(typeName)) {
         return serializedStatesMatchExcept(expected, actual, "age_bit");
+    }
+    // Bamboo states (age_bit, bamboo_leaf_size, bamboo_stalk_thickness) are
+    // dynamic botanical growth states computed by the game engine based on column
+    // height and growth ticks. Players have zero manual control over them.
+    // Matching block type identity is sufficient.
+    if (typeName == "minecraft:bamboo") {
+        return true;
     }
 
     auto stateMatches = [&](auto const& state) {

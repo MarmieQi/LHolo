@@ -557,6 +557,10 @@ bool placementPredictionMatches(
         != block::placeableBaseName(ghost.getTypeName())) return false;
 
     auto const& name = ghost.getTypeName();
+    // Bamboo has only dynamic botanical growth states (age_bit, leaves, thickness)
+    // simulated by the game engine, not chosen at placement. Type identity is sufficient.
+    if (name == "minecraft:bamboo") return true;
+
     if (name.ends_with("_stairs")) {
         return sameSerializedState(predicted, ghost, "weirdo_direction")
             && sameSerializedState(predicted, ghost, "upside_down_bit");
