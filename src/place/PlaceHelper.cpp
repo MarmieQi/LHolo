@@ -77,10 +77,24 @@ LL_TYPE_INSTANCE_HOOK(
     structure::detail::tickMaterialTracker(*this);
     // Physical mouse state belongs to the game-input Hook boundary. The
     // executor consumes only the resulting logical press state.
-    if (placementState().manualMode()
-        && (GetAsyncKeyState(VK_RBUTTON) & 0x8000) == 0) {
+    bool const rightDown = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+    if (placementState().manualMode() && !rightDown) {
         placementState().releaseManualPress();
     }
+    // An empty hand has nothing to build or use, so Bedrock calls neither
+    // startBuildBlock nor useItem and the press hooks never see the click.
+    // Take the press edge from the physical button instead; the placement
+    // then selects the matching hotbar slot like any other manual press.
+    static bool sRightWasDown = false;
+    if (rightDown && !sRightWasDown && placementState().manualMode()
+        && this->getSelectedItem().isNull() && !structure::isGuiVisible()) {
+        auto client = ll::service::getClientInstance();
+        if (client && client->isInGameInputEnabled()
+            && detail::manualTargetStatusUnderCrosshair() == detail::ManualTargetStatus::Ready) {
+            (void)placementState().beginManualPress(GetTickCount64());
+        }
+    }
+    sRightWasDown = rightDown;
     detail::tickEasyPlace();
     origin(currentTick);
 }

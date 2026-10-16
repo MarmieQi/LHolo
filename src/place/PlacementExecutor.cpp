@@ -24,6 +24,7 @@
 
 #include "ll/api/mod/NativeMod.h"
 #include "ll/api/service/Bedrock.h"
+#include "ll/api/thread/ServerThreadExecutor.h"
 
 #include "mc/client/game/ClientInstance.h"
 #include "mc/client/game/IClientInstance.h"
@@ -34,8 +35,10 @@
 #include "mc/world/Facing.h"
 #include "mc/world/gamemode/GameMode.h"
 #include "mc/world/ContainerID.h"
+#include "mc/world/actor/ActorSwingSource.h"
 #include "mc/world/actor/player/Inventory.h"
 #include "mc/world/actor/player/Player.h"
+#include "mc/world/actor/player/PlayerInventory.h"
 #include "mc/world/inventory/transaction/ComplexInventoryTransaction.h"
 #include "mc/world/inventory/transaction/InventoryAction.h"
 #include "mc/world/inventory/transaction/InventorySource.h"
@@ -46,7 +49,9 @@
 #include "mc/world/item/ItemInstance.h"
 #include "mc/world/item/HandSlot.h"
 #include "mc/world/item/ItemStack.h"
+#include "mc/world/Minecraft.h"
 #include "mc/world/level/BlockPos.h"
+#include "mc/world/level/Level.h"
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/Tick.h"
 #include "mc/world/level/block/Block.h"
@@ -144,6 +149,18 @@ void updateAimedProjectedBlockName(Block const* block) {
     placementState().setAimedProjectedBlockName(
         block ? block->buildDescriptionName() : std::string{}
     );
+}
+
+// Since 1.26.51 Player::setSelectedSlot no longer moves the client's visible
+// hotbar selection, so the placement went out with the wrong held item and the
+// server rejected it. Select through PlayerInventory, the same path the scroll
+// wheel uses, so the HUD follows and the change syncs; keep setSelectedSlot for
+// the equipment-side update.
+void selectHotbarSlot(Player& player, int slot) {
+    if (auto& inventory = player.mInventory; inventory) {
+        inventory->selectSlot(slot, ContainerID::Inventory);
+    }
+    player.setSelectedSlot(slot);
 }
 
 struct ItemFind {
@@ -271,6 +288,35 @@ void sendInventorySwap(int fromSlot, int toSlot, ItemStack const& fromItem, Item
 // thrash through a single slot — each lands in its own empty slot and stays
 // there (next tick it is already in the bar, no further swap). Only when the
 // hotbar is completely full do we fall back to the currently selected slot.
+int chooseHotbarSwapTarget(Player& player);
+
+// Creative mode can take any block from the creative inventory, so a block that
+// is nowhere in the inventory is still placeable. The client cannot create an
+// item itself (the server rejects a legacy creative transaction, and the
+// creative ItemStackRequest action is not exposed), but in single player / a
+// hosted world the server runs in this process: put the block into a hotbar
+// slot on the server thread and let the server sync the slot back. The next
+// tick then finds it in the hotbar and places it as usual. On a remote server
+// there is no in-process server and nothing happens.
+bool giveMissingBlockInCreative(Player& player, Block const& block, std::uint64_t now) {
+    if (!player.isCreative()) return false;
+    if (now < placementState().nextSwapAt()) return true;  // a give is in flight
+    placementState().setNextSwapAt(now + kSwapRetryMs);
+    int const hotbarSlot = chooseHotbarSwapTarget(player);
+    ItemStack item = block::makePlacementItem(block);
+    ll::thread::ServerThreadExecutor::getDefault().execute(
+        [uuid = player.getUuid(), hotbarSlot, item = std::move(item)] {
+            auto minecraft = ll::service::getMinecraft(false);
+            auto* level = minecraft ? minecraft->getLevel() : nullptr;
+            auto* serverPlayer = level ? level->getPlayer(uuid) : nullptr;
+            if (!serverPlayer || !serverPlayer->isCreative()) return;
+            serverPlayer->getInventory().setItem(hotbarSlot, item);
+            serverPlayer->sendInventory(false);
+        }
+    );
+    return true;
+}
+
 int chooseHotbarSwapTarget(Player& player) {
     auto& inventory = player.getInventory();
     for (int slot = 0; slot < kHotbarSlots; ++slot) {
@@ -455,6 +501,10 @@ bool placeBlock(LocalPlayer& player, ProjectionTarget const& target, int slot, I
     auto client = ll::service::getClientInstance();
     if (!client) return false;
     client->getPacketSender().sendToServer(packet);
+    // The packet bypasses the game's own use-item path, so nothing animates the
+    // arm after the first (vanilla) click. Swing it ourselves, as vanilla does
+    // for every placement.
+    player.swing(ActorSwingSource::Build, HandSlot::Mainhand);
     placementState().setNextPlaceAt(GetTickCount64() + kMinSendIntervalMs);
     return true;
 }
@@ -774,7 +824,10 @@ void tickRangePlaceImpl(LocalPlayer& player, PlacementContext const& placementCo
         if (recentlyPlaced(cell, now)) continue;
 
         auto const found = findItemSlot(inventorySnapshot, *cand.block);
-        if (found.slot < 0) continue;
+        if (found.slot < 0) {
+            if (giveMissingBlockInCreative(player, *cand.block, now)) return;
+            continue;
+        }
 
         FailedPlanKey const failedKey =
             makeFailedPlanKey(placementContext, cell, *cand.block, found.item->getAuxValue());
@@ -809,7 +862,7 @@ void tickRangePlaceImpl(LocalPlayer& player, PlacementContext const& placementCo
             placementState().setNextSwapAt(now + kSwapRetryMs);
             return;
         }
-        player.setSelectedSlot(found.slot);
+        selectHotbarSlot(player, found.slot);
         if (placeBlock(player, target, found.slot, *found.item)) {
             markPlaced(cell, now);
             return;
@@ -912,7 +965,10 @@ void tickEasyPlaceImpl() {
     if (recentlyPlaced(target->cell, now)) return;
 
     auto const found = findItemSlot(*player, *target->block);
-    if (found.slot < 0) return;
+    if (found.slot < 0) {
+        giveMissingBlockInCreative(*player, *target->block, now);
+        return;
+    }
 
     // Only send a placement whose full predicted state and official placement
     // checks match the projection, using the real stack's aux value.
@@ -948,7 +1004,7 @@ void tickEasyPlaceImpl() {
         placementState().setNextSwapAt(now + kSwapRetryMs);
         return;
     }
-    player->setSelectedSlot(found.slot);
+    selectHotbarSlot(*player, found.slot);
     if (!placeBlock(*player, placement, found.slot, *found.item)) return;
     markPlaced(placement.cell, now);
     // Manual repeat bookkeeping: record this placement and mark the current
@@ -971,7 +1027,8 @@ ManualTargetStatus manualTargetStatusUnderCrosshair() {
     Vec3 const dir{rawDir.x / length, rawDir.y / length, rawDir.z / length};
     auto const target = findProjectionTarget(*player, eye, dir, player->getPickRange());
     if (!target) return ManualTargetStatus::None;
-    return findItemSlot(*player, *target->block).slot >= 0
+    // Creative can fetch any block from the creative inventory.
+    return player->isCreative() || findItemSlot(*player, *target->block).slot >= 0
         ? ManualTargetStatus::Ready
         : ManualTargetStatus::MissingMaterial;
 }
