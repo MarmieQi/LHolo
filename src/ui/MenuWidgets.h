@@ -16,6 +16,7 @@ float adaptiveComboWidth(char const* const* items, int count);
 // "+ b" omitted when it divides evenly), e.g. 111 -> "111 (1 x 64 + 47)",
 // 18 buckets (S=1) -> "18 (18 x 1)".
 std::string formatStackCount(std::uint64_t count, int stackSize);
+std::string formatStackBreakdown(std::uint64_t count, int stackSize);
 
 // Material names come either from the game (displayName) or, for projected
 // liquids that have no in-game item to take a name from, from the interface

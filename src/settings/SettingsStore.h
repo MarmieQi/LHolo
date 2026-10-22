@@ -28,6 +28,7 @@ struct Settings {
     bool missingSeeThrough{false};
     bool experimentalConsent{false};
     bool materialHudEnabled{false};
+    bool materialHudShulkerBoxConversion{false};
     int materialHudPosition{3};
     int placementRadius{4};
     int autoPlacementBreakCooldownSeconds{10};

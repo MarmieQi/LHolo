@@ -10,7 +10,6 @@
 #include <cstddef>
 
 namespace lholo::block {
-
 ItemStack makePlacementItem(Block const& block) {
     std::string const blockName{placeableBaseName(block.getTypeName())};
     auto const itemName = placementItemName(blockName);
@@ -35,24 +34,13 @@ std::string stripMinecraftFormatting(std::string_view text) {
 }
 
 PlacementItem resolvePlacementItem(Block const& block) {
-    ItemStack const placeItem = makePlacementItem(block);
-    if (!placeItem.isNull()) {
-        int const size = static_cast<int>(placeItem.getMaxStackSize());
-        return {
-            stripMinecraftFormatting(placeItem.getHoverName()),
-            placeItem.getTypeName(),
-            size > 0 ? size : 64,
-            true,
-        };
-    }
-
-    // Block-only forms such as wall signs and wall coral fans resolve to their
-    // inventory form through Bedrock's own Block -> ItemInstance conversion.
-    ItemInstance const gameItem{block};
+    // Use the game's block-to-item conversion so the item instance carries the
+    // actual inventory form and its max stack size (e.g. 16 for signs).
+    ItemInstance const gameItem = block.getBlockType().asItemInstance(block, nullptr);
     if (gameItem.isNull()) return {};
     int const size = static_cast<int>(gameItem.getMaxStackSize());
     return {
-        stripMinecraftFormatting(gameItem.getHoverName()),
+        stripMinecraftFormatting(gameItem.getName()),
         gameItem.getTypeName(),
         size > 0 ? size : 64,
         true,

@@ -19,6 +19,7 @@
 #include "i18n/Message.h"
 #include "input/ViewMoveBasis.h"
 #include "settings/SettingsStore.h"
+#include "structure/MaterialCountFormat.h"
 #include "structure/MaterialTracker.h"
 #include "structure/formats/StructureFormatLoaders.h"
 #include "structure/StructureSession.h"
@@ -653,11 +654,14 @@ void renderMaterialHud() {
     auto const snapshot = uiState().materialHudSnapshot();
     auto const& materials = snapshot.requirements;
     auto const& available = snapshot.available;
+    auto const shulkerBoxConversion = uiState().materialHudShulkerBoxConversion();
 
     struct Row {
         char const*   name;
         std::uint64_t missing;
         int           stackSize;
+        std::string   countStr;
+        std::string   breakdown;
     };
     std::vector<Row> missing;
     for (std::size_t index = 0; index < materials.size(); ++index) {
@@ -671,7 +675,16 @@ void renderMaterialHud() {
                     materials[index].displayName, materials[index].nameKey
                 ),
                 miss,
-                materials[index].stackSize
+                materials[index].stackSize,
+                std::to_string(miss),
+                shulkerBoxConversion
+                    ? lholo::structure::formatShulkerBoxCount(
+                        miss,
+                        materials[index].stackSize,
+                        i18n::tr(i18n::TextKey::HudShulkerBoxUnit),
+                        i18n::tr(i18n::TextKey::HudStackUnit)
+                    )
+                    : lholo::ui::formatStackBreakdown(miss, materials[index].stackSize),
             });
         }
     }
@@ -729,16 +742,62 @@ void renderMaterialHud() {
             );
         } else {
             constexpr std::size_t kMaxRows = 14;
-            for (std::size_t index = 0; index < missing.size() && index < kMaxRows; ++index) {
-                auto const& row = missing[index];
-                // JE Litematica style: name then the missing amount broken into
-                // stacks, e.g. "白色玻璃  111 (1 x 64 + 47)".
-                ImGui::TextColored(
-                    ImVec4(1.0f, 0.62f, 0.20f, 1.0f), "%s  %s",
-                    row.name,
-                    lholo::ui::formatStackCount(row.missing, row.stackSize).c_str()
-                );
+            auto const rowCount = std::min(missing.size(), kMaxRows);
+
+            bool hasAnyBreakdown = false;
+            for (std::size_t index = 0; index < rowCount; ++index) {
+                if (!missing[index].breakdown.empty()) {
+                    hasAnyBreakdown = true;
+                    break;
+                }
             }
+
+            int const columnCount = hasAnyBreakdown ? 3 : 2;
+            constexpr auto tableFlags = ImGuiTableFlags_NoSavedSettings
+                | ImGuiTableFlags_SizingFixedFit
+                | ImGuiTableFlags_RowBg;
+
+            ImGui::PushStyleVar(
+                ImGuiStyleVar_CellPadding,
+                ImVec2(metrics.gap * 0.5f, metrics.gap * 0.18f)
+            );
+            if (ImGui::BeginTable("##LHoloMaterialHudTable", columnCount, tableFlags)) {
+                ImGui::TableSetupColumn("Item", ImGuiTableColumnFlags_WidthFixed);
+                ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthFixed);
+                if (hasAnyBreakdown) {
+                    ImGui::TableSetupColumn("Breakdown", ImGuiTableColumnFlags_WidthFixed);
+                }
+
+                auto const nameColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+                constexpr auto countColor = ImVec4(1.0f, 0.62f, 0.20f, 1.0f);
+                constexpr auto breakdownColor = ImVec4(1.0f, 0.72f, 0.38f, 0.85f);
+
+                for (std::size_t index = 0; index < rowCount; ++index) {
+                    auto const& row = missing[index];
+                    ImGui::TableNextRow();
+
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextColored(nameColor, "%s", row.name);
+
+                    ImGui::TableSetColumnIndex(1);
+                    auto const cellWidth = ImGui::GetContentRegionAvail().x;
+                    auto const textWidth = ImGui::CalcTextSize(row.countStr.c_str()).x;
+                    if (cellWidth > textWidth) {
+                        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + cellWidth - textWidth);
+                    }
+                    ImGui::TextColored(countColor, "%s", row.countStr.c_str());
+
+                    if (hasAnyBreakdown) {
+                        ImGui::TableSetColumnIndex(2);
+                        if (!row.breakdown.empty()) {
+                            ImGui::TextColored(breakdownColor, "%s", row.breakdown.c_str());
+                        }
+                    }
+                }
+                ImGui::EndTable();
+            }
+            ImGui::PopStyleVar();
+
             if (missing.size() > kMaxRows) {
                 ImGui::TextDisabled(
                     i18n::tr(i18n::TextKey::MaterialHudMore), missing.size() - kMaxRows
@@ -780,6 +839,9 @@ void loadSettings() {
         projection::setMissingSeeThrough(settings.missingSeeThrough);
         setExperimentalConsentGiven(settings.experimentalConsent);
         setMaterialHudEnabled(settings.materialHudEnabled);
+        uiState().setMaterialHudShulkerBoxConversion(
+            settings.materialHudShulkerBoxConversion
+        );
         setMaterialHudPosition(settings.materialHudPosition);
         // Transform and layer state are session-local. Only the explicit
         // "restore last projection" record below is persisted.
@@ -884,6 +946,8 @@ void saveSettings() {
         settings.missingSeeThrough = projection::getMissingSeeThrough();
         settings.experimentalConsent = experimentalConsentGiven();
         settings.materialHudEnabled = materialHudEnabled();
+        settings.materialHudShulkerBoxConversion
+            = uiState().materialHudShulkerBoxConversion();
         settings.materialHudPosition = materialHudPosition();
         settings.placementRadius = place::getPlacementRadius();
         settings.autoPlacementBreakCooldownSeconds

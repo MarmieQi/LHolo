@@ -15,6 +15,7 @@
 #include "projection/core/ProjectionRules.h"
 #include "projection/runtime/ProjectionProgress.h"
 #include "settings/SettingsStore.h"
+#include "structure/MaterialCountFormat.h"
 #include "structure/StructureSession.h"
 #include "structure/StructureUiState.h"
 #include "structure/java_to_bedrock/JavaBlockEntityToBedrock.h"
@@ -180,6 +181,25 @@ void testProgress() {
     LHOLO_CHECK(progress.extra == 0);
 }
 
+void testShulkerBoxCountFormat() {
+    using lholo::structure::formatShulkerBoxCount;
+    LHOLO_CHECK(formatShulkerBoxCount(0, 64, "盒", "组") == "0");
+    LHOLO_CHECK(formatShulkerBoxCount(5, 64, "盒", "组") == "5");
+    LHOLO_CHECK(formatShulkerBoxCount(128, 64, "盒", "组") == "2组");
+    LHOLO_CHECK(formatShulkerBoxCount(27 * 64, 64, "盒", "组") == "1盒");
+    LHOLO_CHECK(formatShulkerBoxCount(54 * 64, 64, "盒", "组") == "2盒");
+    LHOLO_CHECK(formatShulkerBoxCount(28 * 64, 64, "盒", "组") == "1盒 + 1组");
+    LHOLO_CHECK(formatShulkerBoxCount(27 * 64 + 5, 64, "盒", "组") == "1盒 + 5");
+    LHOLO_CHECK(formatShulkerBoxCount(54 * 64 + 5, 64, "盒", "组") == "2盒 + 5");
+    LHOLO_CHECK(
+        formatShulkerBoxCount(28 * 64 + 5, 64, "盒", "组") == "1盒 + 1组 + 5"
+    );
+    LHOLO_CHECK(formatShulkerBoxCount(27 * 16, 16, "盒", "组") == "1盒");
+    LHOLO_CHECK(formatShulkerBoxCount(16, 16, "盒", "组") == "1组");
+    LHOLO_CHECK(formatShulkerBoxCount(27 * 16 + 3, 16, "盒", "组") == "1盒 + 3");
+    LHOLO_CHECK(formatShulkerBoxCount(27, 1, "盒", "组") == "1盒");
+}
+
 void testSettingsStore() {
     auto const path = std::filesystem::temp_directory_path() / "lholo_settings_test.json";
     std::error_code error;
@@ -195,6 +215,7 @@ void testSettingsStore() {
     settings.autoPlacementBreakCooldownSeconds = 27;
     settings.correctionSeeThrough = true;
     settings.materialHudEnabled = true;
+    settings.materialHudShulkerBoxConversion = true;
     settings.materialHudPosition = 3;
     settings.altWheelOffsetEnabled = false;
     settings.moveHotkeys[4] = 0x57; // W
@@ -206,7 +227,7 @@ void testSettingsStore() {
         std::ifstream saved(path);
         std::ostringstream contents;
         contents << saved.rdbuf();
-        LHOLO_CHECK(contents.str().find("\"version\": 12") != std::string::npos);
+        LHOLO_CHECK(contents.str().find("\"version\": 13") != std::string::npos);
         LHOLO_CHECK(contents.str().find("\"language\": \"en_US\"") != std::string::npos);
         LHOLO_CHECK(contents.str().find("\"altWheelOffsetEnabled\": false") != std::string::npos);
         LHOLO_CHECK(contents.str().find("\"moveUpHotkey\": 87") != std::string::npos);
@@ -230,6 +251,7 @@ void testSettingsStore() {
     LHOLO_CHECK(loaded.autoPlacementBreakCooldownSeconds == 27);
     LHOLO_CHECK(loaded.correctionSeeThrough);
     LHOLO_CHECK(loaded.materialHudEnabled);
+    LHOLO_CHECK(loaded.materialHudShulkerBoxConversion);
     LHOLO_CHECK(loaded.materialHudPosition == 3);
     LHOLO_CHECK(!loaded.altWheelOffsetEnabled);
     LHOLO_CHECK(loaded.moveHotkeys[4] == 0x57);
@@ -250,6 +272,7 @@ void testSettingsStore() {
     LHOLO_CHECK(migrated.autoPlacementBreakCooldownSeconds == 10);
     LHOLO_CHECK(!migrated.correctionSeeThrough);
     LHOLO_CHECK(!migrated.materialHudEnabled);
+    LHOLO_CHECK(!migrated.materialHudShulkerBoxConversion);
     LHOLO_CHECK(migrated.materialHudPosition == 3);
     // A config without a valid language field uses the Chinese default.
     LHOLO_CHECK(migrated.language == "zh_CN");
@@ -600,10 +623,12 @@ void testStructureUiState() {
 
     state.setExperimentalConsentGiven(true);
     state.setMaterialHudEnabled(true);
+    state.setMaterialHudShulkerBoxConversion(true);
     state.setMaterialHudPosition(3);
     state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::StatusWorldExited}, 1234);
     LHOLO_CHECK(state.experimentalConsentGiven());
     LHOLO_CHECK(state.materialHudEnabled());
+    LHOLO_CHECK(state.materialHudShulkerBoxConversion());
     LHOLO_CHECK(state.materialHudPosition() == 3);
     auto const hint = state.actionHint();
     LHOLO_CHECK(hint.text == lholo::i18n::tr(lholo::i18n::TextKey::StatusWorldExited));
@@ -659,6 +684,7 @@ void testStructureUiState() {
     LHOLO_CHECK(afterWorldExit.settingsSave);
     LHOLO_CHECK(state.experimentalConsentGiven());
     LHOLO_CHECK(state.materialHudEnabled());
+    LHOLO_CHECK(state.materialHudShulkerBoxConversion());
     LHOLO_CHECK(state.materialHudPosition() == 3);
     // The fixed-gesture switch is a user preference, so leaving a world keeps
     // it whereas the transient flags above are cleared.
@@ -673,6 +699,7 @@ void testStructureUiState() {
     LHOLO_CHECK(!state.materialListReady());
     state.setExperimentalConsentGiven(false);
     state.setMaterialHudEnabled(false);
+    state.setMaterialHudShulkerBoxConversion(false);
     state.setMaterialHudPosition(3);
     state.setActionHint({}, 0);
     state.applyHud(HudStateSnapshot{});
@@ -924,6 +951,7 @@ void testI18n() {
 int main() {
     testLayoutRules();
     testProgress();
+    testShulkerBoxCountFormat();
     testSettingsStore();
     testStructureSession();
     testPlacementState();

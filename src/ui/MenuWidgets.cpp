@@ -12,29 +12,33 @@
 
 namespace lholo::ui {
 
-std::string formatStackCount(std::uint64_t count, int stackSize) {
+std::string formatStackBreakdown(std::uint64_t count, int stackSize) {
     auto const stack = static_cast<std::uint64_t>(stackSize > 0 ? stackSize : 64);
-    if (count < stack) return std::to_string(count);
+    if (stack <= 1 || count < stack) return {};
     auto const stacks = count / stack;
     auto const remainder = count % stack;
     char buffer[64];
     if (remainder == 0) {
         std::snprintf(
-            buffer, sizeof(buffer), "%llu (%llu x %llu)",
-            static_cast<unsigned long long>(count),
+            buffer, sizeof(buffer), "(%llu x %llu)",
             static_cast<unsigned long long>(stacks),
             static_cast<unsigned long long>(stack)
         );
     } else {
         std::snprintf(
-            buffer, sizeof(buffer), "%llu (%llu x %llu + %llu)",
-            static_cast<unsigned long long>(count),
+            buffer, sizeof(buffer), "(%llu x %llu + %llu)",
             static_cast<unsigned long long>(stacks),
             static_cast<unsigned long long>(stack),
             static_cast<unsigned long long>(remainder)
         );
     }
     return buffer;
+}
+
+std::string formatStackCount(std::uint64_t count, int stackSize) {
+    auto const breakdown = formatStackBreakdown(count, stackSize);
+    if (breakdown.empty()) return std::to_string(count);
+    return std::to_string(count) + " " + breakdown;
 }
 
 char const* materialDisplayName(

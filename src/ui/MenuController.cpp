@@ -112,6 +112,7 @@ MenuModel buildStructureMenuModel(float effectiveUiScale) {
     model.rangeEnabled = place::isRangeEnabled();
     model.experimentalConsent = structure::experimentalConsentGiven();
     model.materialHudEnabled = structure::materialHudEnabled();
+    model.materialHudShulkerBoxConversion = uiState().materialHudShulkerBoxConversion();
     model.materialHudPosition = std::clamp(structure::materialHudPosition(), 0, 3);
     model.placementRadius = place::getPlacementRadius();
     model.autoPlacementBreakCooldownSeconds = place::getAutoPlacementBreakCooldownSeconds();
@@ -260,6 +261,11 @@ void applyStructureMenuModel(MenuModel const& model, float effectiveUiScale) {
     changed = uiState().setAltWheelOffsetEnabled(model.altWheelOffsetEnabled) || changed;
     if (structure::materialHudEnabled() != model.materialHudEnabled) {
         structure::setMaterialHudEnabled(model.materialHudEnabled);
+        changed = true;
+    }
+    if (uiState().materialHudShulkerBoxConversion()
+        != model.materialHudShulkerBoxConversion) {
+        uiState().setMaterialHudShulkerBoxConversion(model.materialHudShulkerBoxConversion);
         changed = true;
     }
     auto const materialPosition = std::clamp(model.materialHudPosition, 0, 3);
