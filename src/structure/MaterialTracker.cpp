@@ -8,6 +8,7 @@
 #include "structure/StructureLoader.h"
 #include "structure/StructureSession.h"
 #include "structure/StructureUiState.h"
+#include "i18n/Translator.h"
 
 #include "mc/client/player/LocalPlayer.h"
 #include "mc/locale/I18n.h"
@@ -17,16 +18,23 @@
 #include "mc/world/item/registry/ItemRegistryManager.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/VanillaStates.h"
+#include "mc/deps/nbt/CompoundTag.h"
+#include "mc/deps/nbt/IntTag.h"
+#include "mc/deps/nbt/ListTag.h"
+#include "mc/deps/nbt/StringTag.h"
+#include "mc/deps/nbt/Tag.h"
 
 #include <Windows.h>
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstdint>
 #include <future>
 #include <iterator>
 #include <limits>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -41,7 +49,29 @@ constexpr int kInventorySlots = 36;
 constexpr std::uint64_t kAvailabilityRefreshMs = 400;
 constexpr std::uint64_t kMaterialHudRecountIntervalMs = 400;
 
-using BlockCounts = std::unordered_map<Block const*, std::uint64_t>;
+// A palette state plus the item variant its block entity selects. Banners are
+// one block state for every design: the base colour (the banner item's aux
+// value), the ominous type and the pattern layers live in the block entity,
+// and each design is a different item to make. variant is -1 for non-banners.
+struct CountedBlock {
+    Block const*  block{};
+    int           variant{-1};
+    int           bannerType{};
+    int           patternCount{};
+    std::uint64_t patternHash{};
+    bool operator==(CountedBlock const&) const = default;
+};
+
+struct CountedBlockHash {
+    std::size_t operator()(CountedBlock const& value) const noexcept {
+        auto hash = std::hash<Block const*>{}(value.block);
+        hash ^= static_cast<std::size_t>(value.variant + 1) * 0x9E3779B97F4A7C15ULL;
+        hash ^= static_cast<std::size_t>(value.bannerType) << 7;
+        return hash ^ static_cast<std::size_t>(value.patternHash);
+    }
+};
+
+using BlockCounts = std::unordered_map<CountedBlock, std::uint64_t, CountedBlockHash>;
 
 struct RawMaterialCounts {
     BlockCounts body;
@@ -67,10 +97,49 @@ MaterialHudWorkerState& materialHudWorkerState() {
     return state;
 }
 
-void countBlock(BlockCounts& counts, Block const* blockValue) {
-    if (!blockValue) return;
-    auto& count = counts[blockValue];
+bool isBanner(Block const& blockValue) {
+    auto const& typeName = blockValue.getTypeName();
+    return typeName == "minecraft:standing_banner" || typeName == "minecraft:wall_banner";
+}
+
+int intField(CompoundTag const& tag, std::string_view name, int fallback) {
+    return tag.contains(name, Tag::Type::Int) ? tag.at(name).get<IntTag>().data : fallback;
+}
+
+CountedBlock countedBody(LoadedStructure::RenderBlock const& entry) {
+    CountedBlock counted{entry.block};
+    if (!entry.block || !isBanner(*entry.block)) return counted;
+    counted.variant = 0;
+    if (!entry.blockEntityNbt) return counted;
+    auto const& nbt = *entry.blockEntityNbt;
+    counted.variant = intField(nbt, "Base", 0);
+    counted.bannerType = intField(nbt, "Type", 0);
+    if (nbt.contains("Patterns", Tag::Type::List)) {
+        // FNV-1a over each layer's pattern code and colour.
+        std::uint64_t hash = 1469598103934665603ULL;
+        auto mix = [&](std::string_view bytes) {
+            for (auto const byte : bytes) hash = (hash ^ static_cast<unsigned char>(byte)) * 1099511628211ULL;
+        };
+        for (auto const& layer : nbt.at("Patterns").get<ListTag>()) {
+            if (!layer || layer->getId() != Tag::Type::Compound) continue;
+            auto const& pattern = static_cast<CompoundTag const&>(*layer);
+            if (pattern.contains("Pattern", Tag::Type::String)) mix(pattern.at("Pattern").get<StringTag>());
+            mix(std::to_string(intField(pattern, "Color", 0)) + ";");
+            ++counted.patternCount;
+        }
+        counted.patternHash = hash;
+    }
+    return counted;
+}
+
+void countBlock(BlockCounts& counts, CountedBlock const& counted) {
+    if (!counted.block) return;
+    auto& count = counts[counted];
     if (count != std::numeric_limits<std::uint64_t>::max()) ++count;
+}
+
+void countBlock(BlockCounts& counts, Block const* blockValue) {
+    countBlock(counts, CountedBlock{blockValue});
 }
 
 RawMaterialCounts collectRawMaterials(
@@ -82,7 +151,7 @@ RawMaterialCounts collectRawMaterials(
     counts.body.reserve(std::min<std::size_t>(renderBlocks.size(), 4096));
     counts.liquid.reserve(std::min<std::size_t>(renderBlocks.size(), 64));
     for (auto const& entry : renderBlocks) {
-        countBlock(counts.body, entry.block);
+        countBlock(counts.body, countedBody(entry));
         countBlock(counts.liquid, entry.liquid);
     }
     return counts;
@@ -122,7 +191,9 @@ std::vector<MaterialRequirement> resolveMaterials(
 ) {
     std::map<std::string, MaterialRequirement> byType;
     std::map<std::string, MaterialRequirement> byLiquidType;
-    auto aggregate = [&](auto& destination, Block const* blockValue, std::uint64_t blockCount) {
+    auto aggregate = [&](auto& destination, CountedBlock const& counted, std::uint64_t blockCount) {
+        Block const* blockValue = counted.block;
+        int const variant = counted.variant;
         if (!blockValue || blockCount == 0) return;
 
         std::string const typeName{blockValue->getTypeName()};
@@ -151,6 +222,31 @@ std::vector<MaterialRequirement> resolveMaterials(
             // Blocks with separate wall and standing forms (banners, signs,
             // coral fans) are one inventory item: group by that item.
             key = "item:" + item.itemId;
+            if (variant >= 0) {
+                // A banner's colour is the item's aux value; each design is
+                // its own material, named by its own item (an ominous banner
+                // is named by the game from its Type).
+                ItemStack design;
+                design.reinit(item.itemId, 1, static_cast<short>(variant));
+                if (!design.isNull()) {
+                    if (counted.bannerType != 0) {
+                        auto userData = std::make_unique<CompoundTag>();
+                        userData->putInt("Type", counted.bannerType);
+                        design.setUserData(std::move(userData));
+                    }
+                    requirement.displayName = block::stripMinecraftFormatting(design.getHoverName());
+                }
+                if (counted.bannerType == 0 && counted.patternCount > 0) {
+                    char suffix[96]{};
+                    std::snprintf(
+                        suffix, sizeof(suffix), i18n::tr(i18n::TextKey::MaterialBannerPatterns), counted.patternCount
+                    );
+                    requirement.displayName += suffix;
+                }
+                key += "#" + std::to_string(variant) + "/" + std::to_string(counted.bannerType) + "/"
+                    + std::to_string(counted.patternHash);
+                requirement.iconAux = variant;
+            }
         } else {
             requirement.displayName = localizedBlockName(*blockValue, localeCode);
         }
@@ -164,9 +260,9 @@ std::vector<MaterialRequirement> resolveMaterials(
     // Registry/localization work now runs once per unique palette state rather
     // than once per projected cell. This is the critical path for million-block
     // structures; the first pass above is only pointer counting.
-    for (auto const& [blockValue, count] : counts.body) aggregate(byType, blockValue, count);
-    for (auto const& [blockValue, count] : counts.liquid) {
-        aggregate(byLiquidType, blockValue, count);
+    for (auto const& [counted, count] : counts.body) aggregate(byType, counted, count);
+    for (auto const& [counted, count] : counts.liquid) {
+        aggregate(byLiquidType, counted, count);
     }
 
     std::vector<MaterialRequirement> materials;
@@ -226,7 +322,7 @@ MaterialHudResult countMaterialHud(MaterialHudInput input) {
         }
         // Block pointers are opaque keys here. Registry, localization and item
         // resolution remain on the game tick thread after aggregation.
-        countBlock(result.counts.body, entry.block);
+        countBlock(result.counts.body, countedBody(entry));
         countBlock(result.counts.liquid, entry.liquid);
     }
     return result;

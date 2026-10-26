@@ -89,7 +89,7 @@ HudPanel makeMaterialHud(structure::detail::MaterialHudSnapshot const& snapshot,
         auto const& material = snapshot.requirements[row.index];
         panel.lines.push_back({std::string(materialDisplayName(material.displayName, material.nameKey))
             + "  " + formatStackCount(row.missing, material.stackSize), TextTone::Normal,
-            std::string(materialIconId(material.itemId, material.typeName))});
+            materialIconId(material.itemId, material.typeName, material.iconAux)});
     }
     if (rows.size() > maxRows) panel.lines.push_back({text(TextKey::MaterialHudMore, rows.size() - maxRows), TextTone::Muted});
     return panel;

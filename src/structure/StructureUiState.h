@@ -35,6 +35,9 @@ struct MaterialRequirement {
     // signs etc., 1 for filled buckets). Used for the JE-style "N (a x S + b)"
     // count display. Computed on the tick thread; 64 when unknown.
     int           stackSize{64};
+    // Item aux value for the icon when the material is one variant of an
+    // item (a banner colour); -1 otherwise. Display only.
+    int           iconAux{-1};
 };
 
 // One coherent, versioned snapshot for material-list consumers.

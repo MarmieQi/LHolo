@@ -115,12 +115,15 @@ std::optional<std::string> takeMaterialsUpdate(bool force) {
             : std::string{};
         // Display identity may be a block (liquids), independently of the
         // inventory item used by material availability / placement rules.
-        auto const iconId = ui::materialIconId(req.itemId, req.typeName);
+        // The native OreUI item icon takes an item name only and cannot show
+        // one variant (a banner colour), so variants keep an empty slot rather
+        // than a wrongly coloured icon.
+        auto const iconId = req.iconAux >= 0 ? std::string{} : ui::materialIconId(req.itemId, req.typeName);
         items.push_back({
             {"displayName", req.displayName},
             {"nameKey", nameKey},
             {"typeName", req.typeName},
-            {"iconId", std::string{iconId}},
+            {"iconId", iconId},
             {"count", req.count},
         });
     }

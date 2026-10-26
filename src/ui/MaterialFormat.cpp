@@ -3,8 +3,9 @@
 
 namespace lholo::ui {
 
-std::string_view materialIconId(std::string const& itemId, std::string const& typeName) {
-    return itemId.empty() ? std::string_view{typeName} : std::string_view{itemId};
+std::string materialIconId(std::string const& itemId, std::string const& typeName, int aux) {
+    if (itemId.empty()) return typeName;
+    return aux >= 0 ? itemId + ":" + std::to_string(aux) : itemId;
 }
 std::string formatStackCount(std::uint64_t count, int stackSize) {
     auto const stack = static_cast<std::uint64_t>(stackSize > 0 ? stackSize : 64);

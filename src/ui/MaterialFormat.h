@@ -13,5 +13,6 @@ std::string formatStackCount(std::uint64_t count, int stackSize);
 // Liquids use the interface language key; other names come from the game.
 char const* materialDisplayName(std::string const& displayName, std::optional<i18n::TextKey> const& nameKey);
 // Display identity only: never changes inventory availability or placement.
-std::string_view materialIconId(std::string const& itemId, std::string const& typeName);
+// An aux value >= 0 selects one variant of the item ("minecraft:banner:15").
+std::string materialIconId(std::string const& itemId, std::string const& typeName, int aux = -1);
 }

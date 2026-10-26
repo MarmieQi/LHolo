@@ -14,6 +14,8 @@
 #include "mc/deps/renderer/Camera.h"
 #include "mc/deps/renderer/ShaderColor.h"
 #include "mc/world/item/ItemStack.h"
+
+#include <string>
 #include <atomic>
 #include <exception>
 #include <memory>
@@ -60,7 +62,18 @@ void prepareItems() {
             if (cache.contains(id)) continue;
         }
         auto item = std::make_shared<ItemStack>();
-        if (!id.empty()) item->reinit(std::string_view{id}, 1, 0);
+        if (!id.empty()) {
+            // "namespace:name:aux" selects one variant (a banner colour).
+            std::string_view name{id};
+            short aux = 0;
+            if (auto const colon = name.rfind(':'); colon != std::string_view::npos && colon + 1 < name.size()
+                && name.find(':') != colon
+                && name.find_first_not_of("0123456789", colon + 1) == std::string_view::npos) {
+                aux = static_cast<short>(std::stoi(std::string{name.substr(colon + 1)}));
+                name = name.substr(0, colon);
+            }
+            item->reinit(name, 1, aux);
+        }
         IconItem resolved = item->isNull() ? nullptr : std::move(item);
         std::lock_guard lock(cacheMutex);
         if (cacheEpoch != epoch || !active.load()) continue;
