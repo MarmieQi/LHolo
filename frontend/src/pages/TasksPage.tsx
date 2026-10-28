@@ -181,13 +181,14 @@ export function TasksPage({ labels, tasksCtrl, preview, hasProjection, onMateria
                 disabled={disabled}
                 onClick={() => tasksCtrl.toggleLayerHidden(layer.id)}
               />
+              <div className="lholo-tasks-layer-num">{index + 1}</div>
               <NativeInteractive disabled={disabled} label={layer.name + (isSel ? ' ' + labels['tasks.selected'] : '') + (layer.hidden ? ' ' + labels['tasks.hidden'] : '')} className="lholo-tasks-layer-name"
                 onClick={() => tasksCtrl.setSelectedLayerId(layer.id)}>
                 <span className="lholo-tasks-layer-title">{layer.name}</span>
+                <span className="lholo-tasks-layer-tooltip" aria-hidden="true">{layer.name}</span>
               </NativeInteractive>
-              <div className="lholo-tasks-layer-num">{index + 1}</div>
               <div className="lholo-tasks-layer-actions">
-                <LHoloButton label={labels['preview.open']}
+                <LHoloButton label={labels['preview.open']} className="lholo-tasks-preview-btn"
                   disabled={disabled || !preview.canRequest || !tasksCtrl.state?.worldAvailable}
                   onClick={() => currentTask && tasksCtrl.state && preview.open(currentTask.id, layer.id, tasksCtrl.state.revision)} />
                 <LHoloButton
