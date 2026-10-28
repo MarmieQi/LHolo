@@ -38,7 +38,7 @@ jobs:
           xmake repo -u
 
       - run: |
-          xmake f -a x64 -m release -p windows -v --target_type=client -y
+          xmake f -a x64 -m release -p windows -v --target_type=client --debug_symbols=n -y
 
       - run: |
           xmake -v -y
