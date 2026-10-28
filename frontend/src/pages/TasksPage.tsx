@@ -185,7 +185,6 @@ export function TasksPage({ labels, tasksCtrl, preview, hasProjection, onMateria
               <NativeInteractive disabled={disabled} label={layer.name + (isSel ? ' ' + labels['tasks.selected'] : '') + (layer.hidden ? ' ' + labels['tasks.hidden'] : '')} className="lholo-tasks-layer-name"
                 onClick={() => tasksCtrl.setSelectedLayerId(layer.id)}>
                 <span className="lholo-tasks-layer-title">{layer.name}</span>
-                <span className="lholo-tasks-layer-tooltip" aria-hidden="true">{layer.name}</span>
               </NativeInteractive>
               <div className="lholo-tasks-layer-actions">
                 <LHoloButton label={labels['preview.open']} className="lholo-tasks-preview-btn"

@@ -28,8 +28,9 @@ void drawStructurePreviewView(UIRenderContext& context, ClientInstance& client, 
     auto const size = client.$getGuiData()->mScreenSizeData->clientUIScreenSize.get();
     float const w = size.x * s.frame.width, h = size.y * s.frame.height;
     float const left = (size.x - w) * 0.5f, top = (size.y - h) * 0.5f;
+    constexpr float dividerGray = 144.0f / 255.0f; // Soft gray: #909090.
     context.fillRectangle({left + w * 0.04f,left + w * 0.96f,
-        top + h * 0.095f,top + h * 0.095f + 0.5f},{0.19f,0.19f,0.19f,1.0f},0.6f);
+        top + h * 0.095f,top + h * 0.095f + 0.5f},{dividerGray,dividerGray,dividerGray,1.0f},0.6f);
     auto handle = client.$getFontHandle(); auto& font = handle.getFont();
     auto text = [&](std::string value, float x, float y, float width, float height, float scale, float brightness) {
         TextMeasureData const data{scale,0.0f,false,false,false,::ui::TextAlignment::Left};
@@ -41,9 +42,10 @@ void drawStructurePreviewView(UIRenderContext& context, ClientInstance& client, 
     text(std::move(title),w * 0.04f,h * 0.035f,w * 0.82f,h * 0.06f,0.9f,1.0f);
     bool const hover = s.pointerX >= kPreviewCloseLeft && s.pointerX <= kPreviewCloseRight
         && s.pointerY >= kPreviewCloseTop && s.pointerY <= kPreviewCloseBottom;
-    if (hover || s.closePressed) context.fillRectangle(
-        {left + w * kPreviewCloseLeft,left + w * kPreviewCloseRight,top + h * kPreviewCloseTop,top + h * kPreviewCloseBottom},
-        {0.13f,0.13f,0.13f,1.0f},1.0f);
+    if (hover || s.closePressed) hud::paintHudBackground(context,
+        {left + w * kPreviewCloseLeft,top + h * kPreviewCloseTop,
+            w * (kPreviewCloseRight - kPreviewCloseLeft),h * (kPreviewCloseBottom - kPreviewCloseTop)},
+        hud::hudStyle(std::max(10.0f,font.getWrapHeight())).rounding,s.closePressed ? 0.55f : 0.40f);
     auto const close = std::string{i18n::tr(i18n::TextKey::ButtonClose)};
     auto const closeWidth = context.getLineLength(font,close,0.8f,false);
     text(close,w * (kPreviewCloseLeft + kPreviewCloseRight) * 0.5f - closeWidth * 0.5f,

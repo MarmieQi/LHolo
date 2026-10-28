@@ -26,7 +26,7 @@
 .lholo-tasks-layer-row:hover { background-color:#222222; }
 .lholo-tasks-layer-row.is-selected { background-color:#252525; }
 .lholo-tasks-layer-row.is-selected:hover { background-color:#2a2a2a; }
-.lholo-tasks-layer-num { width:1.5rem; margin:0 0.55rem 0 0.25rem; flex-shrink:0; align-items:center; font-size:0.82rem; color:#909090; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.lholo-tasks-layer-num { width:1.5rem; margin:0 0.55rem 0 0.25rem; flex-shrink:0; align-items:center; font-size:0.82rem; color:#ffffff; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .lholo-tasks-eye-btn { width:1.85rem; height:1.85rem; padding:0; flex-shrink:0; background-color:transparent !important; border:none !important; border-radius:0.25rem; justify-content:center; align-items:center; }
 .lholo-tasks-eye-btn.lholo-control-hovered { background-color:rgba(255,255,255,0.08) !important; }
 .lholo-tasks-eye-btn.lholo-control-pressed { background-color:rgba(255,255,255,0.15) !important; }
@@ -36,10 +36,8 @@
 .lholo-tasks-eye-btn .lholo-button-icon svg { width:100%; height:100%; }
 .lholo-tasks-eye-btn.is-visible .lholo-button-icon { color:#ededed; }
 .lholo-tasks-eye-btn.is-hidden .lholo-button-icon { color:#8b8b8b; }
-.lholo-tasks-layer-name { position:relative; flex:1 1 0; min-width:0; flex-direction:row; align-items:center; height:100%; cursor:pointer; }
+.lholo-tasks-layer-name { flex:1 1 0; min-width:0; flex-direction:row; align-items:center; height:100%; cursor:pointer; }
 .lholo-tasks-layer-title { display:block; width:100%; min-width:0; font-size:0.94rem; color:#ededed; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.lholo-tasks-layer-tooltip { display:none; position:absolute; top:0; left:0; z-index:2; box-sizing:border-box; width:100%; min-height:100%; padding:0.35rem 0.4rem; align-items:center; background-color:#303030; border-radius:0.2rem; color:#ffffff; font-size:0.82rem; line-height:1.4; white-space:normal; overflow-wrap:break-word; pointer-events:none; }
-.lholo-tasks-layer-name.lholo-control-hovered .lholo-tasks-layer-tooltip, .lholo-tasks-layer-name.lholo-control-focused .lholo-tasks-layer-tooltip { display:flex; }
 .lholo-tasks-layer-row.is-selected .lholo-tasks-layer-title { color:#ffffff; font-weight:600; }
 .lholo-tasks-layer-row.is-hidden .lholo-tasks-layer-title { color:#a0a0a0; }
 .lholo-tasks-layer-actions { flex-direction:row; align-items:center; flex-shrink:0; margin-left:0.6rem; }
