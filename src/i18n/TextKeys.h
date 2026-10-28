@@ -29,6 +29,14 @@
     /* Shell */                                                                                          \
     LHOLO_TEXT_KEY("menu.close", MenuClose, "")                                                          \
     LHOLO_TEXT_KEY("tasks.nav", TasksNav, "")                                                \
+    LHOLO_TEXT_KEY("preview.open", PreviewOpen, "")                                          \
+    LHOLO_TEXT_KEY("preview.controls", PreviewControls, "")                                  \
+    LHOLO_TEXT_KEY("preview.dimensions", PreviewDimensions, "")                              \
+    LHOLO_TEXT_KEY("preview.file", PreviewFile, "")                                          \
+    LHOLO_TEXT_KEY("preview.blocks", PreviewBlocks, "")                                      \
+    LHOLO_TEXT_KEY("preview.unavailable", PreviewUnavailable, "")                            \
+    LHOLO_TEXT_KEY("preview.failed", PreviewFailed, "")                                      \
+    LHOLO_TEXT_KEY("preview.heightLimit", PreviewHeightLimit, "")                            \
     LHOLO_TEXT_KEY("tasks.activate", TasksActivate, "")                                                \
     LHOLO_TEXT_KEY("tasks.close", TasksClose, "")                                                \
     LHOLO_TEXT_KEY("tasks.loading", TasksLoading, "")                                                \

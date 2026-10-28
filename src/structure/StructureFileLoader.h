@@ -6,14 +6,15 @@
 #include <string>
 #include "structure/TaskComposer.h"
 #include "structure/StructureSession.h"
+#include "structure/StructureReadQueue.h"
 
 namespace lholo::structure::detail {
 
 struct StructureLoadOrigin;
 
-// One owned background task; normal close/world exit invalidates publication
-// without waiting. Level destruction and mod shutdown wait for file parsing
-// before the world's registry or this DLL can be released.
+// Projection and read-only preview own separate background jobs. Normal close
+// invalidates publication without waiting. Level destruction / shutdown drain
+// both channels before the world's registry or this DLL can be released.
 void enableStructureFileLoader();
 void shutdownStructureFileLoader();
 bool isStructureFileLoading();
@@ -32,5 +33,11 @@ bool startTaskComposition(std::string taskId, std::uint64_t revision, StructureL
     std::vector<CompositionFile>, std::vector<std::string> paths, bool reloadFiles);
 std::shared_ptr<CompositionLoadResult> takeTaskCompositionResult();
 std::shared_ptr<LoadedStructure const> cachedTaskFile(std::string const& path);
+
+// Independent read-only job channel. Only native parser serialization and
+// world lifetime are shared; projection busy state/cache/session are untouched.
+bool startStructureRead(std::uint64_t id, std::string path);
+void cancelStructureRead(std::uint64_t id);
+std::shared_ptr<StructureReadResult const> takeStructureReadResult();
 
 } // namespace lholo::structure::detail

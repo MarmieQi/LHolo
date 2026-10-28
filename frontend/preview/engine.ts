@@ -33,12 +33,14 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
   };
   const publish = () => {
     tasks.publish();
+    emit('lholo:preview',previewStatus);
     emit('lholo:materials',materials);
     emit('lholo:capture',capture);
     emit('lholo:transform',transform);
     emit('lholo:render',render);
     settings.publish();
   };
+  let previewStatus = {ack:0,accepted:false,error:''};
   const settings = createPreviewSettings(emit,publish);
   const tasks = createPreviewTasks((name,value) => {
     const state=value as TaskState;
@@ -58,6 +60,11 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
     off(name,callback) {listeners.get(name)?.delete(callback);},
     trigger(name,...args) {
       if(name==='facet:discard')return;
+      if (name === 'facet:request' && args[0] === 'lholo.preview.intent') {
+        const request = JSON.parse((args[2] as {request:string}).request);
+        previewStatus = {ack:request.id,accepted:false,error:'结构预览使用游戏原生场景，请在游戏内验证。'};
+        queueMicrotask(publish); return;
+      }
       if (name === 'facet:request' && args[0] === 'lholo.tasks.intent') {
         tasks.request(JSON.parse((args[2] as {request: string}).request)); return;
       }

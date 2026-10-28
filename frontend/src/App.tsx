@@ -11,6 +11,7 @@ import { useMaterials } from './application/useMaterials';
 import { useCapture } from './application/useCapture';
 import { useProjectionState } from './application/useProjectionState';
 import { useTasks } from './application/useTasks';
+import { useStructurePreview } from './application/useStructurePreview';
 import { menuBridge, type MenuLabels } from './platform/bridge';
 import { FrameCompletion, GameShell } from './platform/native';
 import { LHoloButton } from './components/LHoloControls';
@@ -29,12 +30,13 @@ function MenuPage() {
   const experimental = useExperimentalSettings(settings);
   const materialsState = useMaterials(menuBridge);
   const tasks = useTasks();
+  const preview = useStructurePreview();
   useEffect(() => menuBridge.subscribeEntry(setEntryPage), []);
   useEffect(() => menuBridge.subscribe(setLabels), []);
   return <>
     {labels ? <LHoloMenu entryPage={entryPage} labels={labels} projection={projection} capture={capture}
       transform={transform} render={render} hud={hud} hotkeys={hotkeys}
-      interfaceSettings={interfaceSettings} experimental={experimental} materialsState={materialsState} tasks={tasks}
+      interfaceSettings={interfaceSettings} experimental={experimental} materialsState={materialsState} tasks={tasks} preview={preview}
       onClose={menuBridge.close} />
       : <div className="lholo-loading"><div>LHolo</div>
         <LHoloButton label="×" onClick={menuBridge.close} /></div>}

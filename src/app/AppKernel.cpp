@@ -5,6 +5,8 @@
 #include "app/RenderSettingsActions.h"
 #include "app/SettingsActions.h"
 #include "app/TaskActions.h"
+#include "app/StructurePreviewActions.h"
+#include "ui/preview/StructurePreviewScene.h"
 
 #include "i18n/LanguageStore.h"
 #include "ui/hud/NativeHudRenderer.h"
@@ -41,6 +43,7 @@ void AppKernel::processControlFrame() {
     if (processRenderSettingsEdits()) structure::saveSettings();
     if (processSettingsActions()) structure::saveSettings();
     processTaskActions();
+    processStructurePreviewActions();
     auto client = ll::service::getClientInstance();
     bool const worldAvailable = client && client->$getClientInstanceState() == ClientInstanceState::Playing && client->getLocalPlayer();
     if (consumeHudLayoutEditRequest() && worldAvailable) {
@@ -84,6 +87,7 @@ bool AppKernel::enable() {
     if (!ui::hud::installNativeHudRenderer()) logger.warn("Failed to install the native HUD renderer");
 
     if (!ui::hud::installHudEditorScene()) logger.error("Failed to install the native HUD editor scene");
+    if (!ui::preview::installStructurePreviewScene()) logger.error("Failed to install the native structure preview scene");
 
     if (!place::installHook()) {
         logger.warn("Failed to install easy-place hooks");
@@ -114,6 +118,8 @@ bool AppKernel::disable() {
     overlay::setControlFrameCallback(nullptr);
     input::clearMenuOpenRequest();
 
+    resetStructurePreviewActions();
+    ui::preview::uninstallStructurePreviewScene();
     ui::hud::uninstallHudEditorScene();
     ui::hud::uninstallNativeHudRenderer();
     oreui::uninstallMenuScreen();

@@ -4,6 +4,7 @@ import { LHoloSelect } from '../components/LHoloSelect';
 import { SelectedFileContext } from '../components/SelectedFileContext';
 import { NativeInteractive } from '../platform/native';
 import type {TaskControls} from '../application/useTasks';
+import type {StructurePreviewControls} from '../application/useStructurePreview';
 import type { MenuLabels } from '../platform/bridge';
 
 const eyeOpenSvg = (
@@ -55,8 +56,8 @@ type TaskModal =
   | {mode: 'rename' | 'deleteTask'; taskId: string; name: string}
   | {mode: 'removeFile'; taskId: string; fileId: string; name: string};
 
-export function TasksPage({ labels, tasksCtrl, hasProjection, onMaterials }: {
-  labels: MenuLabels; tasksCtrl: TaskControls; hasProjection: boolean; onMaterials(): void;
+export function TasksPage({ labels, tasksCtrl, preview, hasProjection, onMaterials }: {
+  labels: MenuLabels; tasksCtrl: TaskControls; preview: StructurePreviewControls; hasProjection: boolean; onMaterials(): void;
 }) {
   const [taskModal, setTaskModal] = useState<TaskModal | null>(null);
   const [taskNameDraft, setTaskNameDraft] = useState('');
@@ -153,6 +154,7 @@ export function TasksPage({ labels, tasksCtrl, hasProjection, onMaterials }: {
         <span className="lholo-task-error-message">{tasksCtrl.state.error}</span>
       </div> : null}
       {tasksCtrl.requestRejected ? <div className="lholo-muted" role="alert">{labels['tasks.requestTooLarge']}</div> : null}
+      {preview.error ? <div className="lholo-muted" role="alert">{preview.error}</div> : null}
 
       <div className="lholo-task-section-title">
         {labels['tasks.layers']}
@@ -185,6 +187,9 @@ export function TasksPage({ labels, tasksCtrl, hasProjection, onMaterials }: {
               </NativeInteractive>
               <div className="lholo-tasks-layer-num">{index + 1}</div>
               <div className="lholo-tasks-layer-actions">
+                <LHoloButton label={labels['preview.open']}
+                  disabled={disabled || !preview.canRequest || !tasksCtrl.state?.worldAvailable}
+                  onClick={() => currentTask && tasksCtrl.state && preview.open(currentTask.id, layer.id, tasksCtrl.state.revision)} />
                 <LHoloButton
                   label={labels['tasks.moveUp']}
                   icon={arrowUpSvg}

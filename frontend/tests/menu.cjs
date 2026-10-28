@@ -15,6 +15,10 @@ const docListenersByType = new Map();
 const context = {
   console: { ...console, error: (...args) => errors.push(args) },
   document: {
+    querySelector(selector) {
+      const rect = selector === '.lholo-menu' ? {width:800,height:600} : {width:1000,height:1000};
+      return {getBoundingClientRect: () => rect};
+    },
     addEventListener(name, listener) {
       dropdownListeners.add(listener);
       if (!docListenersByType.has(name)) docListenersByType.set(name, new Set());
@@ -36,7 +40,7 @@ const context = {
       ItemIcon: ({ itemId }) => React.createElement('native-item-icon', { itemId }),
     },
     engine: {
-      on(name, fn) { assert(['lholo:menu-entry', 'lholo:menu-labels', 'lholo:projection', 'lholo:materials', 'lholo:capture', 'lholo:transform', 'lholo:render', 'lholo:settings', 'lholo:tasks'].includes(name)); listeners.add({ name, fn }); },
+      on(name, fn) { assert(['lholo:menu-entry', 'lholo:menu-labels', 'lholo:projection', 'lholo:materials', 'lholo:capture', 'lholo:transform', 'lholo:render', 'lholo:settings', 'lholo:tasks', 'lholo:preview'].includes(name)); listeners.add({ name, fn }); },
       off(name, fn) { for (const item of listeners) if (item.name === name && item.fn === fn) listeners.delete(item); },
       trigger(...args) { events.push(args); },
     },
@@ -70,7 +74,7 @@ const click = label => renderer.act(() => {
   button.props.onClick();
 });
 mount();
-assert.equal(listeners.size, 9);
+assert.equal(listeners.size, 10);
 assert(events.some(args => args[0] === 'query:subscribe/lholo.menu.ready'));
 receive('{"menu.close":false}');
 assert(errors.length > 0);
@@ -85,6 +89,22 @@ let taskState = {tasks:[{id:'castle',name:'城堡建造',selectedFileId:'roof',l
   worldAvailable:true,writable:true,error:'',errorFileId:''};
 const emitTasks = () => receive(JSON.stringify(taskState),'lholo:tasks');
 emitTasks();
+receive(JSON.stringify({ack:0,accepted:false,error:''}), 'lholo:preview');
+const previewButtons = () => tree.root.findAllByType('button').filter(node => nodeText(node) === labels['preview.open']);
+assert.equal(previewButtons().length, 3, 'Every file has its own preview entry, including hidden files');
+const previewEventStart = events.length;
+renderer.act(() => previewButtons()[0].props.onClick());
+const previewEvent = events.slice(previewEventStart).find(e => e[0] === 'facet:request' && e[1] === 'lholo.preview.intent');
+const previewRequest = JSON.parse(previewEvent[3].request);
+assert.deepEqual(previewRequest, {id:1,revision:1,taskId:'castle',fileId:'body',frame:[0.8,0.6]});
+assert.equal(taskState.tasks[0].selectedFileId,'roof','Preview does not change the build target');
+assert(previewButtons().every(node => node.props.disabled), 'Prevent duplicate preview requests');
+receive(JSON.stringify({ack:previewRequest.id,accepted:false,error:'preview rejected'}), 'lholo:preview');
+assert(nodeText(tree.root).includes('preview rejected'));
+assert(previewButtons().every(node => !node.props.disabled), 'Native rejection permits retry');
+taskState.worldAvailable = false; emitTasks();
+assert(previewButtons().every(node => node.props.disabled), 'Native preview needs an active world');
+taskState.worldAvailable = true; emitTasks();
 click(labels['tasks.nav']);
 assert(nodeText(tree.root).includes(labels['tasks.layers']));
 assert(nodeText(tree.root).includes(labels['tasks.currentSelection'] + ':'));
@@ -747,7 +767,7 @@ renderer.act(() => tree.unmount());
 assert.equal(listeners.size, 0);
 assert([...inputMocks.values()].every(input => input.listeners.size === 0), 'DOM input subscriptions clean up');
 mount();
-assert.equal(listeners.size, 9);
+assert.equal(listeners.size, 10);
 receive(JSON.stringify(labels));
 emitTasks();projectionState({hasProjection:true});
 assert.equal(tree.root.findByProps({'data-narrate':labels['tasks.path']}).props.value, selectedTaskPath,

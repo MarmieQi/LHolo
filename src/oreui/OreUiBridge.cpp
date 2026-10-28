@@ -1,4 +1,5 @@
 #include "oreui/OreUiBridge.h"
+#include "oreui/PreviewBindings.h"
 #include "app/SettingsActions.h"
 
 #include "oreui/MenuBindings.h"
@@ -53,6 +54,9 @@ bool receiveRenderSettingsIntent(std::string_view request) {
 bool receiveSettingsIntent(std::string_view request) {
     return active.load() && isMenuOnTop() && queueSettingsIntent(request);
 }
+bool receivePreviewIntent(std::string_view request) {
+    return active.load() && isMenuOnTop() && queuePreviewIntent(request);
+}
 bool receiveTaskIntent(std::string_view request) {
     return active.load() && isMenuOnTop() && queueTaskIntent(request);
 }
@@ -60,12 +64,14 @@ LL_TYPE_INSTANCE_HOOK(MenuIntentActivation, ll::memory::HookPriority::Normal,
     OreUI::FacetRegistry, &OreUI::FacetRegistry::$activateFacet,
     std::optional<OreUI::IFacetRegistry::Error>, OreUI::FacetBinder& binder,
     std::string const& name, std::string const& id, FacetPayload const& payload) {
-    if (name == "lholo.capture.intent" || name == "lholo.transform.intent" || name == "lholo.render.intent" || name == "lholo.settings.intent" || name == "lholo.tasks.intent") {
+    if (name == "lholo.capture.intent" || name == "lholo.transform.intent" || name == "lholo.render.intent" || name == "lholo.settings.intent" || name == "lholo.tasks.intent" || name == "lholo.preview.intent") {
         if (!active.load() || !isMenuOnTop()) return OreUI::IFacetRegistry::Error::ActivateNotFound;
         bool known{};
         for (auto const& prototype : mFacetPrototypes.get()) if (prototype.name.get() == name) known = true;
         if (!known) {
-            if (name == "lholo.capture.intent")
+            if (name == "lholo.preview.intent")
+                $registerFacet(name, [] { return std::make_unique<IntentFacet>(receivePreviewIntent, "lholo.preview.intent"); });
+            else if (name == "lholo.capture.intent")
                 $registerFacet(name, [] { return std::make_unique<IntentFacet>(receiveCaptureIntent); });
             else if (name == "lholo.transform.intent")
                 $registerFacet(name, [] { return std::make_unique<IntentFacet>(receiveTransformIntent, "lholo.transform.intent"); });
@@ -124,6 +130,7 @@ LL_TYPE_INSTANCE_HOOK(MenuViewUpdate, ll::memory::HookPriority::Normal,
         if (auto update = takeRenderSettingsUpdate(ready)) $triggerEvent("lholo:render", *update);
         if (auto update = takeSettingsUpdate(ready)) $triggerEvent("lholo:settings", *update);
         if (auto update = takeTaskUpdate(ready)) $triggerEvent("lholo:tasks", *update);
+        if (auto update = takePreviewUpdate(ready)) $triggerEvent("lholo:preview", *update);
         if (auto update = takeCaptureUpdate(ready)) {
             $triggerEvent("lholo:capture", *update);
         }
@@ -181,6 +188,7 @@ void resetMenuBridge() {
     resetRenderSettingsBindings();
     resetSettingsBindings();
     resetTaskBindings();
+    resetPreviewBindings();
     publishedLanguage.reset();
 }
 bool hasMenuRegistrations() { return registered; }

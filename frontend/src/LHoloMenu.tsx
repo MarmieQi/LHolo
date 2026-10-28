@@ -18,6 +18,7 @@ import { CreateStructurePage } from './pages/CreateStructurePage';
 import type { CaptureControls } from './application/useCapture';
 import { TasksPage } from './pages/TasksPage';
 import type {TaskControls} from './application/useTasks';
+import type {StructurePreviewControls} from './application/useStructurePreview';
 import type { MenuLabels, ProjectionState } from './platform/bridge';
 import { NativeScrollView } from './platform/native';
 import { LHoloButton } from './components/LHoloControls';
@@ -36,6 +37,7 @@ export function LHoloMenu({
   experimental,
   materialsState,
   tasks,
+  preview,
   onClose,
 }: {
   entryPage: 'tasks' | 'hud';
@@ -50,6 +52,7 @@ export function LHoloMenu({
   experimental: ExperimentalSettingsControls;
   materialsState: MaterialsControls;
   tasks: TaskControls;
+  preview: StructurePreviewControls;
   onClose(): void;
 }) {
   const [page, setPage] = useState<MenuPage>(entryPage);
@@ -79,7 +82,7 @@ export function LHoloMenu({
               <SelectedFileContext label={labels['tasks.currentSelection']}
                 name={activeFile?.name ?? labels['tasks.noSelection']} />
             ) : null}
-            {page === 'tasks' ? <TasksPage labels={labels} tasksCtrl={tasks} hasProjection={projection.hasProjection} onMaterials={materialsState.openModal} />
+            {page === 'tasks' ? <TasksPage labels={labels} tasksCtrl={tasks} preview={preview} hasProjection={projection.hasProjection} onMaterials={materialsState.openModal} />
               : page === 'createStructure' ? <CreateStructurePage labels={labels} capture={capture} />
               : page === 'transform' ? <TransformPage labels={labels} transform={{...transform, ready: transform.ready && !taskBusy && (!activeTask || !!activeFile)}} />
               : page === 'render' ? <RenderPage labels={labels} render={{...render, ready: render.ready && !taskBusy}} />

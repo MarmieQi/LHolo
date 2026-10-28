@@ -3,6 +3,7 @@
 
 #include "structure/StructureFileLoader.h"
 #include "structure/ProjectionActions.h"
+#include "diagnostics/StructurePreviewTrace.h"
 
 #include "plugin/LHolo.h"
 #include "structure/MaterialTracker.h"
@@ -37,6 +38,9 @@
 namespace lholo::structure::detail {
 namespace {
 std::atomic_uint64_t worldRevision{1};
+// Native palette/template access remains serialized even though job ownership
+// and UI busy state are independent for projection and read-only preview.
+std::mutex nativeParserMutex;
 
 struct FileLoader final : LevelListener {
     std::mutex mutex;
@@ -44,6 +48,19 @@ struct FileLoader final : LevelListener {
     Level* level{};
     bool stopped{true};
     std::shared_ptr<CompositionLoadResult> compositionResult;
+    StructureReadQueue reader{[](std::string const& path,std::string& error,std::atomic_bool const& cancelled)
+        -> std::shared_ptr<LoadedStructure const> {
+        std::lock_guard parseLock(nativeParserMutex);
+        if (cancelled.load()) return {};
+        diagnostics::traceStructurePreview(fmt::format("parse begin path={}",path));
+        std::shared_ptr<LoadedStructure const> loaded;
+        try { loaded=loadStructureFile(pathFromUtf8(path),error); }
+        catch (std::exception const& e) { error=e.what(); }
+        catch (...) { error="Unknown structure read error"; }
+        diagnostics::traceStructurePreview(fmt::format("parse end path={} success={} cancelled={} error={}",
+            path,static_cast<bool>(loaded),cancelled.load(),error));
+        return loaded;
+    }};
     std::unordered_map<std::string, std::shared_ptr<LoadedStructure const>> cache;
 
     void onLevelDestruction(std::string const&) override {
@@ -55,7 +72,9 @@ struct FileLoader final : LevelListener {
         worldRevision.fetch_add(1, std::memory_order_release);
         resetProjectionActions();
         StructureSession::getInstance().clearLoaded(i18n::Message{i18n::TextKey::StatusWorldExited});
+        reader.cancelAll();
         if (task.valid()) task.wait();
+        reader.drain();
         compositionResult.reset(); cache.clear();
         // The dying Level removes its listeners; never remove through it later.
     }
@@ -95,6 +114,7 @@ bool startLoad(std::string path, StructureLoadOrigin origin, std::optional<Saved
     auto const failureKey = saved ? i18n::TextKey::StatusRestoreFailed : i18n::TextKey::StatusLoadFailed;
     try {
         loader.task = std::async(std::launch::async, [path = std::move(path), saved = std::move(saved), request, hint, failureKey] {
+            std::lock_guard parseLock(nativeParserMutex);
             auto finishHint = gsl::finally([&] { StructureUiState::getInstance().finishLoadingHint(hint); });
             auto& session = StructureSession::getInstance();
             auto fail = [&](std::string error) {
@@ -149,11 +169,13 @@ void shutdownStructureFileLoader() {
     auto& loader = fileLoader();
     std::lock_guard lock(loader.mutex);
     loader.stopped = true;
+    loader.reader.cancelAll();
     StructureSession::getInstance().cancelPendingLoad();
     // Keep the task in the gate until it is joined: a concurrent destruction
     // callback must not mistake a moved-out future for a finished parser.
     // The parser never acquires loader.mutex.
     if (loader.task.valid()) loader.task.get();
+    loader.reader.drain();
     loader.compositionResult.reset(); loader.cache.clear();
     if (loader.level) {
         loader.level->removeListener(loader);
@@ -215,6 +237,7 @@ bool startTaskComposition(std::string taskId, std::uint64_t revision, StructureL
     auto const hint = ui.beginLoadingHint(i18n::TextKey::TasksLoading);
     try {
         loader.task = std::async(std::launch::async, [result, paths = std::move(paths), hint] {
+            std::lock_guard parseLock(nativeParserMutex);
             auto finishHint = gsl::finally([&] { StructureUiState::getInstance().finishLoadingHint(hint); });
             try {
                 std::unordered_map<std::string, std::shared_ptr<LoadedStructure const>> parsed;
@@ -305,6 +328,31 @@ std::shared_ptr<LoadedStructure const> cachedTaskFile(std::string const& path) {
     std::lock_guard lock(loader.mutex);
     auto it = loader.cache.find(path);
     return it == loader.cache.end() ? nullptr : it->second;
+}
+
+bool startStructureRead(std::uint64_t id, std::string path) {
+    auto& loader = fileLoader();
+    std::lock_guard lock(loader.mutex);
+    if (loader.stopped || !id) return false;
+    auto level = ll::service::getMultiPlayerLevel();
+    if (!level) return false;
+    if (loader.level != &*level) {
+        if (loader.level) loader.level->removeListener(loader);
+        level->addListener(loader);
+        loader.level = &*level;
+    }
+    return loader.reader.start(id,structureFileWorldRevision(),std::move(path));
+}
+
+void cancelStructureRead(std::uint64_t id) {
+    auto& loader = fileLoader();
+    std::lock_guard lock(loader.mutex);
+    loader.reader.cancel(id);
+}
+std::shared_ptr<StructureReadResult const> takeStructureReadResult() {
+    auto& loader = fileLoader();
+    std::lock_guard lock(loader.mutex);
+    return loader.reader.take();
 }
 
 } // namespace lholo::structure::detail

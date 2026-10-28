@@ -11,6 +11,8 @@
 - 模组名称、DLL、目录和内部命名空间：`LHolo` / `LHolo.dll` / `mods/LHolo` / `lholo`
 - 支持格式：Bedrock `.mcstructure`、Java Litematica `.litematic`
 
+文件结构预览通过独立原生 UIScene 展示原文件，不发布活动投影或修改任务选择。只读解析使用独立 StructureReadQueue，与任务加载仅共享原生解析互斥和世界生命周期屏障；关闭立即撤销结果发布，迟到结果丢弃。当前行为、资源所有权和维护约束见 [文件结构预览](docs/STRUCTURE_PREVIEW.md)。
+
 2026-10-28 任务异步加载提示修复：`StructureFileLoader::startTaskComposition` 接入现有 `StructureUiState` 加载提示 token，在解析与合成期间通过旧 ImGui 动作提示栏显示 `TasksLoading`（“加载中...”）。成功和失败均由 Worker 的作用域清理结束提示，启动失败同步清理；关闭投影、退出世界和停用沿用现有清理，旧 token 不影响后续加载。单文件加载保留原文案，提示随当前语言渲染，不新增 HUD 设置或前端状态。隔离回归与编译不替代游戏内验收。
 
 2026-10-28 每文件维度和世界坐标：按用户要求不记录世界/服务器标识，`tasks.json` 升为 v2，每个文件保存 `dimension` 和 `position: {x,y,z}`。任务只组织文件，不再保存/缓存任务锚点；原生脚部方块坐标与维度仅用于首次放置新文件。退出世界仍释放原生缓存与迟到加载，已绑定文件重进或换服务器继续使用同一维度和绝对坐标，不做主世界/下界 8:1 转换。活动任务随玩家维度切换重新筛选视图，其他维度的文件保留设置但不参与加载、AABB、渲染、纠错或放置，且不能用快捷键误编辑。现有非重叠单文件管线保持不变。
@@ -991,7 +993,6 @@ SettingsStore 在读取时兼容旧平铺字段（包括旧世界轴快捷键和
 
 完整本机安装目录统一使用 `xmake`，输出 `bin/LHolo/`（包含资源包，不生成 ZIP）。默认使用 `tools/oreui/runtime/` 中固定版本、哈希校验的构建输入，无需安装游戏；`oreui_hbui` 仍可显式覆盖资源源路径。本地和 GitHub 默认 `xmake` 均同时构建原生与前端资源。构建/版本/哈希校验、工具分层及公开发行边界见 [打包说明](docs/OREUI_PACKAGING.md)。
 
-
 ### 14.1 依赖
 
 - Visual Studio 2022 C++ 工具链（提供链接器与 Windows SDK）
@@ -1021,6 +1022,15 @@ xmake clean
 xmake f -a x64 -m release -p windows --target_type=client -y
 xmake -r
 ```
+
+临时排查崩溃可启用完整 PDB，保持 Release 的 `/O2` 优化及 `/OPT:REF`、`/OPT:ICF`：
+
+```powershell
+xmake f -m release --debug_symbols=y -y
+xmake -y
+```
+
+符号开关仅作用于 LHolo 原生目标，默认关闭。原生打包器会把匹配的 `LHolo.pdb` 复制到 `bin/LHolo/`；本机诊断时将 DLL/PDB 作为同一对保存、部署，不能用新 PDB 解析旧 DLL。正式六文件安装清单不包含 PDB，现有部署脚本不会自动复制符号；本机诊断部署可在游戏退出并成功部署 DLL 后另行复制匹配 PDB。恢复普通构建用 `xmake f -m release --debug_symbols=n -y` 再构建；不要发布残留符号文件。
 
 唯一发布目录：
 

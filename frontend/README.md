@@ -1,6 +1,8 @@
 # LHolo OreUI 前端
 
-建造任务页通过 `application/useTasks → platform/taskBridge → oreui/TaskBindings/TaskProtocol → app/TaskActions` 接入原生目录。任务 CRUD、外部路径、顺序、显隐和选择保存在模组 `data/tasks.json`；世界中选择任务后加载多文件合成投影，选中文件决定变换、切片、HUD/材料与放置目标。页面只保留输入草稿与弹窗，示例数据集中在 `preview/tasks.ts`。实际渲染和生命周期仍需游戏内验证，真实文件三维预览后续接入。
+文件行新增“预览”：application/useStructurePreview → platform/previewBridge → 独立预览协议，进入原生结构预览场景。前端只发送任务/文件身份、revision 和窗口实测比例，不复制结构数据，不改变建造目标。App 持有订阅及请求状态，页面只展示按钮与错误。浏览器只提示前往游戏验证，不模拟三维渲染；见 [文件结构预览](../docs/STRUCTURE_PREVIEW.md)。
+
+建造任务页通过 `application/useTasks → platform/taskBridge → oreui/TaskBindings/TaskProtocol → app/TaskActions` 接入原生目录。任务 CRUD、外部路径、顺序、显隐和选择保存在模组 `data/tasks.json`；世界中选择任务后加载多文件合成投影，选中文件决定变换、切片、HUD/材料与放置目标。页面只保留输入草稿与弹窗，示例数据集中在 `preview/tasks.ts`。文件三维预览使用独立原生场景，实际渲染和生命周期仍需游戏内验证。
 
 使用当前自有菜单样式。聊天命令与菜单快捷键均打开 OreUI 主菜单；旧 ImGui 菜单不再开放入口。
 默认打开建造任务；旧“投影”页面及其浏览、加载、恢复通路已移除。材料清单入口位于任务页，显示当前选中文件的材料并标明文件名称。创建结构选区与导出、结构变换、渲染设置、HUD、快捷键、语言与实验性功能已接入。OreUI 界面设置仅提供语言选择，不提供缩放控件，也不修改旧 ImGui 缩放。
