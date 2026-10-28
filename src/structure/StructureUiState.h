@@ -41,6 +41,10 @@ struct MaterialRequirement {
     // count display. Computed on the tick thread; 64 when unknown.
     int           stackSize{64};
     std::shared_ptr<ItemStack const> iconItem; // Immutable native item, including banner patterns.
+    // Design of an item variant (banner colour, ominous type, patterns);
+    // inventory items count toward this material only when their design
+    // matches. Empty for ordinary materials.
+    std::string   variantKey;
 };
 
 // One coherent, versioned snapshot for material-list consumers.

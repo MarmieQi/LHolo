@@ -241,6 +241,7 @@
     /* Material list popup */                                                                            \
     LHOLO_TEXT_KEY("material.water", MaterialWater, "")                                                  \
     LHOLO_TEXT_KEY("material.lava", MaterialLava, "")                                                    \
+    LHOLO_TEXT_KEY("material.bannerPatterns", MaterialBannerPatterns, "")                                \
     LHOLO_TEXT_KEY("status.notLoaded", StatusNotLoaded, "")                                              \
     LHOLO_TEXT_KEY("label.materialSummary", LabelMaterialSummary, "")                                    \
     LHOLO_TEXT_KEY("hint.noPlaceableMaterials", HintNoPlaceableMaterials, "")                            \

@@ -183,6 +183,7 @@
   "label.language": "Язык",
   "material.water": "Вода",
   "material.lava": "Лава",
+  "material.bannerPatterns": " (узоров: %d)",
   "status.notLoaded": "Структура не загружена",
   "label.materialSummary": "Блоков: %llu, материалов: %zu",
   "hint.noPlaceableMaterials": "Нет блоков, которые можно установить напрямую",

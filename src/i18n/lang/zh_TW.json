@@ -183,6 +183,7 @@
   "label.language": "語言",
   "material.water": "水",
   "material.lava": "熔岩",
+  "material.bannerPatterns": "（%d 層圖案）",
   "status.notLoaded": "尚未載入結構檔案",
   "label.materialSummary": "共 %llu 個方塊，%zu 種材料",
   "hint.noPlaceableMaterials": "沒有可直接放置的實體方塊",

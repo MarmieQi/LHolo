@@ -183,6 +183,7 @@
   "label.language": "Language",
   "material.water": "Water",
   "material.lava": "Lava",
+  "material.bannerPatterns": " (%d patterns)",
   "status.notLoaded": "No structure loaded",
   "label.materialSummary": "Blocks: %llu, material types: %zu",
   "hint.noPlaceableMaterials": "No directly placeable blocks",

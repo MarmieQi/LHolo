@@ -127,6 +127,13 @@ CorrectionProgressChanges updateCorrectionTracker(
             state.anchor.z + offsetZ + transformed.z
         };
         auto const* expected = transformExpectedBlock(entry.block, transformSettings, identityTransform);
+        // An extended piston's head cell is not a block the player places: the
+        // projection shows the piston retracted, so that cell is never missing.
+        if (expected
+            && (expected->getTypeName() == "minecraft:piston_arm_collision"
+                || expected->getTypeName() == "minecraft:sticky_piston_arm_collision")) {
+            expected = nullptr;
+        }
         auto const* expectedLiquid = transformExpectedBlock(
             entry.liquid, transformSettings, identityTransform
         );

@@ -24,6 +24,7 @@
 #include "mc/client/renderer/block/BlockTessellator.h"
 #include "mc/client/renderer/blockactor/BlockActorRenderDispatcher.h"
 #include "mc/dataloadhelper/NewUniqueIdsDataLoadHelper.h"
+#include "mc/deps/nbt/CompoundTag.h"
 #include "mc/deps/core/math/Vec3.h"
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/ILevel.h"
@@ -146,7 +147,32 @@ void rebuildProjectionPlacement(
                     if (entry.blockEntityNbt) {
                         NewUniqueIdsDataLoadHelper dataLoadHelper;
                         dataLoadHelper.mLevel = state.level;
-                        blockActor->load(*state.level, *entry.blockEntityNbt, dataLoadHelper);
+                        // A piston saved extended carries State 2 / Progress 1
+                        // and keeps its head in a separate arm block, which is
+                        // not placeable and not drawn; loaded as is, the piston
+                        // vanished from the projection. Show what the player
+                        // places: the retracted piston.
+                        std::unique_ptr<CompoundTag> retracted;
+                        auto const& typeName = transformedBlock->getTypeName();
+                        if (typeName == "minecraft:piston" || typeName == "minecraft:sticky_piston") {
+                            retracted = entry.blockEntityNbt->clone();
+                            retracted->putInt("State", 0);
+                            retracted->putInt("NewState", 0);
+                            retracted->putFloat("Progress", 0.0f);
+                            retracted->putFloat("LastProgress", 0.0f);
+                        }
+                        // The banner renderer draws nothing for a projected
+                        // banner with pattern layers (custom and ominous
+                        // banners vanished). Show its base colour instead.
+                        if ((typeName == "minecraft:standing_banner" || typeName == "minecraft:wall_banner")
+                            && (entry.blockEntityNbt->contains("Patterns") || entry.blockEntityNbt->contains("Type"))) {
+                            retracted = entry.blockEntityNbt->clone();
+                            retracted->erase("Patterns");
+                            retracted->putInt("Type", 0);
+                        }
+                        blockActor->load(
+                            *state.level, retracted ? *retracted : *entry.blockEntityNbt, dataLoadHelper
+                        );
                         blockActor->mPosition = worldPosition;
                     }
                     auto* actor = blockActor.get();
