@@ -6,8 +6,9 @@
 class Level;
 class StructureTemplate;
 namespace lholo::structure::write {
+// An empty secondary vector means the optional extra layer is absent.
 struct TemplateBlockIndices { std::vector<int> primary, secondary; };
-// Format-1 NBT lists encode their element count as a signed 32-bit integer.
+// NBT IntArray lengths are encoded as signed 32-bit integers.
 inline std::size_t nativeTemplateVolume(std::array<int, 3> const& size) {
     std::size_t volume = 1;
     for (int extent : size) {
@@ -21,7 +22,7 @@ inline std::size_t nativeTemplateVolume(std::array<int, 3> const& size) {
 inline TemplateBlockIndices makeTemplateIndices(StructureWritePlan const& plan) {
     auto const sy = plan.size[1], sz = plan.size[2];
     auto const volume = nativeTemplateVolume(plan.size);
-    TemplateBlockIndices result{std::vector<int>(volume, -1), std::vector<int>(volume, -1)};
+    TemplateBlockIndices result{std::vector<int>(volume, -1), {}};
     auto index = [=](int x, int y, int z) { return (static_cast<std::size_t>(x) * sy + y) * sz + z; };
     if (!plan.skipAir) {
         for (auto const& region : plan.regions)
@@ -34,7 +35,10 @@ inline TemplateBlockIndices makeTemplateIndices(StructureWritePlan const& plan) 
     for (auto const& cell : plan.cells) {
         auto const id = index(cell.position[0], cell.position[1], cell.position[2]);
         result.primary[id] = cell.block >= 0 ? cell.block + 1 : cell.liquid + 1;
-        if (cell.block >= 0 && cell.liquid >= 0) result.secondary[id] = cell.liquid + 1;
+        if (cell.block >= 0 && cell.liquid >= 0) {
+            if (result.secondary.empty()) result.secondary.assign(volume, -1);
+            result.secondary[id] = cell.liquid + 1;
+        }
     }
     return result;
 }

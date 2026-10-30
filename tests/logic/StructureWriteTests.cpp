@@ -77,7 +77,11 @@ int runStructureWriteTests() {
     check(skipped.secondary == indices.secondary, "skipping air preserves waterlogged and pure liquid placement");
     plan.cells.clear();
     auto airOnly = makeTemplateIndices(plan);
-    check(airOnly.primary == std::vector<int>(6, -1) && airOnly.secondary == std::vector<int>(6, -1),
-        "all-air structure becomes entirely omitted when air skipping is enabled");
+    check(airOnly.primary == std::vector<int>(6, -1) && airOnly.secondary.empty(),
+        "all-air structure skips every cell and has no extra layer");
+    plan.cells = {{{0,0,0}, 0, -1, {}}, {{5,0,0}, -1, 2, {}}};
+    auto dry = makeTemplateIndices(plan);
+    check(dry.primary == std::vector<int>{1,-1,-1,-1,-1,3} && dry.secondary.empty(),
+        "solid and standalone liquid use only the primary layer");
     return failures;
 }
