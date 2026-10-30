@@ -67,6 +67,7 @@ export function TasksPage({ labels, tasksCtrl, preview, hasProjection, onMateria
   const selectedLayer = tasksCtrl.selectedLayer;
   const errorFile = tasksCtrl.tasks.flatMap(t => t.layers).find(f => f.id === tasksCtrl.state?.errorFileId);
   const disabled = !tasksCtrl.canCommand;
+  const showCloseAction = !!tasksCtrl.state?.loading || (!!currentTask && currentTask.id === tasksCtrl.state?.activeTaskId);
   const [pathDraft, setPathDraft] = useState('');
   useEffect(() => setPathDraft(selectedLayer?.path ?? ''), [selectedLayer?.id, selectedLayer?.path]);
   const commitPath = () => {if (selectedLayer) tasksCtrl.changeLayerPath(selectedLayer.id, pathDraft);};
@@ -145,8 +146,9 @@ export function TasksPage({ labels, tasksCtrl, preview, hasProjection, onMateria
       </div>
 
       <div className="lholo-action-row">
-        <LHoloButton label={labels['tasks.activate']} disabled={disabled || !currentTask || !tasksCtrl.state?.worldAvailable} onClick={tasksCtrl.activate} />
-        <LHoloButton label={labels['tasks.close']} disabled={!tasksCtrl.state?.activeTaskId && !tasksCtrl.state?.loading} onClick={tasksCtrl.close} />
+        <LHoloButton label={labels[showCloseAction ? 'tasks.close' : 'tasks.activate']}
+          disabled={showCloseAction ? !tasksCtrl.canClose : disabled || !currentTask || !tasksCtrl.state?.worldAvailable}
+          onClick={showCloseAction ? tasksCtrl.close : tasksCtrl.activate} />
         <LHoloButton label={labels['material.listTitle']} disabled={disabled || !hasProjection || !selectedLayer || currentTask?.id !== tasksCtrl.state?.activeTaskId} onClick={onMaterials} />
       </div>
       {tasksCtrl.state?.error ? <div className="lholo-muted lholo-task-error" role="alert">

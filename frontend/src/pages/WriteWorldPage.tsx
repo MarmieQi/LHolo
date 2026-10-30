@@ -22,9 +22,11 @@ export function WriteWorldPage({labels, tasks, writer}: {
     : tasks.currentTaskId !== tasks.state?.activeTaskId ? 'writeWorld.loadTask'
     : !file ? 'writeWorld.chooseFile'
     : file.hidden ? 'writeWorld.showFile' : '';
+  const [summary, ...details] = labels[skipAir ? 'writeWorld.descriptionSkipAir' : 'writeWorld.description'].split('\n\n');
   return <div className="lholo-write-world-page">
     <div className="lholo-section-title">{labels['page.writeWorld']}</div>
     <SelectedFileContext label={labels['tasks.currentSelection']} name={file?.name ?? labels['tasks.noSelection']} />
+    <div className="lholo-muted">{summary}</div>
     <div className="lholo-interface-row lholo-setting-row">
       <div className="lholo-interface-label">{labels['writeWorld.mode']}</div>
       <LHoloSelect label={labels['writeWorld.mode']} value={mode} onChange={setMode}
@@ -33,7 +35,7 @@ export function WriteWorldPage({labels, tasks, writer}: {
     </div>
     <div className="lholo-render-check"><LHoloCheckbox label={labels['writeWorld.skipAir']}
       value={skipAir} onChange={setSkipAir} disabled={writer.busy} /></div>
-    {labels[skipAir ? 'writeWorld.descriptionSkipAir' : 'writeWorld.description'].split('\n\n').map((paragraph, index) =>
+    {details.map((paragraph, index) =>
       <div className="lholo-muted" key={index}>{paragraph}</div>)}
     <div className="lholo-action-row"><LHoloButton label={labels['page.writeWorld']}
       disabled={!canWrite} onClick={() => setResultRequest(writer.write(tasks.currentTaskId, file!.id, tasks.state!.revision, skipAir))} /></div>

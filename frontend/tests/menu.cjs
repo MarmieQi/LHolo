@@ -224,6 +224,36 @@ assert(nodeText(tree.root).includes(labels['tasks.renameTitle']), 'IME compatibi
 click(labels['tasks.cancel']);
 assert(!nodeText(tree.root).includes(labels['tasks.renameTitle']));
 const taskRequests = () => events.filter(e => e[0] === 'facet:request' && e[1] === 'lholo.tasks.intent');
+const taskActionButton = () => tree.root.findAllByType('button').filter(node =>
+  [labels['tasks.activate'], labels['tasks.close']].includes(nodeText(node)));
+const acknowledgeTaskAction = changes => {
+  taskState.ack = JSON.parse(taskRequests().at(-1)[3].request).id;
+  taskState.revision++; Object.assign(taskState, changes); emitTasks();
+};
+assert.equal(taskActionButton().length, 1, 'Loading and closing share one action button');
+assert.equal(nodeText(taskActionButton()[0]), labels['tasks.activate']);
+click(labels['tasks.activate']);
+assert.equal(JSON.parse(taskRequests().at(-1)[3].request).action, 'activate');
+assert(taskActionButton()[0].props.disabled, 'The combined action prevents duplicate requests');
+acknowledgeTaskAction({loading:true,activeTaskId:''});
+assert.equal(taskActionButton().length, 1);
+assert.equal(nodeText(taskActionButton()[0]), labels['tasks.close'], 'First load can be cancelled before an active task is published');
+assert(!taskActionButton()[0].props.disabled, 'Native loading does not disable cancellation');
+click(labels['tasks.close']);
+assert.equal(JSON.parse(taskRequests().at(-1)[3].request).action, 'close');
+assert(taskActionButton()[0].props.disabled);
+acknowledgeTaskAction({loading:false,activeTaskId:''});
+assert.equal(nodeText(taskActionButton()[0]), labels['tasks.activate'], 'Closing restores the load action');
+click(labels['tasks.activate']);
+acknowledgeTaskAction({loading:false,activeTaskId:taskState.currentTaskId});
+assert.equal(nodeText(taskActionButton()[0]), labels['tasks.close'], 'Loaded task displays the close action');
+click(labels['tasks.close']);
+acknowledgeTaskAction({loading:false,activeTaskId:''});
+taskState.activeTaskId = 'another-task'; emitTasks();
+assert.equal(nodeText(taskActionButton()[0]), labels['tasks.activate'], 'A different active task does not turn the selected task action into close');
+taskState.activeTaskId = ''; taskState.worldAvailable = false; emitTasks();
+assert(taskActionButton()[0].props.disabled, 'Loading still requires a world');
+taskState.worldAvailable = true; emitTasks();
 const pathInput = () => tree.root.findByProps({'data-narrate': labels['tasks.path']});
 const editTaskPath = value => renderer.act(() => {
   const input = inputMocks.get(labels['tasks.path']);

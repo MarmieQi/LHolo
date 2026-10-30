@@ -27,6 +27,7 @@ export function useTasks() {
     state, tasks, currentTask, layers, selectedLayer, requestRejected,
     currentTaskId: state?.currentTaskId ?? '', selectedLayerId: currentTask?.selectedFileId ?? '',
     canCommand: !!state?.writable && !waiting && !state.loading && !state.browsing,
+    canClose: !!state?.writable && !waiting && !state.browsing && (!!state.loading || !!state.activeTaskId),
     selectTask: (taskId: string) => command('select', {taskId}),
     createTask: (value: string) => command('create', {value}),
     renameTask: (taskId: string, value: string) => command('rename', {taskId, value}),
