@@ -566,6 +566,8 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
         return nullptr;
     }
     auto const& nativeData = nativeStructure->mStructureTemplateData.get();
+    auto const& nativeOrigin = nativeData.mStructureWorldOrigin.get();
+    loaded->sourceWorldOrigin = {nativeOrigin.x, nativeOrigin.y, nativeOrigin.z};
     auto const& nativeSize = nativeData.mSize.get();
     if (nativeSize.x != loaded->sizeX || nativeSize.y != loaded->sizeY || nativeSize.z != loaded->sizeZ) {
         error = "原版 StructureTemplate 返回的尺寸与文件不一致";
@@ -603,6 +605,9 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
     loaded->renderBlocks.reserve(static_cast<std::size_t>(loaded->primaryBlocks + loaded->secondaryBlocks));
     auto const yz = static_cast<std::uint64_t>(loaded->sizeY) * static_cast<std::uint64_t>(loaded->sizeZ);
     for (std::uint64_t index = 0; index < loaded->volume; ++index) {
+        if (nativePrimary[static_cast<std::size_t>(index)] < 0
+            && (!nativeSecondaryStorage || (*nativeSecondaryStorage)[static_cast<std::size_t>(index)] < 0))
+            loaded->omittedCells.push_back(index);
         auto const* primary = resolveNative(nativePrimary[static_cast<std::size_t>(index)]);
         auto const* secondary = nativeSecondaryStorage
             ? resolveNative((*nativeSecondaryStorage)[static_cast<std::size_t>(index)])

@@ -175,6 +175,13 @@
 .lholo-select-options { position:absolute; top:100%; left:0; z-index:30; min-width:100%; padding:0.2rem; margin-top:0.2rem; background-color:#242424; border:0.06rem solid #3b3b3b; border-radius:0.25rem; }
 .lholo-select-option { height:2.2rem; justify-content:flex-start; padding:0 0.75rem; background-color:transparent; }
 .lholo-select-option.is-selected { background-color:#333333; }
+/* World writing uses the existing controls with a single foreground colour. */
+.lholo-write-world-page { width:100%; min-width:0; flex-shrink:0; color:#ededed; }
+.lholo-write-world-page .lholo-muted,
+.lholo-write-world-page .lholo-selected-file-context { color:#ededed; }
+.lholo-write-world-page .lholo-control-disabled { opacity:1; }
+.lholo-write-world-page .lholo-select-options { box-sizing:border-box; width:100%; min-width:100%; left:0; right:auto; }
+.lholo-write-world-page .lholo-select-option .lholo-button-label { white-space:nowrap; }
 .lholo-stepper { flex-direction:row; align-items:center; flex-shrink:0; }
 .lholo-stepper-button { width:2.2rem; padding:0; }
 .lholo-stepper-value { min-width:3.2rem; margin:0 0.3rem; }

@@ -40,7 +40,7 @@ const context = {
       ItemIcon: ({ itemId }) => React.createElement('native-item-icon', { itemId }),
     },
     engine: {
-      on(name, fn) { assert(['lholo:menu-entry', 'lholo:menu-labels', 'lholo:projection', 'lholo:materials', 'lholo:capture', 'lholo:transform', 'lholo:render', 'lholo:settings', 'lholo:tasks', 'lholo:preview'].includes(name)); listeners.add({ name, fn }); },
+      on(name, fn) { assert(['lholo:menu-entry', 'lholo:menu-labels', 'lholo:projection', 'lholo:materials', 'lholo:capture', 'lholo:transform', 'lholo:render', 'lholo:settings', 'lholo:tasks', 'lholo:preview', 'lholo:write'].includes(name)); listeners.add({ name, fn }); },
       off(name, fn) { for (const item of listeners) if (item.name === name && item.fn === fn) listeners.delete(item); },
       trigger(...args) { events.push(args); },
     },
@@ -74,13 +74,13 @@ const click = label => renderer.act(() => {
   button.props.onClick();
 });
 mount();
-assert.equal(listeners.size, 10);
+assert.equal(listeners.size, 11);
 assert(events.some(args => args[0] === 'query:subscribe/lholo.menu.ready'));
 receive('{"menu.close":false}');
 assert(errors.length > 0);
 receive(JSON.stringify(labels));
 assert.equal(tree.root.findAllByType('native-scroll').length, 2);
-assert.equal(tree.root.findAllByType('button').filter(node => node.props.className?.includes('lholo-navigation-item')).length, 8);
+assert.equal(tree.root.findAllByType('button').filter(node => node.props.className?.includes('lholo-navigation-item')).length, 9);
 let taskState = {tasks:[{id:'castle',name:'城堡建造',selectedFileId:'roof',layers:[
   {id:'body',name:'主体.mcstructure',path:'D:\\投影\\主体.mcstructure',hidden:false},
   {id:'roof',name:'屋顶.litematic',path:'D:\\投影\\屋顶.litematic',hidden:false},
@@ -89,6 +89,76 @@ let taskState = {tasks:[{id:'castle',name:'城堡建造',selectedFileId:'roof',l
   worldAvailable:true,writable:true,error:'',errorFileId:''};
 const emitTasks = () => receive(JSON.stringify(taskState),'lholo:tasks');
 emitTasks();
+// World writing shares native task selection, but owns its request/status channel.
+const navigationLabels = tree.root.findAllByType('button')
+  .filter(node => node.props.className?.includes('lholo-navigation-item')).map(nodeText);
+assert.equal(navigationLabels.indexOf(labels['page.writeWorld']), navigationLabels.indexOf(labels['page.createStructure']) + 1);
+click(labels['page.writeWorld']);
+const writeAction = () => tree.root.findAllByType('button').find(node => nodeText(node) === labels['page.writeWorld']
+  && !node.props.className?.includes('lholo-navigation-item'));
+assert(writeAction().props.disabled, 'Writing waits for the native capability snapshot');
+const emitWrite = changes => receive(JSON.stringify({ack:0,worldRevision:4,busy:false,localAvailable:true,result:'',...changes}), 'lholo:write');
+emitWrite({localAvailable:false});
+assert(writeAction().props.disabled, 'Remote worlds cannot use local writing');
+assert(nodeText(tree.root).includes(labels['writeWorld.noLocalWorld']));
+assert(!nodeText(tree.root).includes(labels['writeWorld.loadTask']), 'Only the current blocking condition is displayed');
+emitWrite({});
+assert(nodeText(tree.root).includes(labels['writeWorld.loadTask']), 'A selected file in an inactive task needs loading, not reselection');
+assert(!nodeText(tree.root).includes(labels['writeWorld.noSelection']), 'Do not show the generic combined selection warning');
+taskState.activeTaskId = 'castle'; emitTasks(); emitWrite({});
+assert(!writeAction().props.disabled, 'Active selected file can be written in a local world');
+assert(!nodeText(tree.root).includes(labels['writeWorld.loadTask']));
+renderer.act(() => tree.root.findAllByType('button').find(node => node.props.className?.includes('lholo-select-trigger')).props.onClick());
+const commandMode = tree.root.findAllByType('button').find(node => nodeText(node) === labels['writeWorld.commandMode']);
+assert(commandMode.props.disabled, 'Server command mode is visible but unavailable');
+renderer.act(() => tree.root.findAllByType('button').find(node => node.props.className?.includes('lholo-select-option') && nodeText(node) === labels['writeWorld.localMode']).props.onClick());
+const writeRequests = () => events.filter(e => e[0] === 'facet:request' && e[1] === 'lholo.write.intent');
+const skipAirControl = () => tree.root.findAllByType('button').find(node => nodeText(node) === labels['writeWorld.skipAir']);
+assert(!skipAirControl().props.className.includes('is-checked'), 'Air skipping defaults to off');
+renderer.act(() => writeAction().props.onClick());
+const writeRequest = JSON.parse(writeRequests().at(-1)[3].request);
+assert.deepEqual(writeRequest, {id:1,revision:1,worldRevision:4,taskId:'castle',fileId:'roof',mode:'local',skipAir:false});
+assert(writeAction().props.disabled, 'Duplicate writes are blocked while awaiting acknowledgement');
+emitWrite({ack:1,busy:true});
+assert(writeAction().props.disabled, 'Native execution keeps the action disabled');
+assert(skipAirControl().props.disabled, 'The submitted air choice cannot change while writing');
+click(labels['page.createStructure']); click(labels['page.writeWorld']);
+assert(writeAction().props.disabled, 'Changing pages preserves the in-flight write');
+emitWrite({ack:1,result:'writeWorld.complete'});
+assert(!writeAction().props.disabled && !nodeText(tree.root).includes(labels['writeWorld.complete']),
+  'Late completion from a previous page instance is not displayed');
+click(labels['writeWorld.skipAir']);
+assert(skipAirControl().props.className.includes('is-checked'));
+assert(nodeText(tree.root).includes(labels['writeWorld.descriptionSkipAir'].split('\n\n')[1]), 'Description reflects air skipping');
+renderer.act(() => writeAction().props.onClick());
+assert.equal(JSON.parse(writeRequests().at(-1)[3].request).skipAir, true, 'Checkbox choice is sent with this write only');
+emitWrite({ack:2,result:'writeWorld.complete'});
+assert(nodeText(tree.root).includes(labels['writeWorld.complete']), 'The current page displays its own completion');
+taskState.tasks[0].selectedFileId = 'body'; emitTasks();
+assert(!skipAirControl().props.className.includes('is-checked'), 'Changing files starts with air skipping off');
+emitWrite({ack:2,result:'writeWorld.complete'});
+assert(!nodeText(tree.root).includes(labels['writeWorld.complete']), 'Changing files clears the old result even when republished');
+taskState.tasks[0].selectedFileId = 'roof'; emitTasks();
+assert(!nodeText(tree.root).includes(labels['writeWorld.complete']), 'Returning to the old file does not restore its result');
+renderer.act(() => writeAction().props.onClick());
+emitWrite({ack:3,result:'writeWorld.failed'});
+assert(nodeText(tree.root).includes(labels['writeWorld.failed']), 'The current operation can display a failure');
+click(labels['writeWorld.skipAir']);
+click(labels['page.createStructure']); click(labels['page.writeWorld']);
+assert(!skipAirControl().props.className.includes('is-checked'), 'Leaving the page discards the air-skipping choice');
+emitWrite({ack:3,result:'writeWorld.failed'});
+assert(!nodeText(tree.root).includes(labels['writeWorld.failed']), 'Leaving the page destroys success and failure feedback');
+renderer.act(() => writeAction().props.onClick());
+emitWrite({ack:4,result:'writeWorld.complete'});
+assert(nodeText(tree.root).includes(labels['writeWorld.complete']));
+emitWrite({ack:4,worldRevision:5,result:'writeWorld.complete'});
+assert(!nodeText(tree.root).includes(labels['writeWorld.complete']), 'A new world cannot inherit old feedback');
+taskState.tasks[0].layers[1].hidden = true; emitTasks();
+assert(writeAction().props.disabled, 'Hidden file cannot be written');
+assert(nodeText(tree.root).includes(labels['writeWorld.showFile']), 'Hidden-file hint explains the specific required action');
+taskState.tasks[0].layers[1].hidden = false;
+taskState.activeTaskId = ''; emitTasks();
+click(labels['tasks.nav']);
 receive(JSON.stringify({ack:0,accepted:false,error:''}), 'lholo:preview');
 const previewButtons = () => tree.root.findAllByType('button').filter(node => nodeText(node) === labels['preview.open']);
 assert.equal(previewButtons().length, 3, 'Every file has its own preview entry, including hidden files');
@@ -767,7 +837,7 @@ renderer.act(() => tree.unmount());
 assert.equal(listeners.size, 0);
 assert([...inputMocks.values()].every(input => input.listeners.size === 0), 'DOM input subscriptions clean up');
 mount();
-assert.equal(listeners.size, 10);
+assert.equal(listeners.size, 11);
 receive(JSON.stringify(labels));
 emitTasks();projectionState({hasProjection:true});
 assert.equal(tree.root.findByProps({'data-narrate':labels['tasks.path']}).props.value, selectedTaskPath,

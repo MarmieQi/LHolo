@@ -71,6 +71,10 @@ struct LoadedStructure {
     // litematic contributes one per region so gaps between regions are not
     // mistaken for schematic air by projection correction.
     std::vector<RegionBox>               regions;
+    // Source format -1 cells are absent, not schematic air. Retained for world writing.
+    std::vector<std::uint64_t>            omittedCells;
+    // Original template origin, used by vanilla when relocating block-entity references.
+    std::array<int, 3>                    sourceWorldOrigin{};
     struct RenderBlock {
         int          x{};
         int          y{};

@@ -58,6 +58,7 @@ std::shared_ptr<CompositionLoadResult> takeTaskCompositionResult() {
 }
 }
 
+int runStructureWriteActionTests();
 int runTaskActionsTests() {
     using namespace lholo;
     using namespace app;
@@ -106,7 +107,18 @@ int runTaskActionsTests() {
         processTaskActions();
     };
     command(TaskAction::Create, "城堡"); finish(true);
-    command(TaskAction::AddFile, "body.mcstructure"); finish(true);
+    command(TaskAction::AddFile, "body.mcstructure");
+    auto addedFile = getTaskSnapshot().catalog.tasks[0].files.back();
+    check(addedFile.dimension == 0 && addedFile.x == 10 && addedFile.y == 20 && addedFile.z == 30,
+        "adding a file immediately records player coordinates and dimension before parsing finishes");
+    playerOrigin = {900, 80, 700, 0};
+    finish(true);
+    auto loadedFile = getTaskSnapshot().catalog.tasks[0].files.back();
+    check(loadedFile.dimension == addedFile.dimension && loadedFile.x == addedFile.x
+        && loadedFile.y == addedFile.y && loadedFile.z == addedFile.z,
+        "moving during first load cannot replace the addition-time anchor");
+    playerOrigin = {10, 20, 30, 0};
+    failures += runStructureWriteActionTests();
     auto fileId = getTaskSnapshot().catalog.tasks[0].files[0].id;
     auto original = session.loaded();
     command(TaskAction::Path, "missing.mcstructure", fileId); finish(false);
@@ -131,7 +143,13 @@ int runTaskActionsTests() {
     session.adjustOffsets(100, 0, 0); processTaskActions(); finish(false);
     check(session.transform().offsetX == 13,
           "failed live transform restores the last successful transform, not the failed request");
-    command(TaskAction::AddFile, "missing-two.mcstructure"); finish(false);
+    command(TaskAction::AddFile, "missing-two.mcstructure");
+    auto failedFileAnchor = getTaskSnapshot().catalog.tasks[0].files.back();
+    finish(false);
+    auto failedFile = getTaskSnapshot().catalog.tasks[0].files.back();
+    check(failedFile.dimension == failedFileAnchor.dimension && failedFile.dimension.has_value()
+        && failedFile.x == failedFileAnchor.x && failedFile.y == failedFileAnchor.y && failedFile.z == failedFileAnchor.z,
+        "failed parsing preserves the anchor registered when adding the file");
     check(session.selectedSource() < 0, "failed new file does not edit the previously selected file");
     command(TaskAction::SelectFile, {}, fileId);
     session.adjustOffsets(0, 2, 0); processTaskActions();
@@ -292,6 +310,37 @@ int runTaskActionsTests() {
         "failed replacement keeps the last valid projection and layer settings");
     command(TaskAction::Path, "taller.mcstructure", freshFile.id); finish(true, 100, 40, 4);
     check(session.layerSettings().values.layer == 33, "replacement with taller file preserves an in-range layer");
+    command(TaskAction::Close);
+    playerOrigin = {321, 64, -654, 0};
+    command(TaskAction::AddFile, "added-while-closed.mcstructure");
+    auto closedAddition = getTaskSnapshot().catalog.tasks[0].files.back();
+    check(!inFlight && closedAddition.dimension == 0 && closedAddition.x == 321
+        && closedAddition.y == 64 && closedAddition.z == -654,
+        "adding to an inactive task registers its anchor without loading");
+    playerOrigin = {999, 70, 888, 0};
+    rejectNextStart = true;
+    command(TaskAction::Activate);
+    check(!inFlight, "registered file can wait for the loader");
+    processTaskActions(); finish(false);
+    auto afterFailure = getTaskSnapshot().catalog.tasks[0].files.back();
+    check(afterFailure.dimension == closedAddition.dimension && afterFailure.x == closedAddition.x
+        && afterFailure.y == closedAddition.y && afterFailure.z == closedAddition.z,
+        "loader delay and parsing failure do not change the addition-time anchor");
+    command(TaskAction::Activate); finish(true);
+    check(fileWorldPosition(closedAddition.id) == std::optional<std::array<long long,3>>{{321,64,-654}},
+        "later activation uses the registered anchor instead of the current player position");
+
+    command(TaskAction::Close);
+    world = false;
+    command(TaskAction::AddFile, "added-without-player.mcstructure");
+    auto noWorldFile = getTaskSnapshot().catalog.tasks[0].files.back();
+    check(!noWorldFile.dimension, "adding without player coordinates leaves the file unlocated");
+    world = true;
+    playerOrigin = {-50, 65, 80, 0};
+    command(TaskAction::Activate); finish(true);
+    auto located = getTaskSnapshot().catalog.tasks[0].files.back();
+    check(located.dimension == 0 && located.x == -50 && located.y == 65 && located.z == 80,
+        "an unlocated file fetches player coordinates when loading becomes possible");
     auto expectedLayers = getTaskSnapshot().catalog;
     shutdownTasks();
     check(tasks::readCatalog(taskPath) == expectedLayers, "corrected layers survive actual task-store persistence");

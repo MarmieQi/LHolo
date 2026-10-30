@@ -1,0 +1,87 @@
+#include "app/StructureWriteActions.h"
+#include "app/TaskActions.h"
+#include "app/TaskContext.h"
+#include "structure/StructureLoader.h"
+#include "structure/write/StructureWritePlan.h"
+#include "structure/write/local/LocalWorldWriter.h"
+#include <cstdio>
+#include <optional>
+#include <utility>
+
+namespace {
+bool local = true;
+std::optional<lholo::structure::write::StructureWritePlan> queued;
+std::optional<lholo::structure::write::WriteCompletion> completion;
+}
+// Replace only native serialization and the server executor; use the real task
+// fixture, catalog, cached-file selection and write application control frame.
+namespace lholo::structure::write {
+bool localWorldAvailable() { return local; }
+StructureWritePlan makeWritePlan(LoadedStructure const& source, WriteTarget target) {
+    StructureWritePlan plan;
+    plan.target = target; plan.size = {source.sizeX, source.sizeY, source.sizeZ};
+    return plan;
+}
+bool queueLocalWrite(StructureWritePlan plan, std::uint64_t) { queued = std::move(plan); return true; }
+std::optional<WriteCompletion> takeLocalWriteResult() { return std::exchange(completion, {}); }
+void cancelLocalWrite() { queued.reset(); completion.reset(); }
+}
+
+// Called while TaskActionsTests owns a successfully loaded selected-file fixture.
+int runStructureWriteActionTests() {
+    using namespace lholo;
+    using namespace structure::write;
+    int failures{};
+    auto check = [&](bool valid, char const* message) {
+        if (!valid) { ++failures; std::fprintf(stderr, "World-write actions: %s\n", message); }
+    };
+    app::resetStructureWriteActions();
+    app::processStructureWriteActions();
+    auto task = app::getTaskSnapshot();
+    auto* selectedTask = tasks::findTask(task.catalog, task.activeTaskId);
+    check(selectedTask != nullptr, "active task fixture exists");
+    if (!selectedTask) return failures;
+    auto* file = tasks::findFile(*selectedTask, selectedTask->selectedFileId);
+    check(file != nullptr, "selected file fixture exists");
+    if (!file) return failures;
+    auto request = [&] {
+        return app::StructureWriteIntent{app::structureWriteStatus().ack + 1, task.revision,
+            app::detail::taskWorldRevision(), selectedTask->id, file->id};
+    };
+    auto send = [&](app::StructureWriteIntent intent) {
+        check(app::submitStructureWrite(std::move(intent)), "request enqueued");
+        app::processStructureWriteActions();
+    };
+    local = false; send(request());
+    check(!queued && app::structureWriteStatus().result == WriteResult::NoLocalWorld, "remote connection cannot write");
+    local = true;
+    auto stale = request(); ++stale.worldRevision; send(stale);
+    check(!queued && app::structureWriteStatus().result == WriteResult::ContextChanged, "old world cannot write");
+    stale = request(); ++stale.revision; send(stale);
+    check(!queued && app::structureWriteStatus().result == WriteResult::ContextChanged, "stale task cannot write");
+    auto missing = request(); missing.fileId = "another-file"; send(missing);
+    check(!queued && app::structureWriteStatus().result == WriteResult::NoSelection, "client cannot choose a different file");
+    auto unsupported = request(); unsupported.mode = WriteMode::ServerCommands; send(unsupported);
+    check(!queued, "unimplemented mode cannot reach local executor");
+    send(request());
+    check(queued && app::structureWriteStatus().busy, "valid local request queued");
+    if (queued) {
+        check(!queued->skipAir, "default request retains air-writing behavior");
+        check(queued->target.position == std::array<int, 3>{file->x, file->y, file->z}, "native file coordinates used");
+        check(queued->target.dimension == *file->dimension && queued->target.rotation == file->rotation / 90,
+            "native dimension and rotation used");
+    }
+    check(!app::submitStructureWrite(request()), "duplicate while writing rejected");
+    completion = WriteCompletion{WriteResult::Complete, {}};
+    app::processStructureWriteActions();
+    check(!app::structureWriteStatus().busy && app::structureWriteStatus().result == WriteResult::Complete,
+        "server completion published");
+    queued.reset();
+    auto skipAirRequest = request(); skipAirRequest.skipAir = true;
+    send(skipAirRequest);
+    check(queued && queued->skipAir, "application freezes skip-air choice in the queued plan");
+    app::resetStructureWriteActions();
+    check(!queued && !app::structureWriteStatus().busy, "shutdown revokes queued operation");
+    std::fprintf(stdout, "StructureWriteActionTests: %d failures\n", failures);
+    return failures;
+}

@@ -90,6 +90,17 @@ bool mutate(TaskIntent const& i) {
     }
     if (!tasks::applyCatalogEdit(state.catalog, i))
         return false;
+    if (i.action == TaskAction::AddFile) {
+        // Fix placement when the file enters the catalog, independently of
+        // whether this task is active or the loader can currently start.
+        if (auto origin = detail::taskPlayerOrigin()) {
+            auto& file = task->files.back();
+            file.x = origin->x;
+            file.y = origin->y;
+            file.z = origin->z;
+            file.dimension = origin->dimensionId;
+        }
+    }
     if (i.action == TaskAction::Create || i.action == TaskAction::Select) {
         auto* selected = tasks::findTask(state.catalog, state.catalog.selectedTaskId);
         if (detail::taskPlayerOrigin())
@@ -318,8 +329,8 @@ void processTaskActions() {
         ++state.revision;
     }
     auto task = *pendingDefinition;
-    // Only an accepted request fixes a new file's initial position. A busy
-    // loader must leave the pending definition unbound for the next attempt.
+    // Only files added without player coordinates need this fallback. A busy
+    // loader leaves those files unbound so a later attempt can acquire a position.
     for (auto& file:task.files) if (!file.dimension) {
         file.x=placement->x;
         file.y=placement->y;

@@ -75,6 +75,26 @@
     /* Navigation pages */                                                                               \
     LHOLO_TEXT_KEY("page.projection", PageProjection, "")                                                \
     LHOLO_TEXT_KEY("page.createStructure", PageCreateStructure, "")                                      \
+    LHOLO_TEXT_KEY("page.writeWorld", PageWriteWorld, "") \
+    LHOLO_TEXT_KEY("writeWorld.mode", WriteWorldMode, "") \
+    LHOLO_TEXT_KEY("writeWorld.localMode", WriteWorldLocalMode, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandMode", WriteWorldCommandMode, "") \
+    LHOLO_TEXT_KEY("writeWorld.description", WriteWorldDescription, "") \
+    LHOLO_TEXT_KEY("writeWorld.skipAir", WriteWorldSkipAir, "") \
+    LHOLO_TEXT_KEY("writeWorld.descriptionSkipAir", WriteWorldDescriptionSkipAir, "") \
+    LHOLO_TEXT_KEY("writeWorld.busy", WriteWorldBusy, "") \
+    LHOLO_TEXT_KEY("writeWorld.complete", WriteWorldComplete, "") \
+    LHOLO_TEXT_KEY("writeWorld.noLocalWorld", WriteWorldNoLocalWorld, "") \
+    LHOLO_TEXT_KEY("writeWorld.contextChanged", WriteWorldContextChanged, "") \
+    LHOLO_TEXT_KEY("writeWorld.noSelection", WriteWorldNoSelection, "") \
+    LHOLO_TEXT_KEY("writeWorld.chooseTask", WriteWorldChooseTask, "") \
+    LHOLO_TEXT_KEY("writeWorld.loadTask", WriteWorldLoadTask, "") \
+    LHOLO_TEXT_KEY("writeWorld.chooseFile", WriteWorldChooseFile, "") \
+    LHOLO_TEXT_KEY("writeWorld.showFile", WriteWorldShowFile, "") \
+    LHOLO_TEXT_KEY("writeWorld.regionNotLoaded", WriteWorldRegionNotLoaded, "") \
+    LHOLO_TEXT_KEY("writeWorld.heightLimit", WriteWorldHeightLimit, "") \
+    LHOLO_TEXT_KEY("writeWorld.coordinateLimit", WriteWorldCoordinateLimit, "") \
+    LHOLO_TEXT_KEY("writeWorld.failed", WriteWorldFailed, "") \
     LHOLO_TEXT_KEY("page.transform", PageTransform, "")                                                  \
     LHOLO_TEXT_KEY("page.render", PageRender, "")                                                        \
     LHOLO_TEXT_KEY("page.hud", PageHud, "")                                                              \

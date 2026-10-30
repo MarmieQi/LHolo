@@ -14,6 +14,8 @@ import { ExperimentalInfoModal, ExperimentalPage } from './pages/ExperimentalPag
 import type { ExperimentalSettingsControls } from './application/useExperimentalSettings';
 import { MaterialListModal } from './pages/MaterialListModal';
 import type { MaterialsControls } from './application/useMaterials';
+import { WriteWorldPage } from './pages/WriteWorldPage';
+import type {StructureWriteControls} from './application/useStructureWrite';
 import { CreateStructurePage } from './pages/CreateStructurePage';
 import type { CaptureControls } from './application/useCapture';
 import { TasksPage } from './pages/TasksPage';
@@ -38,6 +40,7 @@ export function LHoloMenu({
   materialsState,
   tasks,
   preview,
+  writer,
   onClose,
 }: {
   entryPage: 'tasks' | 'hud';
@@ -53,6 +56,7 @@ export function LHoloMenu({
   materialsState: MaterialsControls;
   tasks: TaskControls;
   preview: StructurePreviewControls;
+  writer: StructureWriteControls;
   onClose(): void;
 }) {
   const [page, setPage] = useState<MenuPage>(entryPage);
@@ -84,6 +88,10 @@ export function LHoloMenu({
             ) : null}
             {page === 'tasks' ? <TasksPage labels={labels} tasksCtrl={tasks} preview={preview} hasProjection={projection.hasProjection} onMaterials={materialsState.openModal} />
               : page === 'createStructure' ? <CreateStructurePage labels={labels} capture={capture} />
+              : page === 'writeWorld' ? <WriteWorldPage
+                key={JSON.stringify([tasks.currentTaskId, tasks.state?.activeTaskId, tasks.selectedLayerId,
+                  tasks.selectedLayer?.path, writer.state?.worldRevision])}
+                labels={labels} tasks={tasks} writer={writer} />
               : page === 'transform' ? <TransformPage labels={labels} transform={{...transform, ready: transform.ready && !taskBusy && (!activeTask || !!activeFile)}} />
               : page === 'render' ? <RenderPage labels={labels} render={{...render, ready: render.ready && !taskBusy}} />
               : page === 'hud' ? <HudPage labels={labels} hud={hud} worldAvailable={projection.worldAvailable} />

@@ -6,6 +6,8 @@
 #include "app/SettingsActions.h"
 #include "app/TaskActions.h"
 #include "app/StructurePreviewActions.h"
+#include "app/StructureWriteActions.h"
+#include "structure/write/local/LocalWorldWriter.h"
 #include "ui/preview/StructurePreviewScene.h"
 
 #include "i18n/LanguageStore.h"
@@ -43,6 +45,7 @@ void AppKernel::processControlFrame() {
     if (processRenderSettingsEdits()) structure::saveSettings();
     if (processSettingsActions()) structure::saveSettings();
     processTaskActions();
+    processStructureWriteActions();
     processStructurePreviewActions();
     auto client = ll::service::getClientInstance();
     bool const worldAvailable = client && client->$getClientInstanceState() == ClientInstanceState::Playing && client->getLocalPlayer();
@@ -88,6 +91,7 @@ bool AppKernel::enable() {
 
     if (!ui::hud::installHudEditorScene()) logger.error("Failed to install the native HUD editor scene");
     if (!ui::preview::installStructurePreviewScene()) logger.error("Failed to install the native structure preview scene");
+    if (!structure::write::installLocalWorldWriter()) logger.error("Failed to install the local world writer");
 
     if (!place::installHook()) {
         logger.warn("Failed to install easy-place hooks");
@@ -124,6 +128,9 @@ bool AppKernel::disable() {
     ui::hud::uninstallNativeHudRenderer();
     oreui::uninstallMenuScreen();
     oreui::uninstallMenuBridge();
+
+    resetStructureWriteActions();
+    structure::write::uninstallLocalWorldWriter();
 
     structure::detail::shutdownStructureFileLoader();
     structure::saveSettings();

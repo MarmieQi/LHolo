@@ -2,9 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NativeInteractive } from '../platform/native';
 import { LHoloButton } from './LHoloControls';
 
-export function LHoloSelect({ label, value, options, onChange, disabled, size = 'regular' }: {
+export function LHoloSelect({ label, value, options, onChange, disabled, disabledOptions = [], size = 'regular' }: {
   label: string; value: number; options: readonly string[]; onChange(value: number): void; disabled?: boolean;
   size?: 'regular' | 'compact';
+  disabledOptions?: readonly number[];
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -35,6 +36,7 @@ export function LHoloSelect({ label, value, options, onChange, disabled, size = 
     </NativeInteractive>
     {open && !disabled && <div className="lholo-select-options">{options.map((option, index) =>
       <LHoloButton key={option} label={option}
+        disabled={disabledOptions.includes(index)}
         className={'lholo-select-option' + (index === value ? ' is-selected' : '')}
         onClick={() => { onChange(index); setOpen(false); }} />)}</div>}
   </div>;

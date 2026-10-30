@@ -11,8 +11,8 @@ struct File {
     int x{}, y{}, z{}, rotation{};
     std::string mirror{"none"};
     structure::LayerSettings slice{};
-    // Bound files use absolute world coordinates. Missing dimension marks a
-    // new file awaiting its first successful placement at the player's feet.
+    // Files record absolute coordinates when added. A missing dimension means
+    // no player coordinates were available; loading will acquire them later.
     std::optional<int> dimension;
     bool operator==(File const&) const = default;
 };

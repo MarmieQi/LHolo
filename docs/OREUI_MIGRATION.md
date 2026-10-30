@@ -215,3 +215,15 @@ xmake
 官方约定核对：本地 ore-ui 仅公开 React/Facet 等基础设施，其 useFacetEffect 文档要求在依赖变化和卸载时清理订阅/副作用；本项复用现有页面订阅清理，不引入第二个渲染 root。原生场景栈与路由使用 LeviLamina SDK 暴露的接口，属于游戏版本适配，不宣称是 ore-ui 提供的稳定路由 API。
 
 HUD 布局编辑已迁移到 src/ui/hud/editor 的独立原生 UIScene。OreUI 只保留设置页的打开命令；不再有编辑页面、拖动 Facet、布局状态订阅或浏览器模拟编辑。先关闭 OreUI，再由独立原生场景处理鼠标和绘制，完成/取消并移除原生场景后重开 HUD 页；HUD 内容、边框与按钮均原生绘制，详见 NATIVE_HUD_RENDERING.md。HUD 设置页在前端分为投影 HUD 和材料 HUD 两个标签；投影选项按基本信息、进度、错误统计分组，材料 HUD 保持独立开关。标签仅为页面状态，仍通过现有 settings 字段通路修改设置；布局编辑入口位于页标题旁，继续使用原生场景。
+
+## 写入世界
+
+成功/失败提示为页面局部的请求回执，离开页面、关闭菜单或切换任务/文件/路径/世界即清除；重新进入不展示原生保留的旧结果，旧请求迟到完成也不恢复提示。原生操作及 busy 状态继续独立存在，切页不取消已接受写入，不允许重复提交。
+
+导航入口位于“创建结构”下方，默认单人存档模式，服务器指令模式不可选。页面通过 lholo.write.intent 提交 {id, revision, worldRevision, taskId, fileId, mode:"local", skipAir:boolean}，由 StructureWriteProtocol/Bindings 接入 app/StructureWriteActions；lholo:write 发布 ack、worldRevision、busy、localAvailable 和本地化结果键。前端不提交世界坐标、结构内容或独立默认配置。原生校验当前激活任务、当前选中文件、显隐、维度及上下文，再固定缓存原文件与完整变换；分层仅影响显示。已接受的写入不因菜单关闭取消，停用与世界上下文变化撤销尚未开始的操作；原版放置开始后不提供回滚。
+
+单人写入实现集中在 structure/write/local/，计划为独立 NBT 字节与数据，不跨线程持有客户端世界或 Block 指针。LocalWorldWriter 订阅 LeviLamina ServerLevelTickEvent，在本地服务端 tick 中重新检查维度、世界 revision、目标高度和已加载区块，复用 StructureTemplate::load / getTransformedBounds / placeInWorld。LocalWriteQueue 分开结果邮箱锁与原生执行门：控制帧轮询不等待原版放置，只有取消/停用等待正在执行的调用，并清除其迟到结果；停用先关闭 OreUI 请求入口，再撤销写入和监听。模板尺寸按 format-1 NBT 列表的 int32 长度上限检查，先验证预期目标高度和区块，再分配稠密索引；取得原版变换边界后仍校验实际范围。保存交由游戏正常存档流程；完成状态仅表示原版放置调用返回，不表示已强制刷盘或逐方块验证。原版调用仍同步占用服务端 tick，且控制帧生成独立写入计划有开销，大结构可能导致卡顿；解除邮箱锁等待并不等于实现分批放置。
+
+StructureWritePlan 保留区域、空气、源格式 -1 省略单元、两层方块索引及方块实体 NBT；Litematic 区域间空隙不清空，默认结构覆盖范围内空气会清空旧方块；开启“跳过空气方块”后，空气单元保留 -1 索引，不主动清空对应位置，固体、纯液体和含水副层仍按原数据放置。共享数据不包含模板或指令实现；未来指令写入在 command/ 新增实现，目前不创建空模块。类型检查、隔离测试和编译不能替代单人存档实机验收，特别是旋转镜像、含水、箱子/告示牌、邻接更新和退出重进保存。
+
+“跳过空气方块”复用 LHoloCheckbox，默认关闭，只属于当前页面实例；离页、关闭菜单或目标上下文重建后恢复关闭，不写入配置或 tasks.json。布尔值随单次请求进入 StructureWriteIntent，再固定到 StructureWritePlan，执行期间不可编辑；仅改变空气覆盖行为，不按显示分层裁剪。说明文字随开关变化，沿用统一字色及无句末句号规则。
