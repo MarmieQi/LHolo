@@ -61,6 +61,8 @@
   "writeWorld.noLocalWorld": "Enter a local singleplayer world to use this mode.",
   "writeWorld.contextChanged": "The world or task changed. Please try again.",
   "writeWorld.noSelection": "Select a visible file in the current dimension of the loaded task",
+  "writeWorld.unmappedBlocks": "This file contains blocks that could not be converted and cannot be written to the world",
+  "writeWorld.otherDimension": "Select a file in the current dimension",
   "writeWorld.chooseTask": "Select a build task first",
   "writeWorld.loadTask": "Load the current task first",
   "writeWorld.chooseFile": "Select a file to write",

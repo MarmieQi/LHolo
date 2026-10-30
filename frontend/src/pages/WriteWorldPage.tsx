@@ -14,14 +14,17 @@ export function WriteWorldPage({labels, tasks, writer}: {
   // A receipt belongs to this page instance, not to the native writer's lifetime.
   const [resultRequest, setResultRequest] = useState<number>();
   const file = tasks.selectedLayer;
+  const sameDimension = !!file && file.dimension !== null && writer.state?.dimension != null
+    && file.dimension === writer.state.dimension;
   const selected = !!file && !file.hidden && tasks.currentTaskId === tasks.state?.activeTaskId;
-  const canWrite = selected && tasks.canCommand && !!writer.state?.localAvailable && !writer.busy;
+  const canWrite = selected && sameDimension && tasks.canCommand && !!writer.state?.localAvailable && !writer.busy;
   const blockedHint = !writer.state?.localAvailable ? 'writeWorld.noLocalWorld'
     : tasks.state?.loading ? 'tasks.loading'
     : !tasks.currentTask ? 'writeWorld.chooseTask'
     : tasks.currentTaskId !== tasks.state?.activeTaskId ? 'writeWorld.loadTask'
     : !file ? 'writeWorld.chooseFile'
-    : file.hidden ? 'writeWorld.showFile' : '';
+    : file.hidden ? 'writeWorld.showFile'
+    : !sameDimension ? 'writeWorld.otherDimension' : '';
   const [summary, ...details] = labels[skipAir ? 'writeWorld.descriptionSkipAir' : 'writeWorld.description'].split('\n\n');
   return <div className="lholo-write-world-page">
     <div className="lholo-section-title">{labels['page.writeWorld']}</div>

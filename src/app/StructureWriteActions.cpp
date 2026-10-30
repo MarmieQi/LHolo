@@ -41,6 +41,7 @@ void processStructureWriteActions() {
     }
     auto player = detail::taskPlayerOrigin();
     status.worldRevision = world;
+    status.dimension = player ? player->dimensionId : std::nullopt;
     status.localAvailable = player.has_value() && localWorldAvailable();
     if (auto result = takeLocalWriteResult()) {
         status.busy = false;
@@ -64,6 +65,10 @@ void processStructureWriteActions() {
         || !file->dimension || file->dimension != player->dimensionId) return;
     auto loaded = structure::detail::cachedTaskFile(file->path);
     if (!loaded) return;
+    if (loaded->unmappedBlocks) {
+        status.result = WriteResult::UnmappedBlocks;
+        return;
+    }
     WriteTarget target{{file->x, file->y, file->z}, *file->dimension, file->rotation / 90,
         file->mirror == "x" ? 1 : file->mirror == "z" ? 2 : 0};
     std::array<int, 3> maximum;

@@ -25,13 +25,15 @@ std::optional<std::string> takeStructureWriteUpdate(bool force) {
     case NoLocalWorld: result = "writeWorld.noLocalWorld"; break;
     case ContextChanged: result = "writeWorld.contextChanged"; break;
     case NoSelection: result = "writeWorld.noSelection"; break;
+    case UnmappedBlocks: result = "writeWorld.unmappedBlocks"; break;
     case RegionNotLoaded: result = "writeWorld.regionNotLoaded"; break;
     case HeightLimit: result = "writeWorld.heightLimit"; break;
     case CoordinateLimit: result = "writeWorld.coordinateLimit"; break;
     case TemplateFailed: case Failed: result = "writeWorld.failed"; break;
     }
     return nlohmann::json{{"ack", status.ack}, {"worldRevision", status.worldRevision},
-        {"busy", status.busy}, {"localAvailable", status.localAvailable}, {"result", result}}.dump();
+        {"busy", status.busy}, {"localAvailable", status.localAvailable},
+        {"dimension", status.dimension ? nlohmann::json(*status.dimension) : nlohmann::json(nullptr)}, {"result", result}}.dump();
 }
 void resetStructureWriteBindings() { std::lock_guard lock(mutex); published.reset(); }
 }

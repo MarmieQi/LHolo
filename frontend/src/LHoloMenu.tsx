@@ -90,7 +90,7 @@ export function LHoloMenu({
               : page === 'createStructure' ? <CreateStructurePage labels={labels} capture={capture} />
               : page === 'writeWorld' ? <WriteWorldPage
                 key={JSON.stringify([tasks.currentTaskId, tasks.state?.activeTaskId, tasks.selectedLayerId,
-                  tasks.selectedLayer?.path, writer.state?.worldRevision])}
+                  tasks.selectedLayer?.path, tasks.selectedLayer?.dimension, writer.state?.worldRevision, writer.state?.dimension])}
                 labels={labels} tasks={tasks} writer={writer} />
               : page === 'transform' ? <TransformPage labels={labels} transform={{...transform, ready: transform.ready && !taskBusy && (!activeTask || !!activeFile)}} />
               : page === 'render' ? <RenderPage labels={labels} render={{...render, ready: render.ready && !taskBusy}} />

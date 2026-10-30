@@ -218,9 +218,11 @@ HUD 布局编辑已迁移到 src/ui/hud/editor 的独立原生 UIScene。OreUI �
 
 ## 写入世界
 
+写入页同时消费任务文件的 `dimension` 和 `lholo:write` 中玩家当前 `dimension`（无玩家时为 null）；维度不匹配或文件尚未定位时禁用按钮并显示原因，维度变化销毁旧页面回执。原生仍独立校验维度，不信任前端判断。Litematic 解析保留实际使用但转换失败的格数 `unmappedBlocks`，与真实空气区分；含未转换单元的原文件在生成写入计划前整次拒绝并返回本地化原因，跳过空气模式也不绕过。正常投影与预览的方块呈现沿用既有行为，不改变任务/配置格式。
+
 成功/失败提示为页面局部的请求回执，离开页面、关闭菜单或切换任务/文件/路径/世界即清除；重新进入不展示原生保留的旧结果，旧请求迟到完成也不恢复提示。原生操作及 busy 状态继续独立存在，切页不取消已接受写入，不允许重复提交。
 
-导航入口位于“创建结构”下方，默认单人存档模式，服务器指令模式不可选。页面通过 lholo.write.intent 提交 {id, revision, worldRevision, taskId, fileId, mode:"local", skipAir:boolean}，由 StructureWriteProtocol/Bindings 接入 app/StructureWriteActions；lholo:write 发布 ack、worldRevision、busy、localAvailable 和本地化结果键。前端不提交世界坐标、结构内容或独立默认配置。原生校验当前激活任务、当前选中文件、显隐、维度及上下文，再固定缓存原文件与完整变换；分层仅影响显示。已接受的写入不因菜单关闭取消，停用与世界上下文变化撤销尚未开始的操作；原版放置开始后不提供回滚。
+导航入口位于“创建结构”下方，默认单人存档模式，服务器指令模式不可选。页面通过 lholo.write.intent 提交 {id, revision, worldRevision, taskId, fileId, mode:"local", skipAir:boolean}，由 StructureWriteProtocol/Bindings 接入 app/StructureWriteActions；lholo:write 发布 ack、worldRevision、dimension、busy、localAvailable 和本地化结果键。前端不提交世界坐标、结构内容或独立默认配置。原生校验当前激活任务、当前选中文件、显隐、维度及上下文，再固定缓存原文件与完整变换；分层仅影响显示。已接受的写入不因菜单关闭取消，停用与世界上下文变化撤销尚未开始的操作；原版放置开始后不提供回滚。
 
 单人写入实现集中在 structure/write/local/，计划为独立 NBT 字节与数据，不跨线程持有客户端世界或 Block 指针。LocalWorldWriter 订阅 LeviLamina ServerLevelTickEvent，在本地服务端 tick 中重新检查维度、世界 revision、目标高度和已加载区块，复用 StructureTemplate::load / getTransformedBounds / placeInWorld。LocalWriteQueue 分开结果邮箱锁与原生执行门：控制帧轮询不等待原版放置，只有取消/停用等待正在执行的调用，并清除其迟到结果；停用先关闭 OreUI 请求入口，再撤销写入和监听。模板尺寸按 format-1 NBT 列表的 int32 长度上限检查，先验证预期目标高度和区块，再分配稠密索引；取得原版变换边界后仍校验实际范围。保存交由游戏正常存档流程；完成状态仅表示原版放置调用返回，不表示已强制刷盘或逐方块验证。原版调用仍同步占用服务端 tick，且控制帧生成独立写入计划有开销，大结构可能导致卡顿；解除邮箱锁等待并不等于实现分批放置。
 

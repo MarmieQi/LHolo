@@ -2,6 +2,7 @@
 #include "app/TaskActions.h"
 #include "app/TaskContext.h"
 #include "structure/StructureLoader.h"
+#include "structure/StructureFileLoader.h"
 #include "structure/write/StructureWritePlan.h"
 #include "structure/write/local/LocalWorldWriter.h"
 #include <cstdio>
@@ -28,7 +29,7 @@ void cancelLocalWrite() { queued.reset(); completion.reset(); }
 }
 
 // Called while TaskActionsTests owns a successfully loaded selected-file fixture.
-int runStructureWriteActionTests() {
+int runStructureWriteActionTests(lholo::structure::detail::StructureLoadOrigin& playerOrigin) {
     using namespace lholo;
     using namespace structure::write;
     int failures{};
@@ -55,6 +56,26 @@ int runStructureWriteActionTests() {
     local = false; send(request());
     check(!queued && app::structureWriteStatus().result == WriteResult::NoLocalWorld, "remote connection cannot write");
     local = true;
+    check(app::structureWriteStatus().dimension == file->dimension, "writer publishes the player's dimension");
+    auto const originalDimension = playerOrigin.dimensionId;
+    playerOrigin.dimensionId = *file->dimension + 1;
+    send(request());
+    check(!queued && app::structureWriteStatus().result == WriteResult::NoSelection
+        && app::structureWriteStatus().dimension == playerOrigin.dimensionId,
+        "dimension change is published and blocks even a manually submitted write");
+    playerOrigin.dimensionId = originalDimension;
+    // The fixture cache was created from mutable LoadedStructure objects.
+    auto source = std::const_pointer_cast<structure::LoadedStructure>(structure::detail::cachedTaskFile(file->path));
+    auto const oldUnmapped = source->unmappedBlocks;
+    source->unmappedBlocks = 1;
+    for (bool skipAir : {false, true}) {
+        auto unmapped = request(); unmapped.skipAir = skipAir;
+        send(unmapped);
+        check(!queued && !app::structureWriteStatus().busy
+            && app::structureWriteStatus().result == WriteResult::UnmappedBlocks,
+            "mixed mapped/unmapped file is rejected before queueing in both air modes");
+    }
+    source->unmappedBlocks = oldUnmapped;
     auto stale = request(); ++stale.worldRevision; send(stale);
     check(!queued && app::structureWriteStatus().result == WriteResult::ContextChanged, "old world cannot write");
     stale = request(); ++stale.revision; send(stale);

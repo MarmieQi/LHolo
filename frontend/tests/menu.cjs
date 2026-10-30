@@ -82,9 +82,9 @@ receive(JSON.stringify(labels));
 assert.equal(tree.root.findAllByType('native-scroll').length, 2);
 assert.equal(tree.root.findAllByType('button').filter(node => node.props.className?.includes('lholo-navigation-item')).length, 9);
 let taskState = {tasks:[{id:'castle',name:'城堡建造',selectedFileId:'roof',layers:[
-  {id:'body',name:'主体.mcstructure',path:'D:\\投影\\主体.mcstructure',hidden:false},
-  {id:'roof',name:'屋顶.litematic',path:'D:\\投影\\屋顶.litematic',hidden:false},
-  {id:'detail',name:'装饰.mcstructure',path:'D:\\投影\\装饰.mcstructure',hidden:true}]}],
+  {id:'body',name:'主体.mcstructure',path:'D:\\投影\\主体.mcstructure',hidden:false,dimension:0},
+  {id:'roof',name:'屋顶.litematic',path:'D:\\投影\\屋顶.litematic',hidden:false,dimension:0},
+  {id:'detail',name:'装饰.mcstructure',path:'D:\\投影\\装饰.mcstructure',hidden:true,dimension:0}]}],
   currentTaskId:'castle',activeTaskId:'',revision:1,ack:0,accepted:false,loading:false,browsing:false,
   worldAvailable:true,writable:true,error:'',errorFileId:''};
 const emitTasks = () => receive(JSON.stringify(taskState),'lholo:tasks');
@@ -97,7 +97,7 @@ click(labels['page.writeWorld']);
 const writeAction = () => tree.root.findAllByType('button').find(node => nodeText(node) === labels['page.writeWorld']
   && !node.props.className?.includes('lholo-navigation-item'));
 assert(writeAction().props.disabled, 'Writing waits for the native capability snapshot');
-const emitWrite = changes => receive(JSON.stringify({ack:0,worldRevision:4,busy:false,localAvailable:true,result:'',...changes}), 'lholo:write');
+const emitWrite = changes => receive(JSON.stringify({ack:0,worldRevision:4,busy:false,localAvailable:true,dimension:0,result:'',...changes}), 'lholo:write');
 emitWrite({localAvailable:false});
 assert(writeAction().props.disabled, 'Remote worlds cannot use local writing');
 assert(nodeText(tree.root).includes(labels['writeWorld.noLocalWorld']));
@@ -153,6 +153,19 @@ emitWrite({ack:4,result:'writeWorld.complete'});
 assert(nodeText(tree.root).includes(labels['writeWorld.complete']));
 emitWrite({ack:4,worldRevision:5,result:'writeWorld.complete'});
 assert(!nodeText(tree.root).includes(labels['writeWorld.complete']), 'A new world cannot inherit old feedback');
+emitWrite({ack:4,dimension:1,result:'writeWorld.complete'});
+assert(writeAction().props.disabled, 'Other-dimension file is disabled even before task reload publishes');
+assert(nodeText(tree.root).includes(labels['writeWorld.otherDimension']), 'Dimension mismatch has a specific hint');
+assert(!nodeText(tree.root).includes(labels['writeWorld.complete']), 'Changing dimensions discards the old receipt');
+emitWrite({ack:4,dimension:null});
+assert(writeAction().props.disabled, 'Missing player dimension cannot enable writing');
+emitWrite({ack:4,dimension:0});
+assert(!writeAction().props.disabled, 'Returning to the file dimension restores availability');
+taskState.tasks[0].layers[1].dimension = null; emitTasks();
+assert(writeAction().props.disabled, 'Unbound file cannot be written');
+taskState.tasks[0].layers[1].dimension = 0; emitTasks();
+assert(!writeAction().props.disabled, 'Bound file in the current dimension becomes available');
+
 taskState.tasks[0].layers[1].hidden = true; emitTasks();
 assert(writeAction().props.disabled, 'Hidden file cannot be written');
 assert(nodeText(tree.root).includes(labels['writeWorld.showFile']), 'Hidden-file hint explains the specific required action');
@@ -312,7 +325,7 @@ projectionState();
 assert.equal(buttonByLabel(labels['material.listTitle']).props.disabled, true, 'Materials require an active task file');
 const selectedTaskPath = String.raw`D:\蓝图 文件夹\房屋.mcstructure`;
 taskState.tasks=[{id:'materials-task',name:'材料任务',selectedFileId:'materials-file',layers:[
-  {id:'materials-file',name:'房屋.mcstructure',path:selectedTaskPath,hidden:false}]}];
+  {id:'materials-file',name:'房屋.mcstructure',path:selectedTaskPath,hidden:false,dimension:0}]}];
 taskState.currentTaskId=taskState.activeTaskId='materials-task';taskState.revision++;emitTasks();
 projectionState({hasProjection:true});
 assert.equal(buttonByLabel(labels['material.listTitle']).props.disabled, false);

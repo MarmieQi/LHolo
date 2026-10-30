@@ -1,4 +1,4 @@
-export interface TaskFile {id: string; name: string; path: string; hidden: boolean}
+export interface TaskFile {id: string; name: string; path: string; hidden: boolean; dimension: number | null}
 export interface TaskItem {id: string; name: string; selectedFileId: string; layers: TaskFile[]}
 export interface TaskState {
   tasks: TaskItem[]; currentTaskId: string; activeTaskId: string;
@@ -28,7 +28,8 @@ export function parseTasks(payload: string): TaskState {
     || !['currentTaskId','activeTaskId','error','errorFileId'].every(k => typeof s[k] === 'string')
     || !Array.isArray(s.tasks) || !s.tasks.every((t: any) => t && typeof t.id === 'string' && typeof t.name === 'string'
       && typeof t.selectedFileId === 'string' && Array.isArray(t.layers) && t.layers.every((f: any) => f
-        && ['id','name','path'].every(k => typeof f[k] === 'string') && typeof f.hidden === 'boolean')))
+        && ['id','name','path'].every(k => typeof f[k] === 'string') && typeof f.hidden === 'boolean'
+        && (f.dimension === null || Number.isSafeInteger(f.dimension)))))
     throw new Error('Invalid LHolo tasks state');
   return s as TaskState;
 }

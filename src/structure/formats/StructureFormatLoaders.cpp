@@ -824,8 +824,15 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
         }
         for (std::uint64_t index = 0; index < regionVolume; ++index) {
             auto const paletteIndex = packedPaletteIndex(*region.states, index, bits);
-            if (paletteIndex >= region.palette.size()) continue;
+            if (paletteIndex >= region.palette.size()) {
+                ++loaded->unmappedBlocks;
+                continue;
+            }
             auto const& resolved = region.palette[paletteIndex];
+            if (!resolved.mapped) {
+                ++loaded->unmappedBlocks;
+                continue;
+            }
             if (!resolved.block && !resolved.liquid) continue;
             auto const layer = static_cast<std::uint64_t>(region.sizeX) * region.sizeZ;
             auto const localY = index / layer;

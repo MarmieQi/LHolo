@@ -87,6 +87,8 @@
     LHOLO_TEXT_KEY("writeWorld.noLocalWorld", WriteWorldNoLocalWorld, "") \
     LHOLO_TEXT_KEY("writeWorld.contextChanged", WriteWorldContextChanged, "") \
     LHOLO_TEXT_KEY("writeWorld.noSelection", WriteWorldNoSelection, "") \
+    LHOLO_TEXT_KEY("writeWorld.unmappedBlocks", WriteWorldUnmappedBlocks, "") \
+    LHOLO_TEXT_KEY("writeWorld.otherDimension", WriteWorldOtherDimension, "") \
     LHOLO_TEXT_KEY("writeWorld.chooseTask", WriteWorldChooseTask, "") \
     LHOLO_TEXT_KEY("writeWorld.loadTask", WriteWorldLoadTask, "") \
     LHOLO_TEXT_KEY("writeWorld.chooseFile", WriteWorldChooseFile, "") \

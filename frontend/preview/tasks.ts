@@ -3,9 +3,9 @@ import type {TaskIntent, TaskState} from '../src/platform/taskBridge';
 export function createPreviewTasks(emit: (name: string, value: unknown) => void) {
   let counter = 3;
   const state: TaskState = {tasks: [{id:'castle',name:'城堡建造',selectedFileId:'roof',layers:[
-    {id:'body',name:'主体.mcstructure',path:'D:\\投影\\主体.mcstructure',hidden:false},
-    {id:'roof',name:'屋顶.litematic',path:'D:\\投影\\屋顶.litematic',hidden:false},
-    {id:'detail',name:'装饰.mcstructure',path:'D:\\投影\\装饰.mcstructure',hidden:true}]}],
+    {id:'body',name:'主体.mcstructure',path:'D:\\投影\\主体.mcstructure',hidden:false,dimension:0},
+    {id:'roof',name:'屋顶.litematic',path:'D:\\投影\\屋顶.litematic',hidden:false,dimension:0},
+    {id:'detail',name:'装饰.mcstructure',path:'D:\\投影\\装饰.mcstructure',hidden:true,dimension:0}]}],
     currentTaskId:'castle',activeTaskId:'',revision:1,ack:0,accepted:false,loading:false,browsing:false,
     worldAvailable:true,writable:true,error:'',errorFileId:''};
   const publish = () => emit('lholo:tasks', state);
@@ -23,7 +23,7 @@ export function createPreviewTasks(emit: (name: string, value: unknown) => void)
       case 'delete': state.tasks=state.tasks.filter(t=>t.id!==i.taskId);if(state.currentTaskId===i.taskId)state.currentTaskId=state.tasks[0]?.id??'';if(state.activeTaskId===i.taskId)state.activeTaskId='';break;
       case 'addFile': if(task) {const path=prompt('投影文件路径',file?.path??'D:\\投影\\新文件.mcstructure'); if(path){
         if(file){file.path=path;file.name=path.split(/[\\/]/).pop()!;}
-        else{const id='file-'+ ++counter;task.layers.push({id,name:path.split(/[\\/]/).pop()!,path,hidden:false});task.selectedFileId=id;}}}break;
+        else{const id='file-'+ ++counter;task.layers.push({id,name:path.split(/[\\/]/).pop()!,path,hidden:false,dimension:0});task.selectedFileId=id;}}}break;
       case 'path': if(file){file.path=i.value!;file.name=i.value!.split(/[\\/]/).pop()!;}break;
       case 'visible': if(file)file.hidden=!file.hidden;break;
       case 'selectFile': if(task&&file)task.selectedFileId=file.id;break;

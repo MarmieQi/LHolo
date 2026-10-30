@@ -61,6 +61,8 @@
   "writeWorld.noLocalWorld": "請進入本機單人存檔後使用。",
   "writeWorld.contextChanged": "世界或任務已變更，請重新操作。",
   "writeWorld.noSelection": "請在已載入的任務中選取目前維度的可見檔案",
+  "writeWorld.unmappedBlocks": "檔案包含無法轉換的方塊，無法寫入世界",
+  "writeWorld.otherDimension": "請選擇屬於目前維度的檔案",
   "writeWorld.chooseTask": "請先在建造任務中選擇任務",
   "writeWorld.loadTask": "請先載入目前任務",
   "writeWorld.chooseFile": "請選擇要寫入的檔案",

@@ -61,6 +61,8 @@ struct LoadedStructure {
     std::uint64_t                        primaryBlocks{};
     std::uint64_t                        secondaryBlocks{};
     std::uint64_t                        paletteEntries{};
+    // Used source cells that could not be converted; never schematic air.
+    std::uint64_t                        unmappedBlocks{};
     std::uint64_t                        generation{};
     std::size_t                          materialCount{};
     bool                                 composed{};

@@ -78,7 +78,8 @@ std::optional<std::string> takeTaskUpdate(bool force) {
                              {"path", file.path},
                              {"name", structure::detail::pathToUtf8(
                                           structure::detail::pathFromUtf8(file.path).filename())},
-                             {"hidden", !file.visible}});
+                             {"hidden", !file.visible},
+                             {"dimension", file.dimension ? nlohmann::json(*file.dimension) : nlohmann::json(nullptr)}});
         list.push_back({{"id", task.id},
                         {"name", task.name},
                         {"selectedFileId", task.selectedFileId},

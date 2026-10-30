@@ -1,5 +1,6 @@
 export interface StructureWriteState {
   ack: number; worldRevision: number; busy: boolean; localAvailable: boolean; result: string;
+  dimension: number | null;
 }
 export interface StructureWriteIntent {
   id: number; revision: number; worldRevision: number; taskId: string; fileId: string; mode: 'local'; skipAir: boolean;
@@ -7,7 +8,8 @@ export interface StructureWriteIntent {
 export function parseStructureWriteState(payload: string): StructureWriteState {
   const s = JSON.parse(payload);
   if (!s || !Number.isSafeInteger(s.ack) || s.ack < 0 || !Number.isSafeInteger(s.worldRevision) || s.worldRevision < 0
-    || typeof s.busy !== 'boolean' || typeof s.localAvailable !== 'boolean' || typeof s.result !== 'string')
+    || typeof s.busy !== 'boolean' || typeof s.localAvailable !== 'boolean' || typeof s.result !== 'string'
+    || !(s.dimension === null || Number.isSafeInteger(s.dimension)))
     throw new Error('Invalid LHolo world-write state');
   return s;
 }

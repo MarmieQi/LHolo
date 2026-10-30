@@ -58,7 +58,7 @@ std::shared_ptr<CompositionLoadResult> takeTaskCompositionResult() {
 }
 }
 
-int runStructureWriteActionTests();
+int runStructureWriteActionTests(lholo::structure::detail::StructureLoadOrigin&);
 int runTaskActionsTests() {
     using namespace lholo;
     using namespace app;
@@ -118,7 +118,7 @@ int runTaskActionsTests() {
         && loadedFile.y == addedFile.y && loadedFile.z == addedFile.z,
         "moving during first load cannot replace the addition-time anchor");
     playerOrigin = {10, 20, 30, 0};
-    failures += runStructureWriteActionTests();
+    failures += runStructureWriteActionTests(playerOrigin);
     auto fileId = getTaskSnapshot().catalog.tasks[0].files[0].id;
     auto original = session.loaded();
     command(TaskAction::Path, "missing.mcstructure", fileId); finish(false);

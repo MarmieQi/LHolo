@@ -34,7 +34,7 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
   const publish = () => {
     tasks.publish();
     emit('lholo:preview',previewStatus);
-    emit('lholo:write', {ack:0,worldRevision:0,busy:false,localAvailable:false,result:''});
+    emit('lholo:write', {ack:0,worldRevision:0,busy:false,localAvailable:false,dimension:null,result:''});
     emit('lholo:materials',materials);
     emit('lholo:capture',capture);
     emit('lholo:transform',transform);

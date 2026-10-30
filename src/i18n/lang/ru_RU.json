@@ -61,6 +61,8 @@
   "writeWorld.noLocalWorld": "Войдите в локальный одиночный мир.",
   "writeWorld.contextChanged": "Мир или задача изменились. Повторите действие.",
   "writeWorld.noSelection": "Выберите видимый файл в текущем измерении загруженной задачи",
+  "writeWorld.unmappedBlocks": "Файл содержит блоки, которые не удалось преобразовать; запись в мир невозможна",
+  "writeWorld.otherDimension": "Выберите файл текущего измерения",
   "writeWorld.chooseTask": "Сначала выберите задачу строительства",
   "writeWorld.loadTask": "Сначала загрузите текущую задачу",
   "writeWorld.chooseFile": "Выберите файл для записи",
