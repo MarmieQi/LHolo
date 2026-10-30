@@ -92,7 +92,8 @@ emitTasks();
 // World writing shares native task selection, but owns its request/status channel.
 const navigationLabels = tree.root.findAllByType('button')
   .filter(node => node.props.className?.includes('lholo-navigation-item')).map(nodeText);
-assert.equal(navigationLabels.indexOf(labels['page.writeWorld']), navigationLabels.indexOf(labels['page.render']) + 1);
+assert.equal(navigationLabels.indexOf(labels['page.createStructure']), navigationLabels.indexOf(labels['page.render']) + 1);
+assert.equal(navigationLabels.indexOf(labels['page.writeWorld']), navigationLabels.indexOf(labels['page.createStructure']) + 1);
 click(labels['page.writeWorld']);
 const writeAction = () => tree.root.findAllByType('button').find(node => nodeText(node) === labels['page.writeWorld']
   && !node.props.className?.includes('lholo-navigation-item'));
