@@ -2,7 +2,7 @@ import React from 'react';
 import type { MenuLabels } from '../platform/bridge';
 import { LHoloButton } from './LHoloControls';
 
-export const menuPages = ['tasks', 'createStructure', 'writeWorld', 'transform', 'render',
+export const menuPages = ['tasks', 'createStructure', 'transform', 'render', 'writeWorld',
   'hud', 'hotkeys', 'interface', 'experimental'] as const;
 export type MenuPage = typeof menuPages[number];
 

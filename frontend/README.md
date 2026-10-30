@@ -126,7 +126,7 @@ HUD 布局编辑采用游戏原生 UIScene，浏览器只预览设置页入口�
 
 模式行与语言设置页共用 `lholo-interface-row lholo-setting-row` 和 `lholo-interface-label`。共享 setting-row 只定义列宽与间距，必须同时指定横向行布局，避免 Gameface 默认纵向 flex 将标签百分比基准解释为高度；窄窗口沿用共享换行规则。
 
-左侧导航在“创建结构”后提供“写入世界”页面，默认单人存档模式；服务器指令模式为禁用选项。页面复用 LHoloSelect、LHoloButton 和 SelectedFileContext，经 useStructureWrite / structureWriteBridge 提交当前激活任务的选中文件 ID、任务 revision 与世界 revision，位置和内容由原生决定。完整写入不受分层显示影响，默认包含空气、液体和解析后保留的方块实体 NBT，不包含普通实体；浏览器预览不模拟世界修改。
+左侧导航在“渲染设置”后提供“写入世界”页面，默认单人存档模式；服务器指令模式为禁用选项。页面复用 LHoloSelect、LHoloButton 和 SelectedFileContext，经 useStructureWrite / structureWriteBridge 提交当前激活任务的选中文件 ID、任务 revision 与世界 revision，位置和内容由原生决定。完整写入不受分层显示影响，默认包含空气、液体和解析后保留的方块实体 NBT，不包含普通实体；浏览器预览不模拟世界修改。
 
 “跳过空气方块”为写入页局部布尔值，默认关闭，复用 LHoloCheckbox，随单次写入请求发送 skipAir；忙碌时禁止修改，离页及上下文变化后恢复默认，不请求配置保存。开启时说明改为保留空气对应位置原有方块；非空气仍按完整结构写入。
 
