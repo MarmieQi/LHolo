@@ -1,8 +1,16 @@
 #include "structure/IndependentTaskFiles.h"
 #include "structure/StructureGeneration.h"
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 namespace lholo::structure {
+bool hasVisibleTaskFiles(LoadedStructure const& loaded) {
+    if (loaded.independentFiles)
+        return std::any_of(loaded.independentFiles->files.begin(), loaded.independentFiles->files.end(),
+            [](auto const& file) { return file.visible && file.loaded; });
+    // Full-file bounds are retained even when the display slice is empty.
+    return !loaded.sourceBounds.empty();
+}
 namespace {
 std::array<long long, 6> bounds(CompositionFile const& f) {
     bool rotated = (f.rotation & 1) != 0;

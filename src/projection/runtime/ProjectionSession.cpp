@@ -89,19 +89,13 @@ DimensionActivationStatus ProjectionSession::prepareDimensionActivation(
     std::uint64_t structureGeneration,
     int           dimensionId
 ) {
-    if (!mDimensionSuspended.load(std::memory_order_acquire)) {
-        return DimensionActivationStatus::Ready;
-    }
-    if (mSuspendedStructureGeneration.load(std::memory_order_relaxed) != structureGeneration) {
-        mDimensionSuspended.store(false, std::memory_order_release);
-        // New file loads and saved restoration carry their own origin in
-        // StructureSession. First activation prefers that origin and consumes
-        // any obsolete dimension-resume request without using it.
-        return DimensionActivationStatus::Ready;
-    }
-    if (mSuspendedDimensionId.load(std::memory_order_relaxed) != dimensionId) {
-        return DimensionActivationStatus::Deferred;
-    }
+    auto const status = classifyDimensionActivation(
+        mDimensionSuspended.load(std::memory_order_acquire),
+        mSuspendedStructureGeneration.load(std::memory_order_relaxed),
+        mSuspendedDimensionId.load(std::memory_order_relaxed), structureGeneration, dimensionId);
+    // Replacement generations carry their own origin; do not reuse the old
+    // anchor or clear suspension before activation has actually succeeded.
+    if (status != DimensionActivationStatus::Resuming) return status;
     requestAnchor(
         mSuspendedAnchorX.load(std::memory_order_relaxed),
         mSuspendedAnchorY.load(std::memory_order_relaxed),

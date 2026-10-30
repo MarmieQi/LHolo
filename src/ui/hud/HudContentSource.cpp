@@ -18,7 +18,7 @@ HudContent readHudContent() {
     auto const pageDelta = input::consumeMaterialHudPageRequest();
     HudContent result;
     bool const editing = hudLayoutEditorActive();
-    if (!editing && (structure::isGuiVisible() || oreui::isMenuOnTop() || projection::isDimensionSuspended())) return result;
+    if (!editing && (structure::isGuiVisible() || oreui::isMenuOnTop())) return result;
     auto& state = structure::detail::StructureUiState::getInstance();
     auto settings = state.hud();
     if (editing) settings.enabled = true;
@@ -26,7 +26,8 @@ HudContent readHudContent() {
     if (!materialEnabled) paging = {};
     if (!settings.enabled && !materialEnabled) return result;
     auto const session = structure::detail::StructureSession::getInstance().snapshot();
-    if (!session.loaded || projection::isDimensionSuspended()) {
+    if (!session.loaded || projection::isDimensionSuspended()
+        || (session.loaded->composed && !structure::hasVisibleTaskFiles(*session.loaded))) {
         paging = {};
         return editing ? makeHudEditorContent(settings.position, state.materialHudPosition()) : result;
     }
@@ -36,11 +37,6 @@ HudContent readHudContent() {
         auto editor=structure::detail::StructureSession::getInstance().editorStructure();
         data.fileName = structure::detail::pathToUtf8((session.loaded->composed
             ? structure::detail::pathFromUtf8(session.lastPath) : session.loaded->sourcePath).filename());
-        bool const empty=session.loaded->independentFiles
-            ? std::none_of(session.loaded->independentFiles->files.begin(),session.loaded->independentFiles->files.end(),
-                [](auto const& f) { return f.visible && f.loaded; })
-            : session.loaded->renderBlocks.empty();
-        if (session.loaded->composed && empty) data.fileName=i18n::tr(i18n::TextKey::TasksNoVisible);
         data.axis = session.transform.layerAxis;
         data.mode = session.transform.layerDisplayMode;
         data.layer = session.transform.displayLayer;

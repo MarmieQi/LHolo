@@ -9,6 +9,7 @@
 
 #include "overlay/BoundsWireframe.h"
 #include "projection/core/ProjectionState.h"
+#include "projection/runtime/ProjectionDimensionRules.h"
 
 #include <atomic>
 #include <cstdint>
@@ -24,12 +25,6 @@ struct ProjectionAnchor {
     int x{};
     int y{};
     int z{};
-};
-
-enum class DimensionActivationStatus : unsigned char {
-    Ready,
-    Deferred,
-    Resuming,
 };
 
 class ProjectionSession {
@@ -77,7 +72,8 @@ public:
         ProjectionAnchor anchor
     );
     // Returning to the retained dimension prepares the original anchor and
-    // reports Resuming until projection activation succeeds.
+    // reports Resuming until projection activation succeeds. A replacement
+    // task generation reports Rebuilding and uses its own load origin.
     DimensionActivationStatus prepareDimensionActivation(
         std::uint64_t structureGeneration,
         int dimensionId

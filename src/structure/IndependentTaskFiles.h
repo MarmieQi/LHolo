@@ -7,5 +7,6 @@ struct IndependentTaskFiles {
 };
 Composition composeTaskProjection(std::span<CompositionFile const>, BlockTransform const&);
 CompositionFile const* independentTaskFile(LoadedStructure const&, int source);
+bool hasVisibleTaskFiles(LoadedStructure const&);
 bool independentTaskPlacement(CompositionFile const&, std::span<CompositionFile const>);
 } // namespace lholo::structure

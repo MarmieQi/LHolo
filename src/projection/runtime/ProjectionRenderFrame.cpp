@@ -136,6 +136,7 @@ bool enableStructureProjection(
 
 void suspendProjectionDimension(ProjectionState& state) {
     auto const anchor = state.anchor;
+    bool const hadVisibleFiles = !state.structure->composed || structure::hasVisibleTaskFiles(*state.structure);
     place::resetDimensionSession();
     structure::resetDimensionSession();
     ProjectionSession::getInstance().suspendForDimension(
@@ -144,10 +145,12 @@ void suspendProjectionDimension(ProjectionState& state) {
         ProjectionAnchor{anchor.x, anchor.y, anchor.z}
     );
     suspendProjectionState(state);
-    structure::showActionHint(
-        i18n::Message{i18n::TextKey::ActionHintProjectionSuspended},
-        structure::kProjectionLifecycleHintDurationMs
-    );
+    if (hadVisibleFiles) {
+        structure::showActionHint(
+            i18n::Message{i18n::TextKey::ActionHintProjectionSuspended},
+            structure::kProjectionLifecycleHintDurationMs
+        );
+    }
 }
 
 void renderProjection(
@@ -435,7 +438,9 @@ void renderProjectionFrame(BaseActorRenderContext& renderContext, bool renderAlp
                     logger().error("Could not enable loaded structure projection");
                 } else {
                     session.cancelDimensionSuspension();
-                    if (activationStatus == DimensionActivationStatus::Resuming) {
+                    bool const hasVisibleFiles = !state.structure->composed || structure::hasVisibleTaskFiles(*state.structure);
+                    if ((activationStatus == DimensionActivationStatus::Resuming
+                            || activationStatus == DimensionActivationStatus::Rebuilding) && hasVisibleFiles) {
                         structure::showActionHint(
                             i18n::Message{i18n::TextKey::ActionHintProjectionRestored},
                             structure::kProjectionLifecycleHintDurationMs

@@ -1,6 +1,7 @@
 #include "structure/IndependentTaskFiles.h"
 #include "projection/mesh/ProjectionBuildCompletionQueue.h"
 #include "projection/runtime/IndependentFileFrame.h"
+#include "projection/runtime/ProjectionDimensionRules.h"
 #include <array>
 #include <cstdio>
 #include <limits>
@@ -74,6 +75,37 @@ int runIndependentTaskFilesTests() {
     };
     std::vector<CompositionFile> files{{"A", raw, true}, {"B", raw, true, 30}};
     auto independent = composeTaskProjection(files, transform);
+    check(hasVisibleTaskFiles(*independent.loaded), "independent membership does not depend on merged cell count");
+    auto outsideDimension = files;
+    for (auto& file : outsideDimension) file.visible = false;
+    auto emptyView = composeTaskProjection(outsideDimension, transform);
+    check(!hasVisibleTaskFiles(*emptyView.loaded), "other-dimension cached files do not count as visible");
+    auto missingFiles = files;
+    for (auto& file : missingFiles) file.loaded.reset();
+    check(!hasVisibleTaskFiles(*composeTaskProjection(missingFiles, transform).loaded),
+          "visible but unloaded files do not count as an active projection");
+    {
+        using namespace lholo::projection::detail;
+        auto const originalGeneration = independent.loaded->generation;
+        check(classifyDimensionActivation(false, 0, 0, originalGeneration, 0) == DimensionActivationStatus::Ready,
+              "initial task load is not a dimension restoration");
+        check(classifyDimensionActivation(true, originalGeneration, 0, originalGeneration, 1) == DimensionActivationStatus::Deferred,
+              "old view cannot resume in a different dimension");
+        check(classifyDimensionActivation(true, originalGeneration, 0, emptyView.loaded->generation, 1) == DimensionActivationStatus::Rebuilding,
+              "new empty view completes transition without restoring visible files");
+        auto returned = composeTaskProjection(files, transform);
+        check(classifyDimensionActivation(true, emptyView.loaded->generation, 1, returned.loaded->generation, 0)
+                  == DimensionActivationStatus::Rebuilding && hasVisibleTaskFiles(*returned.loaded),
+              "returning task generation retains restoration status and visible membership");
+        check(classifyDimensionActivation(true, emptyView.loaded->generation, 1, returned.loaded->generation, 0)
+                  == DimensionActivationStatus::Rebuilding,
+              "an unsuccessful activation can retry without losing restoration status");
+        check(classifyDimensionActivation(false, emptyView.loaded->generation, 1, returned.loaded->generation, 0)
+                  == DimensionActivationStatus::Ready,
+              "success or explicit close clears the transition and avoids repeated restore hints");
+        check(classifyDimensionActivation(true, originalGeneration, 0, originalGeneration, 0) == DimensionActivationStatus::Resuming,
+              "legacy single-file resume still restores the retained anchor");
+    }
     check(independent.loaded->independentFiles != nullptr, "disjoint AABBs select original per-file data");
     check(transformed == 0 && independent.loaded->renderBlocks.empty(),
           "disjoint branch never merges or transforms blocks");
@@ -104,6 +136,13 @@ int runIndependentTaskFilesTests() {
     files[1].x = 2;
     auto overlap = composeTaskProjection(files, transform);
     auto oracle = composeTask(files, transform);
+    check(hasVisibleTaskFiles(*overlap.loaded), "merged task reports visible files");
+    auto emptySliceFiles = files;
+    for (auto& file : emptySliceFiles) file.slice = {LayerAxis::Y, LayerDisplayMode::Single, 100};
+    auto emptySlice = composeTask(emptySliceFiles, transform);
+    check(emptySlice.loaded->renderBlocks.empty() && hasVisibleTaskFiles(*emptySlice.loaded),
+          "empty display slice does not mean files disappeared from dimension");
+    check(!hasVisibleTaskFiles(*composeTask({}, transform).loaded), "empty merged view has no visible files");
     check(!overlap.loaded->independentFiles &&
               overlap.loaded->renderBlocks.size() == oracle.loaded->renderBlocks.size(),
           "overlap uses established composition");
