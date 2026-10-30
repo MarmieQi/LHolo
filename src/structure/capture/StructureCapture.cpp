@@ -2,9 +2,15 @@
 
 #include "i18n/Message.h"
 #include "structure/capture/McstructureExporter.h"
+#include "structure/capture/BedrockStructureCapture.h"
+#include "structure/capture/CaptureBounds.h"
+#include "plugin/LHolo.h"
+#include "ll/api/mod/NativeMod.h"
 
 #include <algorithm>
 #include <mutex>
+#include <chrono>
+#include <exception>
 
 #include "ll/api/service/Bedrock.h"
 #include "mc/client/game/ClientInstance.h"
@@ -13,7 +19,6 @@
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/dimension/Dimension.h"
-#include "mc/world/level/levelgen/structure/BoundingBox.h"
 #include "mc/world/level/levelgen/structure/StructureTemplate.h"
 
 namespace lholo::structure::capture {
@@ -154,24 +159,44 @@ void exportStructure(Draft const& draft, std::filesystem::path const& output) {
     BlockPos const min{bounds.min.x, bounds.min.y, bounds.min.z};
     BlockPos const max{bounds.max.x, bounds.max.y, bounds.max.z};
     auto& region = context.player->getDimensionBlockSource();
+    auto const size = captureSize(bounds);
+    if (!size) {
+        setStatus(i18n::Message{i18n::TextKey::CaptureStatusSizeLimit});
+        return;
+    }
+    if (min.y < region.getMinHeight() || max.y >= region.getMaxHeight()) {
+        setStatus(i18n::Message{i18n::TextKey::CaptureStatusHeightLimit});
+        return;
+    }
     if (!region.areChunksFullyLoaded(min, max)) {
         setStatus(i18n::Message{i18n::TextKey::CaptureStatusRegionNotLoaded});
         return;
     }
 
-    auto structure = StructureTemplate::create(
-        "lholo:client_export",
-        region,
-        BoundingBox{min, max},
-        false,
-        !draft.includeEntities
-    );
-    if (!structure) {
-        setStatus(i18n::Message{i18n::TextKey::CaptureStatusTemplateFailed});
-        return;
-    }
-    if (!exportMcstructure(*structure, output)) {
-        setStatus(i18n::Message{i18n::TextKey::CaptureStatusWriteFailed});
+    auto& logger = LHolo::getInstance().getSelf().getLogger();
+    auto const start = std::chrono::steady_clock::now();
+    auto elapsed = [&] {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+    };
+    bool captured{};
+    logger.info("[capture] begin min=({}, {}, {}) size=({}, {}, {}) blocks={} entities={}",
+        min.x, min.y, min.z, (*size)[0], (*size)[1], (*size)[2],
+        static_cast<std::uint64_t>((*size)[0]) * (*size)[1] * (*size)[2], draft.includeEntities);
+    try {
+        auto structure = captureBedrockStructure(region, min, BlockPos{(*size)[0], (*size)[1], (*size)[2]}, draft.includeEntities);
+        captured = true;
+        logger.info("[capture] captured in {} ms; writing file", elapsed());
+        if (!exportMcstructure(*structure, output)) {
+            logger.error("[capture] file export failed after {} ms", elapsed());
+            setStatus(i18n::Message{i18n::TextKey::CaptureStatusWriteFailed});
+            return;
+        }
+        logger.info("[capture] exported in {} ms total", elapsed());
+    } catch (std::exception const& error) {
+        // Ordinary C++ failures become UI errors. Heap corruption/SEH is not
+        // swallowed: continuing after a damaged heap would be unsafe.
+        logger.error("[capture] {} failed after {} ms: {}", captured ? "file export" : "world capture", elapsed(), error.what());
+        setStatus(i18n::Message{captured ? i18n::TextKey::CaptureStatusWriteFailed : i18n::TextKey::CaptureStatusTemplateFailed});
         return;
     }
     setStatus(i18n::Message{i18n::TextKey::CaptureStatusExported});

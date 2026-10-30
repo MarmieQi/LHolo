@@ -75,6 +75,8 @@ ProjectionActions 在现有应用控制帧统一执行加载、关闭和恢复�
 - 每个请求携带选区 revision 和请求 id；捕获前再次校验世界及 revision。换世界/维度或旧菜单修改选区后，旧保存结果不能导出到新上下文。
 - 当前未加载区块拒绝捕获、实体完整性限制、导出错误沿用原有实现及文案。
 
+捕获适配集中在 `structure/capture/BedrockStructureCapture`：直接构造使用当前 BlockSource 所属 Level 注册表的原版模板，完整初始化 StructureSettings 后调用已声明的 `fillFromWorld`，不使用仅初始化四个字段的 SDK `create(region, bounds)` 便捷封装。进入原版前用 int64 计算选区边长，检查 format-1 NBT 的 int32 索引容量和当前维度高度，不以任意小体积阈值限制正常选区。`[capture]` 日志记录起点、尺寸、体积、实体选项，以及捕获完成/写文件完成的累计耗时；只在导出时输出，不逐帧扫描。C++ 异常转为对应阶段的现有错误提示，不吞掉堆损坏等 SEH。捕获和写文件目前仍同步执行在应用控制帧，超大选区的卡顿尚未消除；参数初始化修正是否消除既有堆损坏须用原复现选区实机验证，不以逻辑测试代替。
+
 ## 结构变换接入
 
 依赖方向：TransformPage → application/useTransform → platform/bridge → OreUiBridge → TransformBindings / TransformProtocol → structure/TransformActions → StructureSession。页面只读状态、发动作；JSON 和协议校验在 OreUI，业务队列不依赖 UI，TransformTypes 是纯数据与范围规则。IntentFacet 共用类型化字符串 payload 和安全的原生控制块生命周期。

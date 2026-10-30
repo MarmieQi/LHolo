@@ -269,6 +269,8 @@
   "captureStatus.singleplayerUnsupported": "Режим одиночной игры ещё не реализован",
   "captureStatus.needBothPoints": "Сначала задайте точки выделения 1 и 2",
   "captureStatus.regionNotLoaded": "Выделенная область содержит участки, не полностью загруженные клиентом",
+  "captureStatus.sizeLimit": "Размеры или объём выделения превышают пределы формата структуры",
+  "captureStatus.heightLimit": "Выделение выходит за пределы высоты текущего измерения",
   "captureStatus.templateFailed": "Ванильный StructureTemplate не смог захватить эту область",
   "captureStatus.writeFailed": "Не удалось записать файл .mcstructure",
   "captureStatus.exported": "Структура успешно экспортирована",

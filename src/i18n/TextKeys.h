@@ -326,6 +326,8 @@
     LHOLO_TEXT_KEY("captureStatus.singleplayerUnsupported", CaptureStatusSingleplayerUnsupported, "")    \
     LHOLO_TEXT_KEY("captureStatus.needBothPoints", CaptureStatusNeedBothPoints, "")                      \
     LHOLO_TEXT_KEY("captureStatus.regionNotLoaded", CaptureStatusRegionNotLoaded, "")                    \
+    LHOLO_TEXT_KEY("captureStatus.sizeLimit", CaptureStatusSizeLimit, "") \
+    LHOLO_TEXT_KEY("captureStatus.heightLimit", CaptureStatusHeightLimit, "") \
     LHOLO_TEXT_KEY("captureStatus.templateFailed", CaptureStatusTemplateFailed, "")                      \
     LHOLO_TEXT_KEY("captureStatus.writeFailed", CaptureStatusWriteFailed, "")                            \
     LHOLO_TEXT_KEY("captureStatus.exported", CaptureStatusExported, "")                                  \

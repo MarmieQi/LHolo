@@ -269,6 +269,8 @@
   "captureStatus.singleplayerUnsupported": "單人存檔模式尚未實作",
   "captureStatus.needBothPoints": "請先設定選取區點 1 和點 2",
   "captureStatus.regionNotLoaded": "選取區包含用戶端尚未完整載入的區域",
+  "captureStatus.sizeLimit": "選區尺寸或體積超出原版結構格式容量",
+  "captureStatus.heightLimit": "選區超出目前維度的高度範圍",
   "captureStatus.templateFailed": "原版 StructureTemplate 無法捕獲此選取區",
   "captureStatus.writeFailed": "寫入 .mcstructure 檔案失敗",
   "captureStatus.exported": "結構已成功匯出",

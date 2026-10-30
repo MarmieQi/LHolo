@@ -269,6 +269,8 @@
   "captureStatus.singleplayerUnsupported": "单人存档模式尚未实现",
   "captureStatus.needBothPoints": "请先设置选区点 1 和点 2",
   "captureStatus.regionNotLoaded": "选区包含客户端尚未完整加载的区域",
+  "captureStatus.sizeLimit": "选区尺寸或体积超出原版结构格式容量",
+  "captureStatus.heightLimit": "选区超出当前维度的高度范围",
   "captureStatus.templateFailed": "原版 StructureTemplate 无法捕获该选区",
   "captureStatus.writeFailed": "写入 .mcstructure 文件失败",
   "captureStatus.exported": "结构已成功导出",

@@ -1,7 +1,9 @@
 #include "oreui/CaptureProtocol.h"
 #include "structure/capture/CaptureActions.h"
+#include "structure/capture/CaptureBounds.h"
 #include "nlohmann/json.hpp"
 #include <cstdio>
+#include <limits>
 
 // The action runner is tested against a fake world boundary. These tests do
 // not read game memory or claim to validate StructureTemplate capture itself.
@@ -28,6 +30,16 @@ int runCaptureActionsTests() {
     auto check = [&](bool value, char const* name) {
         if (!value) { ++failures; std::fprintf(stderr, "CaptureActionsTests: %s\n", name); }
     };
+    auto const reproduced = captureSize({{0, -60, 0}, {35, -44, 153}});
+    check(reproduced == std::optional<std::array<int, 3>>{{36, 17, 154}}, "reported 94248-cell selection is accepted without arbitrary size cap");
+    check(captureSize({{-20, -64, -30}, {-20, -64, -30}}) == std::optional<std::array<int, 3>>{{1, 1, 1}},
+          "inclusive single cell at negative coordinates");
+    check(!captureSize({{1,0,0}, {0,1,1}}), "reversed unnormalized extent is rejected");
+    check(!captureSize({{std::numeric_limits<int>::min(), 0, 0}, {std::numeric_limits<int>::max(), 0, 0}}),
+          "individually valid int32 coordinates cannot overflow native side-length arithmetic");
+    check(!captureSize({{0,0,0}, {49999,49999,0}}), "format-1 dense index length overflow rejected");
+    check(!captureSize({{0,0,0}, {std::numeric_limits<int>::max()-1, std::numeric_limits<int>::max()-1, std::numeric_limits<int>::max()-1}}),
+          "volume validated before multiplying three large axes");
     nlohmann::json payload{
         {"id", 1}, {"revision", 0}, {"action", "apply"},
         {"draft", {{"first", {{"x", -12}, {"y", 63}, {"z", 8}}},

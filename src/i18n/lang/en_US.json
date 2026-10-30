@@ -269,6 +269,8 @@
   "captureStatus.singleplayerUnsupported": "Single-player mode is not implemented yet",
   "captureStatus.needBothPoints": "Set selection points 1 and 2 first",
   "captureStatus.regionNotLoaded": "The selection includes areas the client has not fully loaded",
+  "captureStatus.sizeLimit": "Selection dimensions or volume exceed the native structure format capacity",
+  "captureStatus.heightLimit": "Selection exceeds the height range of the current dimension",
   "captureStatus.templateFailed": "The vanilla StructureTemplate could not capture this selection",
   "captureStatus.writeFailed": "Failed to write the .mcstructure file",
   "captureStatus.exported": "Structure exported",
