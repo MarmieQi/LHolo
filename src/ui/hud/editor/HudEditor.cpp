@@ -13,16 +13,18 @@ std::atomic<Command> command{};
 std::atomic_bool editing{};
 std::mutex mutex;
 settings::HudPlacements draft{};
-std::array<int, 2> draftOpacities{60, 60};
-std::array<int, 2> draftScales{100, 100};
+settings::HudPercentages draftOpacities{settings::kDefaultHudOpacities};
+settings::HudPercentages draftScales{settings::kDefaultHudScales};
 HudEditorSnapshot view;
 int dragged{-1};
 bool pointerHeld{};
 float dragX{}, dragY{};
 HudEditorBounds dragStart;
 void movePanel(std::size_t index, float x, float y) {
-    for (std::size_t other = 0; other < draft.size(); ++other)
+    if (index < 2) {
+        auto const other = 1 - index;
         if (!draft[other].custom) draft[other] = {true, view.bounds[other].x, view.bounds[other].y};
+    }
     draft[index] = {true, std::clamp(x, 0.0f, std::max(0.0f, 1.0f - view.bounds[index].width)),
         std::clamp(y, 0.0f, std::max(0.0f, 1.0f - view.bounds[index].height))};
 }
@@ -34,11 +36,13 @@ void updateSlider(float x) {
         draftScales[view.selected] = 50 + static_cast<int>(std::lround(fraction * 150));
 }
 void resetPanel(std::size_t index) {
-    auto const other = 1 - index;
-    if (!draft[other].custom) draft[other] = {true, view.bounds[other].x, view.bounds[other].y};
+    if (index < 2) {
+        auto const other = 1 - index;
+        if (!draft[other].custom) draft[other] = {true, view.bounds[other].x, view.bounds[other].y};
+    }
     draft[index] = {};
-    draftOpacities[index] = 60;
-    draftScales[index] = 100;
+    draftOpacities[index] = settings::kDefaultHudOpacities[index];
+    draftScales[index] = settings::kDefaultHudScales[index];
 }
 auto& state() { return structure::detail::StructureUiState::getInstance(); }
 }
@@ -76,11 +80,11 @@ bool processHudLayoutEditor(bool beginRequested, bool worldAvailable, bool scene
     }
     return false;
 }
-std::array<int, 2> effectiveHudScales() {
+settings::HudPercentages effectiveHudScales() {
     std::lock_guard lock(mutex);
     return editing ? draftScales : state().hudScales();
 }
-std::array<int, 2> effectiveHudBackgroundOpacities() {
+settings::HudPercentages effectiveHudBackgroundOpacities() {
     std::lock_guard lock(mutex);
     return editing ? draftOpacities : state().hudBackgroundOpacities();
 }
@@ -131,8 +135,8 @@ void pressHudEditorPointer(bool pressed) {
         view.selected = -1;
         for (int index = 3; index < 6; ++index) view.buttons[index] = {};
         view.sliderPopup = {};
-        // Matches paint order: materials are above the ordinary HUD on overlap.
-        for (int index = 1; index >= 0; --index) {
+        // Hit-test in reverse shared Painter order, including the independent write panel.
+        for (int index = static_cast<int>(settings::kHudPanelCount) - 1; index >= 0; --index) {
             if (!view.bounds[index].contains(view.pointerX, view.pointerY)) continue;
             view.selected = dragged = index;
             dragStart = view.bounds[index]; dragX = view.pointerX; dragY = view.pointerY;
@@ -143,7 +147,7 @@ void pressHudEditorPointer(bool pressed) {
         view.sliderDragging = false;
         if (view.pressed >= 0 && view.pressed == hitButton()) {
             switch (view.pressed) {
-            case 0: draft = {}; draftOpacities = {60, 60}; draftScales = {100, 100}; break;
+            case 0: draft = {}; draftOpacities = settings::kDefaultHudOpacities; draftScales = settings::kDefaultHudScales; break;
             case 1: command = Command::Cancel; break;
             case 2: command = Command::Finish; break;
             case 3: resetPanel(static_cast<std::size_t>(view.selected)); break;
@@ -176,6 +180,7 @@ HudContent makeHudEditorContent(int projectionPosition, int materialPosition) {
         {"", TextKey::HudLayoutGlass, "minecraft:glass", "minecraft:glass", 24},
     };
     materials.available = {64, 32, 8};
-    return {0, makeProjectionHud(display, example), makeMaterialHud(materials, materialPosition, state().materialHudStackConversion(), state().materialHudMaxItems())};
+    return {0, makeProjectionHud(display, example), makeMaterialHud(materials, materialPosition, state().materialHudStackConversion(), state().materialHudMaxItems()),
+        makeWriteHud({1, 0, 226270, 471212, true, true, "demo.mcstructure", TextKey::WriteWorldCommandRunning}, state().writeHudPosition(), 0)};
 }
 }

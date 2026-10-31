@@ -4,6 +4,7 @@
 #include "ui/hud/MaterialHudPaging.h"
 
 #include "projection/ProjectionTypes.h"
+#include "i18n/TextKeys.h"
 #include <string>
 #include <optional>
 #include <memory>
@@ -27,7 +28,7 @@ struct HudLine {
     std::string iconPrefix; // Optional localized text drawn before the icon.
 };
 struct HudPanel {
-    int position{}; // 0 TL, 1 BL, 2 TR, 3 BR; matches persisted settings.
+    int position{}; // 0 TL, 1 BL, 2 TR, 3 BR, 4 top center; matches persisted settings.
     std::vector<HudLine> lines;
     bool compactRows{};
 };
@@ -35,6 +36,7 @@ struct HudContent {
     std::uint64_t context{}; // Loaded-structure generation for icon cache invalidation.
     HudPanel projection;
     HudPanel materials;
+    HudPanel write;
 };
 struct ProjectionHudData {
     std::string fileName;
@@ -47,6 +49,13 @@ struct ProjectionHudData {
     std::shared_ptr<ItemStack const> aimedBlockIconItem;
     std::string placementMode;
 };
+struct WriteHudData {
+    std::uint64_t operation{}, finishedAt{}, done{}, total{};
+    bool active{}, progressKnown{};
+    std::string fileName;
+    i18n::TextKey phase{i18n::TextKey::Count};
+};
+HudPanel makeWriteHud(WriteHudData const& data, int position, std::uint64_t now);
 
 // Pure presentation rules, independent of native font/context and game objects.
 HudPanel makeProjectionHud(structure::detail::HudStateSnapshot const& settings, ProjectionHudData const& data);

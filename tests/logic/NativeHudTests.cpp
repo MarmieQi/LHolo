@@ -21,6 +21,24 @@ int runNativeHudTests() {
     };
     auto const oldLanguage = i18n::language();
     i18n::setLanguageByCode("en_US");
+    WriteHudData write{77, 0, 226270, 471212, true, true, "name%中文.litematic", i18n::TextKey::WriteWorldCommandRunning};
+    auto writePanel = makeWriteHud(write, settings::kTopCenterHudPosition, 1000);
+    check(writePanel.lines.size() == 3 && writePanel.position == 4
+        && writePanel.lines[0].text == "Writing file: name%中文.litematic"
+        && writePanel.lines[1].text == "Completed: 226270 / 471212 (48%)", "independent write panel formats real file, progress and percentage");
+    write.phase = i18n::TextKey::WriteWorldCommandPaused;
+    check(makeWriteHud(write, 4, 999999).lines.size() == 3, "paused write remains visible without a projection");
+    write.active = false; write.finishedAt = 2000;
+    check(!makeWriteHud(write, 4, 4499).lines.empty() && makeWriteHud(write, 4, 4500).lines.empty(),
+        "terminal write feedback expires from its actual completion time");
+    write.operation = 0;
+    check(makeWriteHud(write, 4, 2100).lines.empty(), "world reset or no accepted operation hides write feedback");
+    write.operation = 1; write.active = true; write.progressKnown = false;
+    check(makeWriteHud(write, 4, 2100).lines.size() == 2, "atomic local placement does not invent per-block progress");
+    auto const centered = placeHudPanel(1000, 600, 250, 18, 3, 4);
+    auto const resizedCenter = placeHudPanel(1400, 800, 250, 18, 3, 4);
+    check(centered.y == kHudMargin && centered.x == (1000 - centered.width) / 2
+        && resizedCenter.x == (1400 - resizedCenter.width) / 2, "default write anchor stays at the top center after resize");
     structure::detail::HudStateSnapshot settings;
     ProjectionHudData data;
     data.fileName = "name%中文.mcstructure";
@@ -255,9 +273,9 @@ int runNativeHudTests() {
     auto& uiState = structure::detail::StructureUiState::getInstance();
     auto const originalPositions = uiState.hudPlacements();
     auto const originalScales = uiState.hudScales();
-    uiState.setHudScales({100, 100});
+    uiState.setHudScales(settings::kDefaultHudScales);
     auto const originalOpacities = uiState.hudBackgroundOpacities();
-    uiState.setHudBackgroundOpacities({60, 60});
+    uiState.setHudBackgroundOpacities(settings::kDefaultHudOpacities);
     uiState.setHudPlacements({});
     shutdownHudLayoutEditor();
     auto publishButtons = [] {
@@ -274,6 +292,7 @@ int runNativeHudTests() {
         processHudLayoutEditor(true, true, true);
         publishHudEditorBounds(0, {0.1f, 0.2f, 0.2f, 0.1f});
         publishHudEditorBounds(1, {0.7f, 0.6f, 0.15f, 0.2f});
+        publishHudEditorBounds(2, {0.4f, 0.4f, 0.2f, 0.1f});
         publishButtons();
     };
     auto clickButton = [&](int index) {
@@ -355,22 +374,22 @@ int runNativeHudTests() {
     };
     auto const beforeSliderPositions = effectiveHudPlacements();
     dragOpacity(0.5f, 0.53f);
-    check(effectiveHudBackgroundOpacities() == std::array<int, 2>{65, 60}
-        && uiState.hudBackgroundOpacities() == std::array<int, 2>{60, 60}, "slider changes only selected draft at one-percent precision");
+    check(effectiveHudBackgroundOpacities() == lholo::settings::HudPercentages{65, 60, 60}
+        && uiState.hudBackgroundOpacities() == lholo::settings::HudPercentages{60, 60, 60}, "slider changes only selected draft at one-percent precision");
     check(effectiveHudPlacements() == beforeSliderPositions, "slider drag leaves HUD positions unchanged");
     moveHudEditorPointer(0.5f, 0.13f); pressHudEditorPointer(true); pressHudEditorPointer(false);
     check(hudEditorSnapshot().selected == 0 && (hudEditorSnapshot().slider != HudEditorSlider::None), "popup percentage preserves selection");
     clickButton(4); publishButtons();
     check(!(hudEditorSnapshot().slider != HudEditorSlider::None) && hudEditorSnapshot().sliderTrack.width == 0, "opacity button toggles slider closed");
     clickButton(2); processHudLayoutEditor(false, true, true);
-    check(uiState.hudBackgroundOpacities() == std::array<int, 2>{65, 60}, "done persists selected opacity");
+    check(uiState.hudBackgroundOpacities() == lholo::settings::HudPercentages{65, 60, 60}, "done persists selected opacity");
     beginEditor();
     moveHudEditorPointer(0.71f, 0.61f); pressHudEditorPointer(true); pressHudEditorPointer(false);
     publishButtons(); clickButton(4); publishButtons();
     dragOpacity(0.5f, -0.1f);
-    check(effectiveHudBackgroundOpacities() == std::array<int, 2>{65, 0}, "slider drag stops at zero outside track");
+    check(effectiveHudBackgroundOpacities() == lholo::settings::HudPercentages{65, 0, 60}, "slider drag stops at zero outside track");
     dragOpacity(0.5f, 1.1f);
-    check(effectiveHudBackgroundOpacities() == std::array<int, 2>{65, 100}, "slider drag stops at one hundred outside track");
+    check(effectiveHudBackgroundOpacities() == lholo::settings::HudPercentages{65, 100, 60}, "slider drag stops at one hundred outside track");
     moveHudEditorPointer(0.5f, 0.16f); pressHudEditorPointer(true);
     releaseHudEditorPointer();
     auto const stoppedOpacity = effectiveHudBackgroundOpacities();
@@ -378,11 +397,11 @@ int runNativeHudTests() {
     check(effectiveHudBackgroundOpacities() == stoppedOpacity && !hudEditorSnapshot().sliderDragging,
         "focus loss stops slider drag");
     clickButton(3);
-    check(effectiveHudBackgroundOpacities() == std::array<int, 2>{65, 60}, "selected reset restores opacity while preserving other HUD");
+    check(effectiveHudBackgroundOpacities() == lholo::settings::HudPercentages{65, 60, 60}, "selected reset restores opacity while preserving other HUD");
     clickButton(0);
-    check(effectiveHudBackgroundOpacities() == std::array<int, 2>{60, 60}, "reset all restores both default opacities");
+    check(effectiveHudBackgroundOpacities() == lholo::settings::HudPercentages{60, 60, 60}, "reset all restores both default opacities");
     clickButton(1); processHudLayoutEditor(false, true, true);
-    check(uiState.hudBackgroundOpacities() == std::array<int, 2>{65, 60}, "cancel discards opacity and reset changes");
+    check(uiState.hudBackgroundOpacities() == lholo::settings::HudPercentages{65, 60, 60}, "cancel discards opacity and reset changes");
     beginEditor();
     moveHudEditorPointer(0.11f, 0.21f); pressHudEditorPointer(true); pressHudEditorPointer(false);
     publishButtons(); clickButton(4); publishButtons();
@@ -394,18 +413,18 @@ int runNativeHudTests() {
     publishButtons(); clickButton(5); publishButtons();
     check(hudEditorSnapshot().slider == HudEditorSlider::Scale, "scale button opens the shared slider for scale");
     dragOpacity(0.5f, 0.55f);
-    check(effectiveHudScales() == std::array<int, 2>{163, 100}
-        && uiState.hudScales() == std::array<int, 2>{100, 100}, "scale preview changes only selected draft");
+    check(effectiveHudScales() == lholo::settings::HudPercentages{163, 100, 100}
+        && uiState.hudScales() == lholo::settings::HudPercentages{100, 100, 100}, "scale preview changes only selected draft");
     clickButton(4); publishButtons();
     check(hudEditorSnapshot().slider == HudEditorSlider::Opacity, "opacity button switches the shared popup from scale");
-    check(effectiveHudBackgroundOpacities() == std::array<int, 2>{65, 60}, "scale leaves opacity unchanged");
+    check(effectiveHudBackgroundOpacities() == lholo::settings::HudPercentages{65, 60, 60}, "scale leaves opacity unchanged");
     clickButton(5); publishButtons();
     dragOpacity(0.5f, -1);
     check(effectiveHudScales()[0] == 50, "scale slider clamps at fifty percent");
     dragOpacity(0.5f, 2);
     check(effectiveHudScales()[0] == 200, "scale slider clamps at two hundred percent");
     clickButton(2); processHudLayoutEditor(false, true, true);
-    check(uiState.hudScales() == std::array<int, 2>{200, 100}, "done saves independent scale");
+    check(uiState.hudScales() == lholo::settings::HudPercentages{200, 100, 100}, "done saves independent scale");
     beginEditor();
     moveHudEditorPointer(0.11f, 0.21f); pressHudEditorPointer(true); pressHudEditorPointer(false);
     publishButtons(); clickButton(3);
@@ -414,8 +433,19 @@ int runNativeHudTests() {
     clickButton(1); processHudLayoutEditor(false, true, true);
     check(uiState.hudScales()[0] == 200, "cancel discards scale reset");
     beginEditor(); clickButton(0);
-    check(effectiveHudScales() == std::array<int, 2>{100, 100}, "reset all restores both default scales");
+    check(effectiveHudScales() == lholo::settings::HudPercentages{100, 100, 100}, "reset all restores both default scales");
     cancelHudLayoutEditor(); processHudLayoutEditor(false, true, true);
+    beginEditor();
+    auto const precedingPanels = effectiveHudPlacements();
+    moveHudEditorPointer(0.41f, 0.41f); pressHudEditorPointer(true);
+    moveHudEditorPointer(0.51f, 0.51f); pressHudEditorPointer(false);
+    check(hudEditorSnapshot().selected == 2 && effectiveHudPlacements()[2].custom
+        && effectiveHudPlacements()[0] == precedingPanels[0] && effectiveHudPlacements()[1] == precedingPanels[1],
+        "write HUD drags independently without freezing or moving other panels");
+    publishButtons(); clickButton(3);
+    check(!effectiveHudPlacements()[2].custom && effectiveHudScales()[2] == 100
+        && effectiveHudBackgroundOpacities()[2] == 60, "write panel shares selected reset defaults");
+    clickButton(2); processHudLayoutEditor(false, true, true);
     shutdownHudLayoutEditor();
     uiState.setHudScales(originalScales);
     uiState.setHudBackgroundOpacities(originalOpacities);

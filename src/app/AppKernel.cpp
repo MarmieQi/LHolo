@@ -29,6 +29,7 @@
 #include "structure/MaterialTracker.h"
 #include "structure/StructureLoader.h"
 #include "structure/StructureFileLoader.h"
+#include "structure/write/command/CommandWorldWriter.h"
 
 #include "ll/api/mod/NativeMod.h"
 
@@ -92,6 +93,7 @@ bool AppKernel::enable() {
     if (!ui::hud::installHudEditorScene()) logger.error("Failed to install the native HUD editor scene");
     if (!ui::preview::installStructurePreviewScene()) logger.error("Failed to install the native structure preview scene");
     if (!structure::write::installLocalWorldWriter()) logger.error("Failed to install the local world writer");
+    if (!structure::write::command::installCommandWorldWriter()) logger.error("Failed to install the command world writer");
 
     if (!place::installHook()) {
         logger.warn("Failed to install easy-place hooks");
@@ -131,6 +133,7 @@ bool AppKernel::disable() {
 
     resetStructureWriteActions();
     structure::write::uninstallLocalWorldWriter();
+    structure::write::command::uninstallCommandWorldWriter();
 
     structure::detail::shutdownStructureFileLoader();
     structure::saveSettings();

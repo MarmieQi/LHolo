@@ -224,12 +224,30 @@ HUD 布局编辑已迁移到 src/ui/hud/editor 的独立原生 UIScene。OreUI �
 
 成功/失败提示为页面局部的请求回执，离开页面、关闭菜单或切换任务/文件/路径/世界即清除；重新进入不展示原生保留的旧结果，旧请求迟到完成也不恢复提示。原生操作及 busy 状态继续独立存在，切页不取消已接受写入，不允许重复提交。
 
-导航顺序为“渲染设置”→“创建结构”→“写入世界”，默认单人存档模式，服务器指令模式不可选。页面通过 lholo.write.intent 提交 {id, revision, worldRevision, taskId, fileId, mode:"local", skipAir:boolean}，由 StructureWriteProtocol/Bindings 接入 app/StructureWriteActions；lholo:write 发布 ack、worldRevision、dimension、busy、localAvailable 和本地化结果键。前端不提交世界坐标、结构内容或独立默认配置。原生校验当前激活任务、当前选中文件、显隐、维度及上下文，再固定缓存原文件与完整变换；分层仅影响显示。已接受的写入不因菜单关闭取消，停用与世界上下文变化撤销尚未开始的操作；原版放置开始后不提供回滚。
+导航顺序为“渲染设置”→“创建结构”→“写入世界”，默认“结构方块”模式；模式下方说明当前适用范围：结构方块仅用于单人存档，指令适用于单人存档和服务器并要求管理员权限，沿用页面统一字色。页面通过 lholo.write.intent 提交 {id, revision, worldRevision, taskId, fileId, mode:"local"|"commands", skipAir:boolean, skipPlaced:boolean}，由 StructureWriteProtocol/Bindings 接入 app/StructureWriteActions；lholo:write 发布 ack、worldRevision、dimension、busy、localAvailable、commandAvailable、mode、targetName、已接受请求的 skipAir/skipPlaced、command 进度/阶段和本地化结果键。前端不提交世界坐标、结构内容或独立默认配置。原生校验当前激活任务、当前选中文件、显隐、维度及上下文，再固定缓存原文件与完整变换；分层仅影响显示。已接受的写入不因菜单关闭取消，停用与世界上下文变化撤销尚未开始的操作；原版放置开始后不提供回滚。
 
 单人写入实现集中在 structure/write/local/，计划为独立 NBT 字节与数据，不跨线程持有客户端世界或 Block 指针。LocalWorldWriter 订阅 LeviLamina ServerLevelTickEvent，在本地服务端 tick 中重新检查维度、世界 revision、目标高度和已加载区块，复用 StructureTemplate::load / getTransformedBounds / placeInWorld。LocalWriteQueue 分开结果邮箱锁与原生执行门：控制帧轮询不等待原版放置，只有取消/停用等待正在执行的调用，并清除其迟到结果；停用先关闭 OreUI 请求入口，再撤销写入和监听。模板尺寸按 NBT IntArray 的 int32 长度上限检查，先验证预期目标高度和区块，再分配稠密索引；取得原版变换边界后仍校验实际范围。保存交由游戏正常存档流程；完成状态仅表示原版放置调用返回，不表示已强制刷盘或逐方块验证。原版调用仍同步占用服务端 tick，且控制帧生成独立写入计划有开销，大结构可能导致卡顿；解除邮箱锁等待并不等于实现分批放置。
 
 内部写入模板统一生成 format 2：block_indices 使用 IntArrayTag，并移动接管索引数组；副层仅在出现含水等双层单元时分配，没有副层内容时省略第二个数组。NBT 容器逐层移动组装，避免初始化列表深拷贝大数组和方块实体数据。size 与 structure_world_origin 仍使用三个整数的 ListTag；原版 load 内部可能复制数据，不承诺端到端零复制。旧文件的读取兼容性沿用现有解析器，格式变化仅作用于内部写入模板。
 
-StructureWritePlan 保留区域、空气、源格式 -1 省略单元、两层方块索引及方块实体 NBT；Litematic 区域间空隙不清空，默认结构覆盖范围内空气会清空旧方块；开启“跳过空气方块”后，空气单元保留 -1 索引，不主动清空对应位置，固体、纯液体和含水副层仍按原数据放置。共享数据不包含模板或指令实现；未来指令写入在 command/ 新增实现，目前不创建空模块。类型检查、隔离测试和编译不能替代单人存档实机验收，特别是旋转镜像、含水、箱子/告示牌、邻接更新和退出重进保存。
+StructureWritePlan 保留区域、空气、源格式 -1 省略单元、两层方块索引及方块实体 NBT；Litematic 区域间空隙不清空，默认结构覆盖范围内空气会清空旧方块；开启“跳过空气方块”后，空气单元保留 -1 索引，不主动清空对应位置，固体、纯液体和含水副层仍按原数据放置。共享索引与冻结计划位于 structure/write/，两种执行器分别位于 local/ 与 command/；指令只消费主层，不生成副层索引，结构方块保留原两层行为。类型检查、隔离测试和编译不能替代单人存档实机验收，特别是旋转镜像、含水、箱子/告示牌、邻接更新和退出重进保存。
 
-“跳过空气方块”复用 LHoloCheckbox，默认关闭，只属于当前页面实例；离页、关闭菜单或目标上下文重建后恢复关闭，不写入配置或 tasks.json。布尔值随单次请求进入 StructureWriteIntent，再固定到 StructureWritePlan，执行期间不可编辑；仅改变空气覆盖行为，不按显示分层裁剪。说明文字随开关变化，沿用统一字色及无句末句号规则。
+“跳过空气方块”复用 LHoloCheckbox，结构方块模式默认关闭、指令模式默认开启，两种模式在当前页面分别保留临时选择；离页、关闭菜单或目标上下文重建后恢复各自默认，不写入配置或 tasks.json。布尔值随单次请求进入 StructureWriteIntent，再固定到 StructureWritePlan，执行期间不可编辑；仅改变空气覆盖行为，不按显示分层裁剪。说明文字随开关变化，沿用统一字色及无句末句号规则。
+
+指令模式通过 `CommandWriteSession` 管理纯数据队列；`SetBlockCommandBuilder` 从注册方块序列化状态生成原版 `/execute in <dimension> run setblock x y z block [states] replace`，复用原版状态旋转/镜像工具，按目标区块分组、组内由低到高放置。只还原主层方块类型与状态，纯水/岩浆正常写入，忽略方块实体 NBT、普通实体与独立含水副层，不因这些数据拒绝整个结构。邻接和物理更新仍由服务器处理，不承诺完全复原。与结构方块模式共享完整范围、区域间隙、源 -1 省略和跳过空气语义，不受显示分层影响。
+
+`CommandWorldWriter` 在主 ClientInstance 更新后发送，`CommandTransport` 使用原生 CommandContext / PlayerCommandOrigin / CommandRequestPacket，并接收 ClientNetworkHandler 的 CommandOutputPacket；无需服务端安装 LHolo，权限和作弊由服务器校验。每次会话使用独立 UUID 请求前缀及递增 ID，传输层以实际请求包的 origin UUID 关联服务端回执，不假定 PlayerCommandOrigin 保留任意文本 requestId；仅吞掉当前自身请求的回执，普通或已撤销请求的输出仍进入原处理器。发送改为流水线：每次客户端更新最多发送 128 条，无额外批次计时等待，同时最多 1024 条待确认，实际速度受客户端更新与服务器回执影响；不做专门的限流识别或自适应降速；选择玩家所在区块周围 3×3 范围内最近的未完成区块，范围仅是客户端调度窗口，不等同于服务器模拟距离。服务器最终回执决定是否可写。
+
+每格分别保留待发送/在途/完成状态，派发不推进完成量，回执乱序按请求 ID 定位对应格；只有成功回执或“无变化”回执后观察到目标状态一致才推进完成量和连续完成游标；“无变化”但状态未一致时仅保留该位置等待核对，不阻塞其他位置的派发；核对复用原版 Block 相等判断使用的 mSerializationIdHash，不逐格重序列化 NBT；各区块保存独立派发游标，避免每次从完成游标重扫大量在途单元。未加载失败暂挂该区块，离开原玩家区块后再次尝试，其他可写区块可继续；等待区块时也可手动点击继续重新尝试；每格自动总共最多 3 次尝试，移动和切页不重置计数；次数耗尽、权限/语法等确定失败暂停，用户可修正后点击继续开启新一轮。5 秒无回执视为未知结果并暂停，不自动重发；手动继续先核对目标，已一致则推进，当前维度目标已加载但不一致则用新 ID 重试，未加载则保持暂停。旧 ID 的迟到回执不能推进新请求。
+
+控制协议为 `{id,worldRevision,action:"resume"|"cancel"}`，不接受坐标或结构数据。切页不取消已接受任务，重进可查看原生进行中的文件名、进度并继续/取消；已结束回执仍是页面局部状态。首版支持主世界、下界与末地，命令通过原版 `execute in` 显式固定维度，避免服务端处理传送门切换与客户端观察时间不同而写错维度；客户端维度不符停止新发送，返回后继续；换世界/断线/停用取消，迟到回执不再生效。取消与完成释放队列内容，取消不回滚已写入方块；已发出的批次内命令无法撤回，暂停/取消停止新发送，但先前在途命令仍可能落地。不开传送、tickingarea 或修改 gamerule。编译与隔离测试不替代真实服务器对回执、权限、模拟距离及物理更新的验收。
+
+原版命令约束依据：[setblock 官方文档](https://learn.microsoft.com/en-us/minecraft/creator/commands/commands/setblock?view=minecraft-bedrock-stable)；维度绑定依据：[execute 官方文档](https://learn.microsoft.com/en-us/minecraft/creator/commands/commands/execute?view=minecraft-bedrock-stable)；具体包与回执处理按当前 LeviLamina SDK 声明接入，不自行拼包或猜 ABI。
+
+“跳过已放置的投影方块”仅在指令模式显示，复用 LHoloCheckbox，默认关闭且不持久化，随单次写入请求的 skipPlaced 固定到指令执行计划。执行期间不可编辑，跨页面重进显示原生冻结的本次选项。发送前读取当前维度中已加载的目标位置，只在主层类型和状态的原版序列化哈希与投影一致时跳过，朝向等状态错误、不同方块和未加载位置均继续原有发送/回执流程；忽略方块实体 NBT 与独立含水层的限制沿用指令模式。直接跳过的位置计入已完成，但不伪造命令回执，也不进入网络发送。每次客户端更新最多检查 4096 个位置，实际发送仍最多 128 条，在途仍最多 1024 条，跳过的位置不占发包额度。关闭选项时不做额外的发送前匹配检查。结构方块模式的默认覆盖、原版模板及两层放置不变，协议拒绝 local 模式携带 skipPlaced:true。
+
+“HUD 信息显示”增加独立写入进度页签，writeHudEnabled 经现有 SettingsActions/SettingsProtocol 字段通路持久化。布局编辑入口保持同一原生 UIScene，第三个面板也可拖动、缩放、调整透明度、重置或取消。默认顶部居中不通过前端 CSS 模拟，位置与绘制在共用原生 Painter 中处理。任务进度与 2.5 秒结束提示跟随 app 中接受的操作身份和真实结束时间，切换页面或选中文件不改正在执行的 HUD 文件与进度；菜单上的旧回执仍遵守原页面生命周期。原版模板写入没有逐格统计时不显示虚假的百分比。
+
+重新进入有指令任务正在执行的写入页时，将原生任务的模式及冻结选项接入当前页面草稿；任务取消或完成后保留本页的指令模式与选项，不退回结构方块模式。离开页面后的新实例仍按原默认规则初始化，不持久化这些选择。
+
+写入页排版按当前文件、模式说明、选项、写入说明与操作分组，不显示文件下方的重复摘要，复用现有选择框/复选框/按钮；模式行复用渲染设置页的共享设置列宽、选择框宽度和窄屏换行规则。空气效果与范围说明合并放在操作前，统一左对齐，指令范围分两行呈现；说明文字沿用共享字号，保持单一主文字色。描述语言表按范围、空气效果的顺序提供文本，以换行分隔显示行。

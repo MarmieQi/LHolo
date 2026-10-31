@@ -1,6 +1,6 @@
 #include "oreui/StructureWriteProtocol.h"
 #include "structure/write/StructureWritePlan.h"
-#include "structure/write/local/BedrockTemplateBuilder.h"
+#include "structure/write/StructureWriteIndices.h"
 #include "structure/StructureTransform.h"
 #include "nlohmann/json.hpp"
 #include <cstdio>
@@ -13,16 +13,16 @@ int runStructureWriteTests() {
     };
     using namespace lholo::structure::write;
     using lholo::oreui::parseStructureWriteIntent;
-    check(nativeTemplateVolume({2, 3, 4}) == 24, "native template volume uses all axes");
+    check(writeVolume({2, 3, 4}) == 24, "native template volume uses all axes");
     for (auto size : {std::array<int, 3>{0,1,1}, {-1,1,1},
         {std::numeric_limits<int>::max(), 2, 1},
         {std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), std::numeric_limits<int>::max()}}) {
         bool rejected{};
-        try { nativeTemplateVolume(size); } catch (std::length_error const&) { rejected = true; }
+        try { writeVolume(size); } catch (std::length_error const&) { rejected = true; }
         check(rejected, "invalid or overflowing NBT list dimensions rejected before allocation");
     }
     nlohmann::json request{{"id", 1}, {"revision", 8}, {"worldRevision", 3},
-        {"taskId", "task"}, {"fileId", "file"}, {"mode", "local"}, {"skipAir", false}};
+        {"taskId", "task"}, {"fileId", "file"}, {"mode", "local"}, {"skipAir", false}, {"skipPlaced", false}};
     check(parseStructureWriteIntent(request.dump()).has_value(), "local request accepted");
     check(!parseStructureWriteIntent(request.dump())->skipAir, "explicit false preserves air writing");
     auto skipRequest = request; skipRequest["skipAir"] = true;
@@ -31,7 +31,21 @@ int runStructureWriteTests() {
     check(!parseStructureWriteIntent(skipRequest.dump()), "skip-air value must be boolean");
     skipRequest.erase("skipAir");
     check(!parseStructureWriteIntent(skipRequest.dump()), "request includes explicit skip-air choice");
-    for (auto mode : {"commands", "server", "unknown"}) {
+    auto commands = request; commands["mode"] = "commands";
+    check(parseStructureWriteIntent(commands.dump())->mode == WriteMode::ServerCommands, "command mode accepted");
+    commands["skipPlaced"] = true;
+    check(parseStructureWriteIntent(commands.dump())->skipPlaced, "command option accepts placed-block skipping");
+    auto placedInvalid = request; placedInvalid["skipPlaced"] = true;
+    check(!parseStructureWriteIntent(placedInvalid.dump()), "placed-block skipping is unavailable in local mode");
+    placedInvalid = commands; placedInvalid["skipPlaced"] = 1;
+    check(!parseStructureWriteIntent(placedInvalid.dump()), "placed-block option is a boolean");
+    for (auto action : {"resume", "cancel"}) {
+        nlohmann::json control{{"id",1}, {"worldRevision",3}, {"action",action}};
+        check(parseStructureWriteIntent(control.dump()).has_value(), "command control accepted");
+        control["x"] = 1;
+        check(!parseStructureWriteIntent(control.dump()), "control cannot override placement");
+    }
+    for (auto mode : {"server", "unknown"}) {
         auto bad = request; bad["mode"] = mode;
         check(!parseStructureWriteIntent(bad.dump()), "unimplemented modes rejected");
     }
@@ -68,19 +82,22 @@ int runStructureWriteTests() {
     plan.regions = {{{0,0,0}, {2,1,1}}, {{3,0,0}, {3,1,1}}};
     plan.omittedCells = {4};
     plan.cells = {{{0,0,0}, 0, -1, {}}, {{3,0,0}, 1, 2, {}}, {{5,0,0}, -1, 2, {}}};
-    auto indices = makeTemplateIndices(plan);
+    auto indices = makeWriteIndices(plan);
     check(indices.primary == std::vector<int>{1,0,-1,2,-1,3}, "solid, air, region gap, omission and liquid preserved");
     check(indices.secondary == std::vector<int>{-1,-1,-1,3,-1,-1}, "waterlogged secondary layer retained");
+    auto commandIndices = makeWriteIndices(plan, false);
+    check(commandIndices.primary == indices.primary && commandIndices.secondary.empty(),
+        "command mode retains solids and standalone liquids while omitting the secondary layer");
     plan.skipAir = true;
-    auto skipped = makeTemplateIndices(plan);
+    auto skipped = makeWriteIndices(plan);
     check(skipped.primary == std::vector<int>{1,-1,-1,2,-1,3}, "enabled mode skips schematic air and retains non-air cells");
     check(skipped.secondary == indices.secondary, "skipping air preserves waterlogged and pure liquid placement");
     plan.cells.clear();
-    auto airOnly = makeTemplateIndices(plan);
+    auto airOnly = makeWriteIndices(plan);
     check(airOnly.primary == std::vector<int>(6, -1) && airOnly.secondary.empty(),
         "all-air structure skips every cell and has no extra layer");
     plan.cells = {{{0,0,0}, 0, -1, {}}, {{5,0,0}, -1, 2, {}}};
-    auto dry = makeTemplateIndices(plan);
+    auto dry = makeWriteIndices(plan);
     check(dry.primary == std::vector<int>{1,-1,-1,-1,-1,3} && dry.secondary.empty(),
         "solid and standalone liquid use only the primary layer");
     return failures;

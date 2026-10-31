@@ -75,11 +75,36 @@
     /* Navigation pages */                                                                               \
     LHOLO_TEXT_KEY("page.projection", PageProjection, "")                                                \
     LHOLO_TEXT_KEY("page.createStructure", PageCreateStructure, "")                                      \
+    LHOLO_TEXT_KEY("hud.tabWrite", HudTabWrite, "") \
+    LHOLO_TEXT_KEY("checkbox.writeHudEnabled", WriteHudEnabled, "") \
+    LHOLO_TEXT_KEY("hud.writeFile", HudWriteFile, "") \
+    LHOLO_TEXT_KEY("hud.writeProgress", HudWriteProgress, "") \
     LHOLO_TEXT_KEY("page.writeWorld", PageWriteWorld, "") \
     LHOLO_TEXT_KEY("writeWorld.mode", WriteWorldMode, "") \
+    LHOLO_TEXT_KEY("writeWorld.localScope", WriteWorldLocalScope, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandScope", WriteWorldCommandScope, "") \
     LHOLO_TEXT_KEY("writeWorld.localMode", WriteWorldLocalMode, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandDimension", WriteWorldCommandDimension, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandNoWorld", WriteWorldCommandNoWorld, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandUnsupported", WriteWorldCommandUnsupported, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandRunning", WriteWorldCommandRunning, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandWaiting", WriteWorldCommandWaiting, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandPaused", WriteWorldCommandPaused, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandUnknown", WriteWorldCommandUnknown, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandVerify", WriteWorldCommandVerify, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandRetryLimit", WriteWorldCommandRetryLimit, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandFailed", WriteWorldCommandFailed, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandPermission", WriteWorldCommandPermission, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandCancelled", WriteWorldCommandCancelled, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandDescription", WriteWorldCommandDescription, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandDescriptionSkipAir", WriteWorldCommandDescriptionSkipAir, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandProgress", WriteWorldCommandProgress, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandTarget", WriteWorldCommandTarget, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandContinue", WriteWorldCommandContinue, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandCancel", WriteWorldCommandCancel, "") \
     LHOLO_TEXT_KEY("writeWorld.commandMode", WriteWorldCommandMode, "") \
     LHOLO_TEXT_KEY("writeWorld.description", WriteWorldDescription, "") \
+    LHOLO_TEXT_KEY("writeWorld.skipPlaced", WriteWorldSkipPlaced, "") \
     LHOLO_TEXT_KEY("writeWorld.skipAir", WriteWorldSkipAir, "") \
     LHOLO_TEXT_KEY("writeWorld.descriptionSkipAir", WriteWorldDescriptionSkipAir, "") \
     LHOLO_TEXT_KEY("writeWorld.busy", WriteWorldBusy, "") \

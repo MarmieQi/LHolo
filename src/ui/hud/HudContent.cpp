@@ -21,6 +21,19 @@ std::string text(TextKey key, Args... args) {
 }
 }
 
+HudPanel makeWriteHud(WriteHudData const& data, int position, std::uint64_t now) {
+    HudPanel panel{position, {}};
+    if (!data.operation || (!data.active && (!data.finishedAt || now - data.finishedAt >= 2500))) return panel;
+    panel.lines.push_back({text(TextKey::HudWriteFile, data.fileName.c_str())});
+    if (data.progressKnown) {
+        auto const percent = data.total ? static_cast<unsigned>(data.done * 100 / data.total) : 100u;
+        panel.lines.push_back({text(TextKey::HudWriteProgress, static_cast<unsigned long long>(data.done),
+            static_cast<unsigned long long>(data.total), percent)});
+    }
+    if (data.phase != TextKey::Count) panel.lines.push_back({i18n::tr(data.phase)});
+    return panel;
+}
+
 HudPanel makeProjectionHud(structure::detail::HudStateSnapshot const& s, ProjectionHudData const& d) {
     HudPanel panel{std::clamp(s.position, 0, 3), {}};
     if (!s.enabled || (!s.showFileName && !s.showLayer && !s.showOverallProgress && !s.showProgress

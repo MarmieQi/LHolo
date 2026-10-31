@@ -1,5 +1,5 @@
 {
-  "values": {"hudEnabled": true, "hudPosition": 1, "hudShowFileName": true, "hudShowLayer": true,
+  "values": {"writeHudEnabled": true, "hudEnabled": true, "hudPosition": 1, "hudShowFileName": true, "hudShowLayer": true,
     "hudShowOverallProgress": false, "hudShowProgress": true, "hudShowProjectedBlockName": true,
     "hudShowWrongState": true, "hudShowWrongType": true, "hudShowExtraBlocks": true,
     "materialHudEnabled": false, "materialHudStackConversion": false, "materialHudMaxItems": 5, "materialHudPosition": 3, "altWheelOffsetEnabled": true,

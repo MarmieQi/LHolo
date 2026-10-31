@@ -2,6 +2,7 @@
 #include "structure/write/local/BedrockTemplateBuilder.h"
 #include "structure/write/local/LocalWriteQueue.h"
 #include "structure/write/StructureWritePlan.h"
+#include "structure/write/StructureWriteIndices.h"
 #include "structure/StructureFileLoader.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/world/ServerLevelTickEvent.h"
@@ -25,7 +26,7 @@ WriteResult execute(StructureWritePlan const& plan, Level& level) {
     auto const& p = plan.target.position;
     // Reject unsupported sizes/unloaded destinations before allocating dense
     // template layers, especially for sparse files with widely separated regions.
-    nativeTemplateVolume(plan.size);
+    writeVolume(plan.size);
     std::array<int, 3> expectedMaximum;
     if (!writeBounds(plan.target, plan.size, expectedMaximum)) return WriteResult::CoordinateLimit;
     BlockPos const minimum{p[0], p[1], p[2]};

@@ -113,10 +113,10 @@ public:
     [[nodiscard]] HudStateSnapshot hud() const;
     [[nodiscard]] settings::HudPlacements hudPlacements() const;
     void setHudPlacements(settings::HudPlacements const& placements);
-    [[nodiscard]] std::array<int, 2> hudScales() const;
-    void setHudScales(std::array<int, 2> const& values);
-    [[nodiscard]] std::array<int, 2> hudBackgroundOpacities() const;
-    void setHudBackgroundOpacities(std::array<int, 2> const& values);
+    [[nodiscard]] settings::HudPercentages hudScales() const;
+    void setHudScales(settings::HudPercentages const& values);
+    [[nodiscard]] settings::HudPercentages hudBackgroundOpacities() const;
+    void setHudBackgroundOpacities(settings::HudPercentages const& values);
     bool setUiScale(float scale);
     bool applyHud(HudStateSnapshot const& snapshot);
     bool setHudFlag(HudFlag field, bool enabled);
@@ -165,6 +165,10 @@ public:
 
     [[nodiscard]] bool experimentalConsentGiven() const;
     void setExperimentalConsentGiven(bool given);
+    [[nodiscard]] bool writeHudEnabled() const;
+    void setWriteHudEnabled(bool enabled);
+    [[nodiscard]] int writeHudPosition() const;
+    void setWriteHudPosition(int position);
     [[nodiscard]] bool materialHudEnabled() const;
     void setMaterialHudEnabled(bool enabled);
     [[nodiscard]] bool materialHudStackConversion() const;
@@ -212,8 +216,8 @@ public:
 private:
     mutable std::mutex mHudLayoutMutex;
     settings::HudPlacements mHudPlacements{};
-    std::array<int, 2> mHudBackgroundOpacities{60, 60};
-    std::array<int, 2> mHudScales{100, 100};
+    settings::HudPercentages mHudBackgroundOpacities{settings::kDefaultHudOpacities};
+    settings::HudPercentages mHudScales{settings::kDefaultHudScales};
     StructureUiState();
 
     struct HotkeyStorage {
@@ -258,6 +262,8 @@ private:
 
     std::atomic_bool mExperimentalConsent{false};
     std::atomic_bool mMaterialHudEnabled{false};
+    std::atomic_bool mWriteHudEnabled{true};
+    std::atomic_int mWriteHudPosition{settings::kTopCenterHudPosition};
     std::atomic_bool mMaterialHudStackConversion{false};
     std::atomic_int mMaterialHudMaxItems{settings::kDefaultMaterialHudItems};
     std::atomic_int  mMaterialHudPosition{3};

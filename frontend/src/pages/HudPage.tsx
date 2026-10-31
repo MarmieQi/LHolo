@@ -3,7 +3,7 @@ import type { HudSettingsControls } from '../application/useHudSettings';
 import type { MenuLabels } from '../platform/bridge';
 import { LHoloButton, LHoloCheckbox, LHoloTextField } from '../components/LHoloControls';
 
-type HudTab = 'projection' | 'materials';
+type HudTab = 'projection' | 'materials' | 'write';
 
 export function HudPage({ labels, hud, worldAvailable }: { labels: MenuLabels; hud: HudSettingsControls; worldAvailable: boolean }) {
   const [tab, setTab] = useState<HudTab>('projection');
@@ -38,6 +38,8 @@ export function HudPage({ labels, hud, worldAvailable }: { labels: MenuLabels; h
         className={'lholo-hud-tab' + (tab === 'projection' ? ' is-selected' : '')} />
       <LHoloButton label={labels['hud.tabMaterials']} onClick={() => setTab('materials')}
         className={'lholo-hud-tab' + (tab === 'materials' ? ' is-selected' : '')} />
+      <LHoloButton label={labels['hud.tabWrite']} onClick={() => setTab('write')}
+        className={'lholo-hud-tab' + (tab === 'write' ? ' is-selected' : '')} />
     </div>
     {tab === 'projection' ? <div className="lholo-hud-tab-content">
       <div className="lholo-hud-master">
@@ -62,7 +64,7 @@ export function HudPage({ labels, hud, worldAvailable }: { labels: MenuLabels; h
           </div>
         </div>
       </div>
-    </div> : <div className="lholo-hud-tab-content">
+    </div> : tab === 'materials' ? <div className="lholo-hud-tab-content">
       <div className="lholo-hud-master">
         <LHoloCheckbox disabled={!hud.ready} label={labels['checkbox.materialHudEnabled']}
           value={hud.materialHudEnabled} onChange={hud.setMaterialHudEnabled} />
@@ -84,6 +86,11 @@ export function HudPage({ labels, hud, worldAvailable }: { labels: MenuLabels; h
           <LHoloButton disabled={!hud.ready || !hud.materialHudEnabled} label="+" className="lholo-stepper-button"
             onClick={() => hud.stepMaterialHudMaxItems(1)} />
         </div>
+      </div>
+    </div> : <div className="lholo-hud-tab-content">
+      <div className="lholo-hud-master">
+        <LHoloCheckbox disabled={!hud.ready} label={labels['checkbox.writeHudEnabled']}
+          value={hud.writeHudEnabled} onChange={hud.setWriteHudEnabled} />
       </div>
     </div>}
   </>;

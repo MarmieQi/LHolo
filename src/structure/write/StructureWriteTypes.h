@@ -6,7 +6,7 @@
 
 namespace lholo::structure::write {
 enum class WriteMode { LocalWorld, ServerCommands };
-enum class WriteResult { None, Complete, NoLocalWorld, ContextChanged, NoSelection, UnmappedBlocks, RegionNotLoaded, HeightLimit, CoordinateLimit, TemplateFailed, Failed };
+enum class WriteResult { None, Complete, NoLocalWorld, NoCommandWorld, CommandUnsupported, ContextChanged, NoSelection, UnmappedBlocks, RegionNotLoaded, HeightLimit, CoordinateLimit, TemplateFailed, Failed };
 struct WriteCompletion { WriteResult result; std::string detail; };
 struct WriteTarget {
     std::array<int, 3> position{};

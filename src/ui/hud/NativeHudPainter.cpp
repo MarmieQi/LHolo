@@ -132,8 +132,8 @@ void paintHudBackground(UIRenderContext& context, PanelPlacement const& bounds, 
 }
 
 NativeHudFrame paintNativeHud(UIRenderContext& context, ClientInstance& client,
-    HudContent content, settings::HudPlacements const& saved, std::array<int, 2> const& opacities, std::array<int, 2> const& scales) {
-    if (content.projection.lines.empty() && content.materials.lines.empty()) {
+    HudContent content, settings::HudPlacements const& saved, settings::HudPercentages const& opacities, settings::HudPercentages const& scales) {
+    if (content.projection.lines.empty() && content.materials.lines.empty() && content.write.lines.empty()) {
         clearNativeHudIcons();
         return {};
     }
@@ -148,10 +148,13 @@ NativeHudFrame paintNativeHud(UIRenderContext& context, ClientInstance& client,
     auto const projectionScale = scales[0] / 100.0f, materialScale = scales[1] / 100.0f;
     auto const projection = drawPanel(context, font, viewport, lineHeight * projectionScale, std::move(content.projection), saved[0], icons, opacities[0] / 100.0f, projectionScale);
     auto const materials = drawPanel(context, font, viewport, lineHeight * materialScale, std::move(content.materials), saved[1], icons, opacities[1] / 100.0f, materialScale, sameCorner ? &projection : nullptr);
-    if (!projection.rows && !materials.rows) return {};
+    auto const writeScale = scales[2] / 100.0f;
+    auto const write = drawPanel(context, font, viewport, lineHeight * writeScale, std::move(content.write),
+        saved[2], icons, opacities[2] / 100.0f, writeScale);
+    if (!projection.rows && !materials.rows && !write.rows) return {};
     // Submit text and icons without advancing the obfuscated-font clock.
     flushHudTextAndIcons(context, client, content.context, icons);
-    return {viewport._x1 - viewport._x0, viewport._y1 - viewport._y0, lineHeight, {projection, materials}};
+    return {viewport._x1 - viewport._x0, viewport._y1 - viewport._y0, lineHeight, {projection, materials, write}};
 }
 
 }

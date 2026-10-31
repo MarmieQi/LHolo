@@ -34,10 +34,10 @@ void drawHudEditorView(UIRenderContext& context, ClientInstance& client) {
     auto fill = [&](float x, float y, float w, float h, mce::Color color) {
         context.fillRectangle({x, x + w, y, y + h}, color, 1.0f);
     };
-    for (int index = 0; index < 2; ++index) {
+    for (std::size_t index = 0; index < frame.panels.size(); ++index) {
         auto const& panel = frame.panels[index];
         publishHudEditorBounds(index, {panel.x / width, panel.y / height, panel.width / width, panel.height / height});
-        if (view.selected == index) {
+        if (view.selected == static_cast<int>(index)) {
             mce::Color const selectedBorder{1.0f, 0.0f, 0.0f, 1.0f};
             fill(panel.x, panel.y, panel.width, border, selectedBorder);
             fill(panel.x, panel.y + panel.height - border, panel.width, border, selectedBorder);

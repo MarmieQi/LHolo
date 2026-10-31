@@ -56,6 +56,7 @@ int runSettingsActionsTests() {
     check(apply(F::HudEnabled, !ui.hud().enabled), "HUD change needs persistence");
     check(ui.hud().uiScale == 3.7f, "HUD edits preserve old ImGui scale");
     check(apply(F::HudPosition, (ui.hud().position + 1) % 4), "HUD position persisted");
+    check(apply(F::WriteHudEnabled, !ui.writeHudEnabled()), "independent write HUD toggle uses saved-settings path");
     check(apply(F::MaterialHudEnabled, !ui.materialHudEnabled()), "material HUD toggle");
     auto conversion = j; conversion["field"] = "materialHudStackConversion"; conversion["expected"] = false; conversion["value"] = true;
     check(oreui::parseSettingsIntent(conversion.dump()).has_value(), "conversion boolean protocol");

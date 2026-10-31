@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
-import {structureWriteBridge, type StructureWriteState} from '../platform/structureWriteBridge';
+import {structureWriteBridge, type StructureWriteState, type WriteMode} from '../platform/structureWriteBridge';
 
 export function useStructureWrite() {
   const [state, setState] = useState<StructureWriteState | null>(null);
@@ -13,13 +13,21 @@ export function useStructureWrite() {
     setState(s);
   }), []);
   return {
-    state, busy: waiting || !!state?.busy,
-    write(taskId: string, fileId: string, revision: number, skipAir: boolean) {
+    state, waiting, busy: waiting || !!state?.busy,
+    control(action: 'resume' | 'cancel') {
       const s = latest.current;
-      if (!s?.localAvailable || s.busy || pending.current) return;
+      if (!s?.command.active || s.mode !== 'commands' || pending.current) return;
       const id = ++next.current;
       pending.current = id; setWaiting(true);
-      structureWriteBridge.send({id, revision, worldRevision: s.worldRevision, taskId, fileId, mode: 'local', skipAir});
+      structureWriteBridge.send({id, worldRevision: s.worldRevision, action});
+      return id;
+    },
+    write(taskId: string, fileId: string, revision: number, skipAir: boolean, mode: WriteMode = 'local', skipPlaced = false) {
+      const s = latest.current;
+      if (!s || !(mode === 'local' ? s.localAvailable : s.commandAvailable) || s.busy || pending.current) return;
+      const id = ++next.current;
+      pending.current = id; setWaiting(true);
+      structureWriteBridge.send({id, revision, worldRevision: s.worldRevision, taskId, fileId, mode, skipAir, skipPlaced});
       return id;
     },
   };

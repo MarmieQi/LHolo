@@ -12,7 +12,7 @@ struct HudEditorBounds {
 };
 enum class HudEditorSlider { None, Opacity, Scale };
 struct HudEditorSnapshot {
-    std::array<HudEditorBounds, 2> bounds{};
+    std::array<HudEditorBounds, settings::kHudPanelCount> bounds{};
     std::array<HudEditorBounds, 6> buttons{}; // reset all, cancel, done, reset selected, opacity, scale
     HudEditorBounds sliderPopup{}, sliderTrack{};
     HudEditorSlider slider{HudEditorSlider::None};
@@ -26,8 +26,8 @@ bool hudLayoutEditorActive();
 // True only when completion commits the draft; the app persists it.
 bool processHudLayoutEditor(bool beginRequested, bool worldAvailable, bool sceneVisible);
 settings::HudPlacements effectiveHudPlacements();
-std::array<int, 2> effectiveHudBackgroundOpacities();
-std::array<int, 2> effectiveHudScales();
+settings::HudPercentages effectiveHudBackgroundOpacities();
+settings::HudPercentages effectiveHudScales();
 void publishHudEditorBounds(std::size_t index, HudEditorBounds bounds);
 void publishHudEditorButtons(std::array<HudEditorBounds, 6> buttons, HudEditorBounds sliderPopup = {}, HudEditorBounds sliderTrack = {});
 void moveHudEditorPointer(float x, float y);

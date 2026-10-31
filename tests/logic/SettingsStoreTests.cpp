@@ -42,6 +42,8 @@ int runSettingsStoreTests() {
     check(!json["hud"]["projection"]["position"].contains("custom"), "unused custom coordinates omitted");
     check(canonical.ends_with('\n') && canonical.find("\n    \"interface\"") != std::string::npos, "ordered indented JSON with final newline");
     check(loadSettingsFile(path, loaded) && loaded == defaults, "all defaults round-trip");
+    check(loaded.writeHudEnabled && loaded.writeHudPosition == kTopCenterHudPosition
+        && json["hud"]["write"]["position"]["anchor"] == "topCenter", "independent write HUD defaults persist at top center");
     saveSettingsFile(path, loaded);
     check(contents(path) == canonical && !std::filesystem::exists(temporary), "stable output and completed atomic replace");
 
@@ -56,8 +58,10 @@ int runSettingsStoreTests() {
     custom.hudEnabled = false; custom.hudShowFileName = false; custom.hudShowLayer = false;
     custom.hudShowOverallProgress = true; custom.hudShowProgress = false; custom.hudShowWrongState = false;
     custom.hudShowWrongType = false; custom.hudShowExtraBlocks = false; custom.hudShowProjectedBlockName = false;
-    custom.hudPlacements = {{{true, 0.2f, 0.3f}, {true, 0.7f, 0.6f}}};
-    custom.hudScales = {75, 160}; custom.hudBackgroundOpacities = {35, 80};
+    custom.hudPlacements = {{{true, 0.2f, 0.3f}, {true, 0.7f, 0.6f}, {true, 0.4f, 0.05f}}};
+    custom.hudScales = {75, 160, 125}; custom.hudBackgroundOpacities = {35, 80, 45};
+    custom.writeHudEnabled = false;
+    custom.hudPlacements[2] = {true, 0.4f, 0.05f};
     custom.guiHotkey = 'L'; custom.guiHotkeyModifiers = 1;
     custom.layerIncreaseHotkey = 135; custom.layerIncreaseHotkeyModifiers = 3; // F24
     custom.layerDecreaseHotkey = 101; custom.layerDecreaseHotkeyModifiers = 4; // Numpad5

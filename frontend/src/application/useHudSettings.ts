@@ -13,7 +13,8 @@ export function useHudSettings(settings: SettingsControls, bridge: Pick<MenuBrid
     const n = /^\d+$/.test(value.trim()) ? Number(value) : NaN;
     if (Number.isSafeInteger(n)) settings.change('materialHudMaxItems', Math.max(1, Math.min(50, n)));
   };
-  return {ready: settings.ready, editLayout: bridge.editHudLayout, hudEnabled: v.hudEnabled,
+  return {writeHudEnabled: v.writeHudEnabled, setWriteHudEnabled: (v: boolean) => settings.change('writeHudEnabled', v),
+    ready: settings.ready, editLayout: bridge.editHudLayout, hudEnabled: v.hudEnabled,
     hudShowFileName: v.hudShowFileName, hudShowLayer: v.hudShowLayer,
     hudShowOverallProgress: v.hudShowOverallProgress, hudShowProgress: v.hudShowProgress,
     hudShowProjectedBlockName: v.hudShowProjectedBlockName, hudShowWrongState: v.hudShowWrongState,

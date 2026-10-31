@@ -413,6 +413,8 @@ void loadSettings() {
         projection::setMissingSeeThrough(settings.missingSeeThrough);
         setExperimentalConsentGiven(settings.experimentalConsent);
         setMaterialHudEnabled(settings.materialHudEnabled);
+        uiState().setWriteHudEnabled(settings.writeHudEnabled);
+        uiState().setWriteHudPosition(settings.writeHudPosition);
         uiState().setMaterialHudStackConversion(settings.materialHudStackConversion);
         uiState().setMaterialHudMaxItems(settings.materialHudMaxItems);
         setMaterialHudPosition(settings.materialHudPosition);
@@ -508,6 +510,8 @@ void saveSettings() {
         settings.hudShowExtraBlocks = hud.showExtraBlocks;
         settings.hudShowProjectedBlockName = hud.showProjectedBlockName;
         settings.hudPosition = hud.position;
+        settings.writeHudEnabled = uiState().writeHudEnabled();
+        settings.writeHudPosition = uiState().writeHudPosition();
         settings.hudPlacements = uiState().hudPlacements();
         settings.hudBackgroundOpacities = uiState().hudBackgroundOpacities();
         settings.hudScales = uiState().hudScales();

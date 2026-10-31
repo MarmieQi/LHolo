@@ -113,19 +113,19 @@ HudStateSnapshot StructureUiState::hud() const {
     };
 }
 
-std::array<int, 2> StructureUiState::hudScales() const {
+settings::HudPercentages StructureUiState::hudScales() const {
     std::lock_guard lock(mHudLayoutMutex);
     return mHudScales;
 }
-void StructureUiState::setHudScales(std::array<int, 2> const& values) {
+void StructureUiState::setHudScales(settings::HudPercentages const& values) {
     std::lock_guard lock(mHudLayoutMutex);
     mHudScales = values;
 }
-std::array<int, 2> StructureUiState::hudBackgroundOpacities() const {
+settings::HudPercentages StructureUiState::hudBackgroundOpacities() const {
     std::lock_guard lock(mHudLayoutMutex);
     return mHudBackgroundOpacities;
 }
-void StructureUiState::setHudBackgroundOpacities(std::array<int, 2> const& values) {
+void StructureUiState::setHudBackgroundOpacities(settings::HudPercentages const& values) {
     std::lock_guard lock(mHudLayoutMutex);
     mHudBackgroundOpacities = values;
 }
@@ -377,6 +377,11 @@ bool StructureUiState::experimentalConsentGiven() const {
 void StructureUiState::setExperimentalConsentGiven(bool given) {
     mExperimentalConsent.store(given, std::memory_order_release);
 }
+
+bool StructureUiState::writeHudEnabled() const { return mWriteHudEnabled.load(std::memory_order_acquire); }
+void StructureUiState::setWriteHudEnabled(bool enabled) { mWriteHudEnabled.store(enabled, std::memory_order_release); }
+int StructureUiState::writeHudPosition() const { return mWriteHudPosition.load(std::memory_order_acquire); }
+void StructureUiState::setWriteHudPosition(int position) { mWriteHudPosition.store(position, std::memory_order_release); }
 
 bool StructureUiState::materialHudEnabled() const {
     return mMaterialHudEnabled.load(std::memory_order_acquire);

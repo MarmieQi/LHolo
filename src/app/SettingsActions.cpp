@@ -29,7 +29,7 @@ SettingsSnapshot snapshot() {
         h.showProgress, h.showProjectedBlockName, h.showWrongState, h.showWrongType, h.showExtraBlocks,
         ui().materialHudEnabled(), ui().materialHudStackConversion(), ui().materialHudMaxItems(), ui().materialHudPosition(), ui().altWheelOffsetEnabled(),
         place::getPlacementRadius(), place::getAutoPlacementBreakCooldownSeconds(), activeMode(),
-        std::string{i18n::languageCode(i18n::language())}}, {}, 0,
+        std::string{i18n::languageCode(i18n::language())}, ui().writeHudEnabled()}, {}, 0,
         structure::detail::StructureSession::getInstance().transformEditorState().context, ack,
         ui().experimentalConsentGiven(), accepted};
     for (std::size_t n = 0; n < s.hotkeys.size(); ++n) {
@@ -44,6 +44,7 @@ bool applyField(SettingsField field, SettingsValue const& value) {
     using F = SettingsField;
     using H = structure::detail::HudFlag;
     switch (field) {
+    case F::WriteHudEnabled: ui().setWriteHudEnabled(std::get<bool>(value)); return true;
     case F::HudEnabled: return ui().setHudFlag(H::Enabled, std::get<bool>(value));
     case F::HudPosition: return ui().setHudPosition(std::get<int>(value));
     case F::HudFileName: return ui().setHudFlag(H::FileName, std::get<bool>(value));

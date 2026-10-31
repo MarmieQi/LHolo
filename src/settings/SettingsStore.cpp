@@ -22,7 +22,7 @@ namespace lholo::settings {
 namespace {
 using Json = nlohmann::ordered_json;
 std::mutex writeMutex;
-constexpr std::array<char const*, 4> Anchors{"topLeft", "bottomLeft", "topRight", "bottomRight"};
+constexpr std::array<char const*, 5> Anchors{"topLeft", "bottomLeft", "topRight", "bottomRight", "topCenter"};
 
 struct Binding { char const* name; int& key; int& modifiers; };
 std::array<Binding, input::kHotkeyCount> bindings(Settings& s) {
@@ -119,11 +119,12 @@ void normalize(Settings& s) {
     s.correctionFillOpacity = finite(s.correctionFillOpacity, 0, 1);
     s.correctionOutlineOpacity = finite(s.correctionOutlineOpacity, 0, 1);
     s.materialHudMaxItems = std::clamp(s.materialHudMaxItems, kMinMaterialHudItems, kMaxMaterialHudItems);
+    s.writeHudPosition = std::clamp(s.writeHudPosition, 0, kTopCenterHudPosition);
     s.hudPosition = std::clamp(s.hudPosition, 0, 3);
     s.materialHudPosition = std::clamp(s.materialHudPosition, 0, 3);
     s.placementRadius = std::clamp(s.placementRadius, 1, 4);
     s.autoPlacementBreakCooldownSeconds = std::clamp(s.autoPlacementBreakCooldownSeconds, 0, 60);
-    for (std::size_t n = 0; n < 2; ++n) {
+    for (std::size_t n = 0; n < kHudPanelCount; ++n) {
         s.hudScales[n] = std::clamp(s.hudScales[n], 50, 200);
         s.hudBackgroundOpacities[n] = std::clamp(s.hudBackgroundOpacities[n], 0, 100);
         s.hudPlacements[n].x = finite(s.hudPlacements[n].x, 0, 1);
@@ -245,7 +246,7 @@ void readLayout(Json const& panel, Settings& out, std::size_t n, int& anchor) {
     auto const position = section(panel, "position");
     auto const name = position.value("anchor", std::string{Anchors[anchor]});
     auto const found = std::find(Anchors.begin(), Anchors.end(), name);
-    if (found == Anchors.end()) throw std::invalid_argument("Unknown HUD anchor: " + name);
+    if (found == Anchors.end() || (n != static_cast<std::size_t>(HudPanelId::Write) && found - Anchors.begin() > 3)) throw std::invalid_argument("Unknown HUD anchor: " + name);
     anchor = static_cast<int>(found - Anchors.begin());
     if (position.contains("custom")) {
         auto const custom = section(position, "custom");
@@ -280,6 +281,9 @@ void readCurrent(Json const& data, Settings& out) {
     out.materialHudStackConversion = materials.value("convertToStacks", out.materialHudStackConversion);
     out.materialHudMaxItems = integer(materials, "itemsPerPage", out.materialHudMaxItems, kMinMaterialHudItems, kMaxMaterialHudItems);
     readLayout(materials, out, 1, out.materialHudPosition);
+    auto const write = section(hud, "write");
+    out.writeHudEnabled = write.value("enabled", out.writeHudEnabled);
+    readLayout(write, out, 2, out.writeHudPosition);
     auto const input = section(data, "input");
     out.altWheelOffsetEnabled = input.value("altWheelOffset", out.altWheelOffsetEnabled);
     auto const hotkeys = section(input, "hotkeys");
@@ -321,7 +325,9 @@ Json encode(Settings s) {
                 {"scalePercent", s.hudScales[0]}, {"backgroundOpacityPercent", s.hudBackgroundOpacities[0]}}},
             {"materials", {{"enabled", s.materialHudEnabled}, {"convertToStacks", s.materialHudStackConversion},
                 {"itemsPerPage", s.materialHudMaxItems}, {"position", position(s, 1, s.materialHudPosition)},
-                {"scalePercent", s.hudScales[1]}, {"backgroundOpacityPercent", s.hudBackgroundOpacities[1]}}}}},
+                {"scalePercent", s.hudScales[1]}, {"backgroundOpacityPercent", s.hudBackgroundOpacities[1]}}},
+            {"write", {{"enabled", s.writeHudEnabled}, {"position", position(s, 2, s.writeHudPosition)},
+                {"scalePercent", s.hudScales[2]}, {"backgroundOpacityPercent", s.hudBackgroundOpacities[2]}}}}},
         {"input", {{"altWheelOffset", s.altWheelOffsetEnabled}, {"hotkeys", std::move(hotkeys)}}},
         {"placement", {{"consentGiven", s.experimentalConsent}, {"radius", s.placementRadius},
             {"breakCooldownSeconds", s.autoPlacementBreakCooldownSeconds}}}

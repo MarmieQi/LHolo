@@ -1,4 +1,5 @@
 #include "structure/write/local/BedrockTemplateBuilder.h"
+#include "structure/write/StructureWriteIndices.h"
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/deps/nbt/CompoundTagVariant.h"
 #include "mc/deps/nbt/ListTag.h"
@@ -28,7 +29,7 @@ ListTag intList(std::initializer_list<int> values) {
 }
 std::unique_ptr<StructureTemplate> buildBedrockTemplate(StructureWritePlan const& plan, Level& level) {
     auto const sx = plan.size[0], sy = plan.size[1], sz = plan.size[2];
-    auto indices = makeTemplateIndices(plan);
+    auto indices = makeWriteIndices(plan);
     auto index = [=](int x, int y, int z) { return (static_cast<std::size_t>(x) * sy + y) * sz + z; };
     ListTag palette;
     auto air = Block::tryGetFromRegistry(HashedString{"minecraft:air"});

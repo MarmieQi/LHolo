@@ -35,6 +35,8 @@ struct Settings {
     int autoPlacementBreakCooldownSeconds{10};
 
     // Material and projection HUD preferences.
+    bool writeHudEnabled{true};
+    int writeHudPosition{kTopCenterHudPosition};
     bool materialHudEnabled{false};
     bool materialHudStackConversion{false};
     int materialHudMaxItems{kDefaultMaterialHudItems};
@@ -50,8 +52,8 @@ struct Settings {
     bool hudShowProjectedBlockName{true};
     int hudPosition{1};
     HudPlacements hudPlacements{};
-    std::array<int, 2> hudBackgroundOpacities{60, 60};
-    std::array<int, 2> hudScales{100, 100};
+    settings::HudPercentages hudBackgroundOpacities{settings::kDefaultHudOpacities};
+    settings::HudPercentages hudScales{settings::kDefaultHudScales};
     // Input bindings use native virtual-key values internally only.
     int guiHotkey{'M'};
     int guiHotkeyModifiers{2};

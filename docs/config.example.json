@@ -40,6 +40,14 @@
             },
             "scalePercent": 100,
             "backgroundOpacityPercent": 60
+        },
+        "write": {
+            "enabled": true,
+            "position": {
+                "anchor": "topCenter"
+            },
+            "scalePercent": 100,
+            "backgroundOpacityPercent": 60
         }
     },
     "input": {

@@ -42,6 +42,7 @@ int runTaskActionsTests();
 int runStructurePreviewTests();
 int runStructureReadQueueTests();
 int runStructureWriteTests();
+int runCommandWriteTests();
 int runLocalWriteQueueTests();
 void benchmarkProjectionDrawCache();
 
@@ -1020,6 +1021,7 @@ int main(int argc, char** argv) {
     LHOLO_CHECK(runStructurePreviewTests() == 0);
     LHOLO_CHECK(runStructureReadQueueTests() == 0);
     LHOLO_CHECK(runStructureWriteTests() == 0);
+    LHOLO_CHECK(runCommandWriteTests() == 0);
     LHOLO_CHECK(runLocalWriteQueueTests() == 0);
     std::printf("LHoloLogicTests: %d checks, %d failures\n", gChecks, gFailures);
     return gFailures == 0 ? 0 : 1;

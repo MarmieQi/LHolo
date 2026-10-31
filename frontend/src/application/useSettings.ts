@@ -2,7 +2,7 @@ import {useEffect, useState} from 'react';
 import {pruneCleanFields} from './fieldDraft';
 import type {SettingsBridge, SettingsCommand, SettingsField, SettingsIntent, SettingsState, SettingsValues} from '../platform/settingsBridge';
 
-const initial: SettingsValues = {hudEnabled: true, hudPosition: 1, hudShowFileName: true, hudShowLayer: true,
+const initial: SettingsValues = {writeHudEnabled: true, hudEnabled: true, hudPosition: 1, hudShowFileName: true, hudShowLayer: true,
   hudShowOverallProgress: false, hudShowProgress: true, hudShowProjectedBlockName: true, hudShowWrongState: true,
   hudShowWrongType: true, hudShowExtraBlocks: true, materialHudEnabled: false, materialHudStackConversion: false, materialHudMaxItems: 5, materialHudPosition: 3,
   altWheelOffsetEnabled: true, placementRadius: 4, autoPlacementCooldown: 10, activeMode: 0, language: ''};

@@ -10,6 +10,9 @@
 #include "place/PlaceHelper.h"
 #include "oreui/OreUiScreen.h"
 #include <algorithm>
+#include <chrono>
+#include "app/StructureWriteActions.h"
+#include "structure/write/StructureWriteText.h"
 
 namespace lholo::ui::hud {
 HudContent readHudContent() {
@@ -24,12 +27,26 @@ HudContent readHudContent() {
     if (editing) settings.enabled = true;
     auto const materialEnabled = editing || state.materialHudEnabled();
     if (!materialEnabled) paging = {};
+    if (editing || state.writeHudEnabled()) {
+        auto const write = app::structureWriteStatus();
+        auto const command = write.mode == structure::write::WriteMode::ServerCommands;
+        auto const phase = command ? structure::write::writeCommandText(write.command)
+            : write.busy ? i18n::TextKey::WriteWorldBusy : structure::write::writeResultText(write.result);
+        auto const now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        result.write = makeWriteHud({write.operation, write.finishedAt, write.command.done, write.command.total,
+            write.busy, command, write.targetName, phase}, state.writeHudPosition(), now);
+        if (editing && result.write.lines.empty()) result.write = makeHudEditorContent(settings.position, state.materialHudPosition()).write;
+    }
     if (!settings.enabled && !materialEnabled) return result;
     auto const session = structure::detail::StructureSession::getInstance().snapshot();
     if (!session.loaded || projection::isDimensionSuspended()
         || (session.loaded->composed && !structure::hasVisibleTaskFiles(*session.loaded))) {
         paging = {};
-        return editing ? makeHudEditorContent(settings.position, state.materialHudPosition()) : result;
+        if (editing) {
+            auto example = makeHudEditorContent(settings.position, state.materialHudPosition());
+            result.projection = std::move(example.projection); result.materials = std::move(example.materials);
+        }
+        return result;
     }
     result.context = session.loaded->generation;
     if (settings.enabled) {

@@ -71,7 +71,7 @@ inline PanelPlacement placeHudPanel(float viewportWidth, float viewportHeight, f
     result.rows = std::min(rows, static_cast<std::size_t>((availableHeight + style.lineGap) / rowHeight));
     result.width = std::clamp(textWidth + 2 * style.horizontalPadding, 2 * style.horizontalPadding, availableWidth);
     result.height = 2 * style.verticalPadding + static_cast<float>(result.rows) * rowHeight - style.lineGap;
-    result.x = position >= 2 ? viewportWidth - kHudMargin - result.width : kHudMargin;
+    result.x = position == settings::kTopCenterHudPosition ? (viewportWidth - result.width) * 0.5f : position >= 2 ? viewportWidth - kHudMargin - result.width : kHudMargin;
     result.y = bottom ? end - result.height : top;
     return result;
 }

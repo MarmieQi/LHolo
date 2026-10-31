@@ -1,4 +1,5 @@
 export interface SettingsValues {
+  writeHudEnabled: boolean;
   hudEnabled: boolean; hudPosition: number; hudShowFileName: boolean; hudShowLayer: boolean;
   hudShowOverallProgress: boolean; hudShowProgress: boolean; hudShowProjectedBlockName: boolean;
   hudShowWrongState: boolean; hudShowWrongType: boolean; hudShowExtraBlocks: boolean;
@@ -25,7 +26,7 @@ export function parseSettings(payload: string): SettingsState {
   const s = JSON.parse(payload), v = s?.values;
   const integer = (n: unknown, low: number, high: number) => typeof n === 'number' && Number.isInteger(n) && n >= low && n <= high;
   const id = (n: unknown) => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
-  const boolFields = ['hudEnabled', 'hudShowFileName', 'hudShowLayer', 'hudShowOverallProgress', 'hudShowProgress',
+  const boolFields = ['writeHudEnabled', 'hudEnabled', 'hudShowFileName', 'hudShowLayer', 'hudShowOverallProgress', 'hudShowProgress',
     'hudShowProjectedBlockName', 'hudShowWrongState', 'hudShowWrongType', 'hudShowExtraBlocks', 'materialHudEnabled', 'materialHudStackConversion', 'altWheelOffsetEnabled'];
   if (!v || !boolFields.every(k => typeof v[k] === 'boolean') || !integer(v.hudPosition, 0, 3)
     || !integer(v.materialHudMaxItems, 1, 50) || !integer(v.materialHudPosition, 0, 3) || !integer(v.placementRadius, 1, 4)
