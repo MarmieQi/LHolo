@@ -3,7 +3,7 @@
 class ClientInstance;
 class LocalPlayer;
 namespace lholo::structure::write::command {
-struct Receipt { std::string id; Reply reply; std::string error; };
+struct Receipt { std::string id; Reply reply; std::string error; std::string messageIds; };
 bool installCommandTransport();
 void uninstallCommandTransport();
 void sendCommand(ClientInstance&, LocalPlayer&, Dispatch const&);

@@ -97,14 +97,57 @@ int runCommandWriteTests() {
     }
     check(pipeline.status().done == count && !pipeline.status().active, "all pipelined targets complete and release the plan");
 
+    Session unplaceable(plan());
+    unplaceable.next(0, {0,64,0}, 0, "unplaceable");
+    unplaceable.receive("unplaceable", Reply::Skip, {});
+    unplaceable.receive("unplaceable", Reply::Skip, {});
+    check(unplaceable.status().state == State::Running && unplaceable.status().active
+        && unplaceable.status().done == 1 && unplaceable.status().failedSkipped == 1,
+        "placement rejection skips its own cell once without pausing");
+    auto afterSkipFailure = unplaceable.next(1, {0,64,0}, 0, "after-failure");
+    check(afterSkipFailure && afterSkipFailure->target.position[0] == 1, "placement rejection does not block following cells");
+    unplaceable.receive("after-failure", Reply::Skip, {});
+    check(unplaceable.status().active && unplaceable.status().failedSkipped == 2 && !unplaceable.status().canResume,
+        "unplaceable block is skipped without pausing or retrying");
+    unplaceable.next(2, {32,64,0}, 0, "last");
+    unplaceable.receive("last", Reply::Success, {});
+    check(unplaceable.status().state == State::Complete && unplaceable.status().done == 3
+        && unplaceable.status().failedSkipped == 2, "terminal progress retains rejected blocks separately from successful cells");
+
+    Session syntax(plan());
+    syntax.next(0, {0,64,0}, 0, "syntax-error");
+    syntax.receive("syntax-error", Reply::Failed, "writeWorld.commandSyntax");
+    check(syntax.status().state == State::Paused && syntax.status().canResume
+        && syntax.status().done == 0 && syntax.status().failedSkipped == 0 && syntax.status().error == "writeWorld.commandSyntax"
+        && !syntax.next(1, {0,64,0}, 0, "must-not-send"), "syntax failures pause instead of skipping the target");
+
+    Session diagnostics(plan());
+    unsigned pauseEvents{};
+    auto receiveDiagnostic = [&](std::string const& id, std::string error = "writeWorld.commandPermission") {
+        bool const wasPaused = diagnostics.paused();
+        diagnostics.receive(id, Reply::Failed, std::move(error));
+        if (!wasPaused && diagnostics.paused()) ++pauseEvents;
+    };
+    diagnostics.next(0, {0,64,0}, 0, "batch-one");
+    diagnostics.next(0, {0,64,0}, 0, "batch-two");
+    receiveDiagnostic("batch-one"); receiveDiagnostic("batch-two", "writeWorld.commandFailed");
+    check(pauseEvents == 1 && diagnostics.status().error == "writeWorld.commandPermission",
+        "one failed batch produces a single pause event and preserves its original reason");
+    diagnostics.resume();
+    diagnostics.next(1, {0,64,0}, 0, "manual-retry"); receiveDiagnostic("manual-retry");
+    check(pauseEvents == 2, "a new failure after manual resume reports one new pause event");
+
     Session paused(plan());
     paused.next(0, {0,64,0}, 0, "failed"); paused.next(0, {0,64,0}, 0, "late-success");
     paused.receive("failed", Reply::Failed, "writeWorld.commandPermission");
+    paused.next(6000, {0,64,0}, 0, "must-not-send-on-timeout");
+    check(paused.status().state == State::Paused && paused.status().error == "writeWorld.commandPermission",
+        "late in-flight timeouts do not overwrite the cause of an existing pause");
     paused.receive("late-success", Reply::Success, {});
     check(paused.status().state == State::Paused && paused.status().done == 1
         && !paused.next(100, {0,64,0}, 0, "must-not-send"), "other batch replies cannot resume a failed task");
     paused.resume();
-    auto retryFailed = paused.next(101, {0,64,0}, 0, "retry-failed");
+    auto retryFailed = paused.next(6001, {0,64,0}, 0, "retry-failed");
     check(retryFailed && retryFailed->target.position[0] == 0, "manual continue retries the failed cell without repeating confirmed cells");
     Session verification(plan());
     verification.next(0, {0,64,0}, 0, "already-present");

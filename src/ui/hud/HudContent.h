@@ -54,6 +54,7 @@ struct WriteHudData {
     bool active{}, progressKnown{};
     std::string fileName;
     i18n::TextKey phase{i18n::TextKey::Count};
+    std::uint64_t failedSkipped{};
 };
 HudPanel makeWriteHud(WriteHudData const& data, int position, std::uint64_t now);
 

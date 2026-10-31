@@ -10,7 +10,7 @@
 namespace lholo::structure::write::command {
 inline int chunkCoordinate(int value) { return value / 16 - (value % 16 < 0); }
 enum class State { Idle, Running, WaitingChunks, WaitingDimension, Paused, Unknown, Complete, Cancelled };
-enum class Reply { Success, NoChange, Unloaded, Failed };
+enum class Reply { Success, NoChange, Unloaded, Failed, Skip };
 enum class TargetState { Pending, InFlight, Done };
 struct Target {
     std::array<int, 3> position;
@@ -36,8 +36,9 @@ struct Plan {
 struct Status {
     State state{State::Idle};
     bool active{}, canResume{};
-    std::uint64_t done{}, total{};
+    std::uint64_t done{}, total{}; // Processed targets, including separately reported rejected blocks.
     std::string error;
+    std::uint64_t failedSkipped{};
     bool operator==(Status const&) const = default;
 };
 struct Dispatch { std::string id, text; Target target; };
@@ -92,6 +93,7 @@ public:
         mFlights.reserve(Window);
     }
     Status const& status() const { return mStatus; }
+    bool paused() const { return mPaused; }
     int dimension() const { return mPlan.dimension; }
     std::uint64_t expected(int palette) const { return mPlan.expected[palette]; }
     bool skipPlacedEnabled() const { return mPlan.skipPlaced; }
@@ -112,8 +114,12 @@ public:
     }
     std::optional<Dispatch> next(std::uint64_t now, std::array<int, 3> player, int dimension, std::string id) {
         if (!mStatus.active) return {};
+        bool timedOut{};
         for (auto& f : mFlights) if (now - f.sentAt >= 5000) {
-            f.unknown = true; mPaused = true;
+            f.unknown = true; timedOut = true;
+        }
+        if (timedOut && !mPaused) {
+            mPaused = true;
             mStatus.state = State::Unknown; mStatus.canResume = true; mStatus.error = "writeWorld.commandUnknown";
         }
         if (mPaused) return {};
@@ -161,7 +167,8 @@ public:
             if (!mPaused) { mStatus.state = State::Unknown; mStatus.canResume = true; mStatus.error = "writeWorld.commandVerify"; }
             return;
         }
-        if (reply == Reply::Success) {
+        if (reply == Reply::Success || reply == Reply::Skip) {
+            if (reply == Reply::Skip) ++mStatus.failedSkipped;
             complete(id);
             return;
         }
@@ -172,8 +179,10 @@ public:
         c.next = std::min(c.next, flight->target);
         mFlights.erase(flight);
         if (target.attempts >= 3 || reply == Reply::Failed) {
-            mPaused = true; mStatus.state = State::Paused; mStatus.canResume = true;
-            mStatus.error = reply == Reply::Failed ? std::move(error) : "writeWorld.commandRetryLimit";
+            if (!mPaused) {
+                mPaused = true; mStatus.state = State::Paused; mStatus.canResume = true;
+                mStatus.error = reply == Reply::Failed ? std::move(error) : "writeWorld.commandRetryLimit";
+            }
         } else if (reply == Reply::Unloaded) {
             c.blockedFrom = sentPlayer;
             if (!mPaused) { mStatus.state = State::WaitingChunks; mStatus.canResume = true; mStatus.error = std::move(error); }

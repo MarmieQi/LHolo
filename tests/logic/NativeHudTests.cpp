@@ -26,6 +26,11 @@ int runNativeHudTests() {
     check(writePanel.lines.size() == 3 && writePanel.position == 4
         && writePanel.lines[0].text == "Writing file: name%中文.litematic"
         && writePanel.lines[1].text == "Completed: 226270 / 471212 (48%)", "independent write panel formats real file, progress and percentage");
+    write.failedSkipped = 3;
+    auto const skippedWrite = makeWriteHud(write, 4, 1000);
+    check(skippedWrite.lines.size() == 4 && skippedWrite.lines[2].text == "Skipped after command failure: 3",
+        "write HUD distinguishes failed skips from successfully placed blocks");
+    write.failedSkipped = 0;
     write.phase = i18n::TextKey::WriteWorldCommandPaused;
     check(makeWriteHud(write, 4, 999999).lines.size() == 3, "paused write remains visible without a projection");
     write.active = false; write.finishedAt = 2000;

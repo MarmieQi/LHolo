@@ -95,10 +95,12 @@
     LHOLO_TEXT_KEY("writeWorld.commandRetryLimit", WriteWorldCommandRetryLimit, "") \
     LHOLO_TEXT_KEY("writeWorld.commandFailed", WriteWorldCommandFailed, "") \
     LHOLO_TEXT_KEY("writeWorld.commandPermission", WriteWorldCommandPermission, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandSyntax", WriteWorldCommandSyntax, "") \
     LHOLO_TEXT_KEY("writeWorld.commandCancelled", WriteWorldCommandCancelled, "") \
     LHOLO_TEXT_KEY("writeWorld.commandDescription", WriteWorldCommandDescription, "") \
     LHOLO_TEXT_KEY("writeWorld.commandDescriptionSkipAir", WriteWorldCommandDescriptionSkipAir, "") \
     LHOLO_TEXT_KEY("writeWorld.commandProgress", WriteWorldCommandProgress, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandFailedSkipped", WriteWorldCommandFailedSkipped, "") \
     LHOLO_TEXT_KEY("writeWorld.commandTarget", WriteWorldCommandTarget, "") \
     LHOLO_TEXT_KEY("writeWorld.commandContinue", WriteWorldCommandContinue, "") \
     LHOLO_TEXT_KEY("writeWorld.commandCancel", WriteWorldCommandCancel, "") \

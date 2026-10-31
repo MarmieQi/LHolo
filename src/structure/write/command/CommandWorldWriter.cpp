@@ -16,6 +16,7 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <string_view>
 
 namespace lholo::structure::write::command {
 namespace {
@@ -25,6 +26,11 @@ std::uint64_t revision{}, sequence{};
 std::atomic_bool installed{};
 bool resumeRequested{};
 std::string requestPrefix;
+void logPause(bool wasPaused, std::string_view id = {}, std::string_view messageIds = {}) {
+    if (!wasPaused && session->paused())
+        LHolo::getInstance().getSelf().getLogger().warn("[command-write] paused: {}; request={}; messages={}",
+            session->status().error, id, messageIds);
+}
 auto milliseconds() { return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
     std::chrono::steady_clock::now().time_since_epoch()).count()); }
 std::optional<bool> matches(LocalPlayer& player, Dispatch const& request) {
@@ -42,8 +48,11 @@ void process(ClientInstance& client) {
     if (!session || !session->status().active) { clearCommandReceipts(); return; }
     if (revision != detail::structureFileWorldRevision()) { session->cancel(); clearCommandReceipts(); return; }
     auto* player = client.getLocalPlayer();
-    while (auto receipt = takeCommandReceipt())
+    while (auto receipt = takeCommandReceipt()) {
+        bool const wasPaused = session->paused();
         session->receive(receipt->id, receipt->reply, std::move(receipt->error));
+        logPause(wasPaused, receipt->id, receipt->messageIds);
+    }
     if (client.$getClientInstanceState() != ClientInstanceState::Playing || !player) return;
     for (auto const& request : session->checks(resumeRequested)) {
         auto const observed = matches(*player, request);
@@ -55,8 +64,10 @@ void process(ClientInstance& client) {
     auto const feet = player->getFeetBlockPos();
     unsigned sent{};
     for (unsigned scanned = 0; scanned < Session::ScanBudget && sent < Session::BatchSize; ++scanned) {
+        bool const wasPaused = session->paused();
         auto request = session->next(milliseconds(), {feet.x,feet.y,feet.z}, static_cast<int>(player->getDimensionId()),
             requestPrefix + std::to_string(++sequence));
+        logPause(wasPaused);
         if (!request) break;
         if (session->skipPlacedEnabled()
             && session->skipExisting(request->id, matches(*player, *request).value_or(false))) continue;
@@ -72,8 +83,10 @@ LL_TYPE_INSTANCE_HOOK(CommandWriteUpdate, ll::memory::HookPriority::Normal,
         try { process(*this); }
         catch (std::exception const& error) {
             std::lock_guard lock(mutex);
-            if (session) session->suspend();
-            LHolo::getInstance().getSelf().getLogger().error("[command-write] {}", error.what());
+            if (session && session->status().active && !session->paused()) {
+                session->suspend();
+                LHolo::getInstance().getSelf().getLogger().error("[command-write] paused: {}", error.what());
+            }
         }
     }
     return result;

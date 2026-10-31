@@ -84,6 +84,7 @@ export function WriteWorldPage({labels, tasks, writer}: {
     {showCommand && <div className="lholo-status">
       <div>{labels['writeWorld.commandTarget'].replace('%s', writer.state!.targetName)}</div>
       <div>{labels['writeWorld.commandProgress'].replace('%s', String(command!.done)).replace('%s', String(command!.total))}</div>
+      {!!command!.failedSkipped && <div>{labels['writeWorld.commandFailedSkipped'].replace('%llu', String(command!.failedSkipped))}</div>}
     </div>}
     {activeCommand ? <div className="lholo-status">{labels[command!.state]}</div>
       : writer.busy ? <div className="lholo-status">{labels['writeWorld.busy']}</div>

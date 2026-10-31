@@ -29,6 +29,8 @@ HudPanel makeWriteHud(WriteHudData const& data, int position, std::uint64_t now)
         auto const percent = data.total ? static_cast<unsigned>(data.done * 100 / data.total) : 100u;
         panel.lines.push_back({text(TextKey::HudWriteProgress, static_cast<unsigned long long>(data.done),
             static_cast<unsigned long long>(data.total), percent)});
+        if (data.failedSkipped) panel.lines.push_back({text(TextKey::WriteWorldCommandFailedSkipped,
+            static_cast<unsigned long long>(data.failedSkipped))});
     }
     if (data.phase != TextKey::Count) panel.lines.push_back({i18n::tr(data.phase)});
     return panel;

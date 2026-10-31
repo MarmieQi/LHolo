@@ -34,7 +34,7 @@ HudContent readHudContent() {
             : write.busy ? i18n::TextKey::WriteWorldBusy : structure::write::writeResultText(write.result);
         auto const now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
         result.write = makeWriteHud({write.operation, write.finishedAt, write.command.done, write.command.total,
-            write.busy, command, write.targetName, phase}, state.writeHudPosition(), now);
+            write.busy, command, write.targetName, phase, write.command.failedSkipped}, state.writeHudPosition(), now);
         if (editing && result.write.lines.empty()) result.write = makeHudEditorContent(settings.position, state.materialHudPosition()).write;
     }
     if (!settings.enabled && !materialEnabled) return result;

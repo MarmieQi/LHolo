@@ -8,8 +8,6 @@
 #include "mc/network/packet/CommandOutputPacket.h"
 #include "mc/server/commands/CommandContext.h"
 #include "mc/server/commands/PlayerCommandOrigin.h"
-#include "plugin/LHolo.h"
-#include "ll/api/mod/NativeMod.h"
 #include <deque>
 #include <mutex>
 #include <unordered_map>
@@ -39,6 +37,12 @@ LL_TYPE_INSTANCE_HOOK(CommandWriteOutput, ll::memory::HookPriority::Normal,
     if (packet.mOutput->mSuccessCount > 0) { receipt.reply = Reply::Success; receipt.error.clear(); }
     else for (auto const& message : packet.mOutput->mMessages) {
         auto const& key = message.mMessageId;
+        if (key == "commands.setblock.failed") {
+            receipt.reply = Reply::Skip; receipt.error.clear(); break;
+        }
+        if (key == "commands.generic.syntax") {
+            receipt.error = "writeWorld.commandSyntax"; break;
+        }
         if (key == "commands.setblock.noChange") {
             receipt.reply = Reply::NoChange; receipt.error = "writeWorld.commandVerify"; break;
         }
@@ -49,10 +53,13 @@ LL_TYPE_INSTANCE_HOOK(CommandWriteOutput, ll::memory::HookPriority::Normal,
         if (key == "commands.generic.error.permissions" || key == "commands.generic.disabled"
             || key == "commands.generic.unknown") receipt.error = "writeWorld.commandPermission";
     }
-    if (receipt.reply == Reply::Failed) {
-        auto& logger = LHolo::getInstance().getSelf().getLogger();
-        for (auto const& message : packet.mOutput->mMessages)
-            logger.warn("[command-write] {}: {}", id, message.mMessageId);
+    // Transport preserves diagnostics; only the scheduler decides whether a
+    // response actually pauses the task and warrants a single log entry.
+    if (receipt.reply == Reply::Failed || receipt.reply == Reply::Unloaded) {
+        for (auto const& message : packet.mOutput->mMessages) {
+            if (!receipt.messageIds.empty()) receipt.messageIds += ", ";
+            receipt.messageIds += message.mMessageId;
+        }
     }
     std::lock_guard lock(mutex);
     receipts.push_back(std::move(receipt));

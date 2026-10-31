@@ -27,7 +27,8 @@ std::optional<std::string> takeStructureWriteUpdate(bool force) {
         {"busy", status.busy}, {"localAvailable", status.localAvailable},
         {"commandAvailable", status.commandAvailable}, {"mode", status.mode == structure::write::WriteMode::LocalWorld ? "local" : "commands"},
         {"command", {{"active", status.command.active}, {"canResume", status.command.canResume},
-            {"done", status.command.done}, {"total", status.command.total}, {"state", commandState}}},
+            {"done", status.command.done}, {"total", status.command.total}, {"state", commandState},
+            {"failedSkipped", status.command.failedSkipped}}},
         {"targetName", status.targetName}, {"skipAir", status.skipAir}, {"skipPlaced", status.skipPlaced},
         {"dimension", status.dimension ? nlohmann::json(*status.dimension) : nlohmann::json(nullptr)}, {"result", result}}.dump();
 }
