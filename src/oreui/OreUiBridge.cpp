@@ -145,9 +145,9 @@ LL_TYPE_INSTANCE_HOOK(MenuViewUpdate, ll::memory::HookPriority::Normal,
             $triggerEvent("lholo:projection", *update);
         }
         auto const forceMaterials = materialsStatePending.exchange(false) || ready;
-        if (auto update = takeMaterialsUpdate(forceMaterials)) {
-            $triggerEvent("lholo:materials", *update);
-        }
+        if (auto* client = mClientInstance.get().get())
+            if (auto update = takeMaterialsUpdate(*client, forceMaterials))
+                $triggerEvent("lholo:materials", *update);
     } catch (std::exception const& error) {
         logger().error("[oreui] menu update failed: {}", error.what());
     }

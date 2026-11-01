@@ -129,7 +129,7 @@ HudPanel makeMaterialHud(structure::detail::MaterialHudSnapshot const& snapshot,
         auto const& material = snapshot.requirements[row.index];
         panel.lines.push_back({std::string(materialDisplayName(material.displayName, material.nameKey)), TextTone::Normal,
             std::string(materialIconId(material.itemId, material.typeName)),
-            formatMaterialHudCount(row.missing, material.stackSize, convertStacks), material.iconItem});
+            formatMaterialHudCount(row.missing, material.stackSize, convertStacks), material.itemPrototype});
     }
     return panel;
 }

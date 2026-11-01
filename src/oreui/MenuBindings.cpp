@@ -1,4 +1,5 @@
 #include "oreui/MenuBindings.h"
+#include "oreui/MaterialIconData.h"
 
 #include "i18n/Translator.h"
 #include "structure/ProjectionActions.h"
@@ -46,7 +47,7 @@ std::optional<std::string> takeProjectionUpdate(bool force) {
     return state;
 }
 
-std::optional<std::string> takeMaterialsUpdate(bool force) {
+std::optional<std::string> takeMaterialsUpdate(IClientInstance const& client, bool force) {
     std::lock_guard lock(bindingsMutex);
     auto const& ui = structure::detail::StructureUiState::getInstance();
     auto const snapshot = ui.materialListSnapshotIfChanged(force ? std::nullopt : publishedMaterialsRevision);
@@ -67,6 +68,16 @@ std::optional<std::string> takeMaterialsUpdate(bool force) {
             {"iconId", std::string{iconId}},
             {"count", req.count},
         });
+        if (req.itemPrototype) {
+            auto icon = materialIconData(*req.itemPrototype, client);
+            // Keep the revision unpublished while the client's registry is
+            // unavailable, so a later View update can retry safely.
+            if (!icon) {
+                publishedMaterialsRevision.reset();
+                return std::nullopt;
+            }
+            items.back()["iconData"] = {{"id", icon->id}, {"bag", std::move(icon->bag)}};
+        }
     }
     auto state = nlohmann::json{{"ready", snapshot->ready}, {"items", std::move(items)}}.dump();
     publishedMaterialsRevision = snapshot->revision;

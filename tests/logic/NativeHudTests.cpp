@@ -129,13 +129,13 @@ int runNativeHudTests() {
     // Opaque native item payload: presentation must retain ownership without
     // invoking game APIs or reconstructing the item from its bare type ID.
     auto nativeToken = std::make_shared<int>(1);
-    redBed.iconItem = std::shared_ptr<ItemStack const>(nativeToken, reinterpret_cast<ItemStack const*>(nativeToken.get()));
-    auto whiteBed = redBed; whiteBed.displayName = "White Bed"; whiteBed.count = 1; whiteBed.iconItem.reset();
+    redBed.itemPrototype = std::shared_ptr<ItemStack const>(nativeToken, reinterpret_cast<ItemStack const*>(nativeToken.get()));
+    auto whiteBed = redBed; whiteBed.displayName = "White Bed"; whiteBed.count = 1; whiteBed.itemPrototype.reset();
     auto beds = makeMaterialHud({{whiteBed, redBed}, {0, 0}, true}, 0);
     check(beds.lines[1].text == "Red Bed" && beds.lines[1].iconId == "minecraft:bed"
         && beds.lines[2].text == "White Bed",
         "sorted material labels retain their shared item type");
-    check(beds.lines[1].iconItem == redBed.iconItem && !beds.lines[2].iconItem,
+    check(beds.lines[1].iconItem == redBed.itemPrototype && !beds.lines[2].iconItem,
         "full native item payload follows its material through deficit sorting");
     auto liquid = dirt; liquid.itemId.clear(); liquid.typeName = "minecraft:water";
     structure::detail::MaterialHudSnapshot liquidSnapshot{{liquid}, {0}, true};

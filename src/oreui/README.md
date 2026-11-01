@@ -3,6 +3,7 @@
 - OreUiScreen（主客户端更新调度、当前场景栈/路由配对）：聊天命令、路由、等待聊天退出后的开屏、ESC 和延迟关闭。
 - OreUiBridge：查询请求登记、View update 传输；不持有选中文件、不调用 Win32 对话框。
 - MenuBindings：菜单文案、文件草稿、浏览与投影用例绑定、材料清单请求与快照发布、增量文件/投影/材料状态；投影操作提交 structure/ProjectionActions，材料统计复用 structure/MaterialTracker 与 StructureUiState。
+- MaterialIconData：在当前 View 客户端的有效 ScopedItemRegistry 作用域内，从只读原生物品提取缩略图 PropertyBag 和视觉属性的 tile 身份，交给版本适配器构造 geo-item 请求；不参与材料计数、库存匹配或投影业务。
 - CaptureBindings / CaptureProtocol：创建动作协议校验、导出选择与应答；复用 capture/CaptureActions 和原有捕获器。
 - ui/StructureFilePicker：独立异步系统打开/另存为服务；自身不依赖 OreUI 或业务模块。
 

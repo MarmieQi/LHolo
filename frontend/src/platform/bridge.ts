@@ -1,4 +1,5 @@
 import { settingsBridge, type SettingsBridge } from './settingsBridge';
+import type { ItemIconData } from './native';
 export type MenuLabels = Record<string, string>;
 export interface ProjectionState {
   worldAvailable: boolean;
@@ -14,6 +15,7 @@ export interface MaterialItem {
   typeName: string;
   // Display identity only; never used for inventory availability or placement.
   iconId?: string;
+  iconData?: ItemIconData;
   count: number;
 }
 export interface MaterialsState {
@@ -112,12 +114,21 @@ export function parseMaterials(payload: string): MaterialsState {
       && typeof (item as Record<string, unknown>).typeName === 'string'
       && ((item as Record<string, unknown>).nameKey === undefined || typeof (item as Record<string, unknown>).nameKey === 'string')
       && ((item as Record<string, unknown>).iconId === undefined || typeof (item as Record<string, unknown>).iconId === 'string')
+      && validIconData((item as Record<string, unknown>).iconData)
       && typeof (item as Record<string, unknown>).count === 'number'
       && Number.isSafeInteger((item as Record<string, unknown>).count)
       && ((item as Record<string, unknown>).count as number) >= 0)) {
     throw new Error('Invalid LHolo materials state');
   }
   return { ready: value.ready, items: value.items as MaterialItem[] };
+}
+
+function validIconData(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+  return Number.isInteger(data.id) && (data.id as number) >= 0 && (data.id as number) <= 0xffffffff
+    && typeof data.bag === 'string';
 }
 
 function send(name: string) {

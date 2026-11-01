@@ -231,10 +231,11 @@ LHolo/
 - `settings/SettingsStore` 只负责 `config.json` 的读写与字段映射，不持有运行状态；应用到全局状态由
   `StructureLoader` 完成，配置默认值与钳制语义保持不变。
 - `block/BlockPlacementRules` 集中维护运行态方块到可放置基础方块的身份规则和稳定材料 key，并通过
-  Bedrock 原生 `Block`/`ItemStack` 转换解析实际放置物品；材料清单与材料分层必须共用该 key 和排序规则，
+  Bedrock 原生 `Block`/`ItemStack` 转换解析实际放置物品。解析阶段的材料分层使用无需注册表的方块类别 key；
+  材料清单和 HUD 在原生取物品后按完整物品变体归组，分组与背包匹配共用 `sameMaterialItem`。
   `place`、格式加载、材料统计和投影纠错不得各自复制名称映射。
 - `structure/MaterialTracker` 只在本地玩家 tick 线程聚合材料需求和扫描背包；同一投影的材料清单只计算
-  一次，先按唯一方块状态累计数量、再解析并缓存 `itemId`，避免大型结构逐格访问物品注册表。HUD/菜单
+  一次，后台保留 Block/NBT 来源计数，游戏线程先合并相同源内容的计数，再解析原生物品、归组并按相同变体读取背包。HUD/菜单
   关闭且没有消费者时停止刷新，渲染线程只读取 `StructureUiState` 的一致快照。
 - `structure/StructureUiState` 持有 UI/菜单会话状态：GUI 可见性、热键配置与按下状态、HUD 开关、
   固定手势开关（Alt+滚轮结构偏移）、待处理偏移/切层/保存与材料清单；atomic、mutex 和容器均不向
@@ -740,7 +741,7 @@ Worker 初始化失败，或构建/上传连续失败三次后，本次游戏会
 
 材料 HUD 标题左侧显示本地化“缺失材料”，页码单独放在同一行右端，与材料数量右对齐，每页沿用 materialHudMaxItems（默认 5）。ui/hud/MaterialHudPaging 持有临时页码与上下文；input/MaterialHudPageRequest 仅传递原子翻页意图，不依赖 HUD。上一页/下一页追加到 HotkeyId 尾部，默认按键/修饰键均为空，沿用现有捕获、重复绑定清除、按住去重、释放处理与 SettingsStore 保存。HUD 未启用或维度暂停时不认领翻页输入，菜单及编辑期间丢弃请求；退出世界清除待处理意图。文件、分层或每页项数改变回第一页，数量减少自动钳制有效页，首尾不循环。分页只消费原有材料/背包快照，不增加世界查询；nth_element 分离前页后仅排序当前页，数量相同按原索引稳定排序。页码不写配置、不进入任务或投影业务。
 
-材料 HUD 的 `materialHudStackConversion` 是独立持久化布尔偏好，默认关闭；OreUI 材料 HUD 页通过现有 SettingsActions 字段通路即时修改。关闭只显示缺失总数，开启使用 `43x64+34` 格式并按物品实际堆叠上限换算，不同时显示总数。格式化位于 `ui/MaterialFormat`，原生 HUD 与编辑示例共用；材料业务统计与菜单材料清单保持原有行为。显示项数通过 `materialHudMaxItems` 持久化，范围 1～50、默认 5，只对当前页排序；数量独立存入 HudLine 并在 NativeHudPainter 统一右对齐，材料名称完整显示，面板按每行名称与数量的实际合计宽度自适应，列间距为字高的 0.8 倍，不将不同材料的最长名称和最长数量额外相加留白；超过视口宽度时同比例缩小文字、图标和间距；视口高度限制继续生效。材料图标通过完整 ItemStack 保留原生附加值与用户数据；有蓝图方块实体 NBT 时，游戏线程为每个既有调色板身份的显示样本创建临时 BlockActor，经原生 asItemInstance 取得床/旗帜等物品，保留其图案和用户数据。不逐帧建物品、不扫描真实世界，不改变当前材料分组或背包计数。最终审计删除无调用的 formatStackCount、完整物品接入后重复的 aux 转发/缓存及仅测试消费的布局输出，保留默认关闭的堆叠换算；旧隐藏 ImGui 按项目约束保留。
+材料 HUD 的 `materialHudStackConversion` 是独立持久化布尔偏好，默认关闭；OreUI 材料 HUD 页通过现有 SettingsActions 字段通路即时修改。关闭只显示缺失总数，开启使用 `43x64+34` 格式并按物品实际堆叠上限换算，不同时显示总数。格式化位于 `ui/MaterialFormat`，原生 HUD 与编辑示例共用；材料业务统计与菜单材料清单保持原有行为。显示项数通过 `materialHudMaxItems` 持久化，范围 1～50、默认 5，只对当前页排序；数量独立存入 HudLine 并在 NativeHudPainter 统一右对齐，材料名称完整显示，面板按每行名称与数量的实际合计宽度自适应，列间距为字高的 0.8 倍，不将不同材料的最长名称和最长数量额外相加留白；超过视口宽度时同比例缩小文字、图标和间距；视口高度限制继续生效。材料图标通过完整 ItemStack 保留原生附加值与用户数据；后台计数以 Block 指针及不可变 NBT 来源指针为键，保留同一方块状态下的所有物品变体。游戏线程先按去掉顶层 x/y/z 的源 NBT 内容合并计数，再经临时 BlockActor 和原生 asItemInstance 取得床/旗帜等物品；同内容不同坐标只解析和比较一次，源 NBT 不修改，不另存重复的物品解析缓存。材料清单与材料 HUD 按原生物品 ID 和 hasSameAuxValue 分组，背包计数共用 block::sameMaterialItem；旗帜使用 BannerBlockActor::getBannerType 和 BannerItem::getPatternAndColorPairsFromItemStack 读取原生类型与图案，不比较缺省字段写法或自定义名称，其他物品比较 hasSameUserData。MaterialRequirement::itemPrototype 持有只读物品身份，HUD 复用它绘制图标，不反向依赖 UI 数据。不逐帧建物品、不扫描真实世界。最终审计删除无调用的 formatStackCount、完整物品接入后重复的 aux 转发/缓存及仅测试消费的布局输出，保留默认关闭的堆叠换算；旧隐藏 ImGui 按项目约束保留。
 
 纠错扫描同时维护：
 
@@ -757,8 +758,8 @@ HUD 每帧只读取原子计数，不查询世界、不遍历结构。`ui/hud/Hu
 版本查询和快照复制必须通过 `Projection.h` 的 `getMaterialProgressKey()` /
 `captureMaterialProgress()` 门面完成；`structure` 模块不得包含 `ProjectionSession.h`、获取投影锁或读取
 `ProjectionState` 内部字段。
-后台任务只用不透明的 `Block const*` 作为键，统计当前显示范围内未正确放置单元；物品注册表、
-本地化和背包读取仍在游戏 tick 线程执行，且每个唯一方块状态只解析一次。同时最多一个统计任务，活跃建造时最多
+后台任务只以不透明的 `Block const*` 和 NBT 来源指针计数并保活源数据，统计当前显示范围内未正确放置单元；物品注册表、
+NBT 内容合并、本地化和背包读取仍在游戏 tick 线程执行，普通方块每个唯一状态只解析一次，带 NBT 的方块每种唯一源内容只解析一次。同时最多一个统计任务，活跃建造时最多
 每 400 ms 重算一次；结果发布前再校验全部版本键，过期结果直接丢弃。卸载模组时由 `AppKernel` 先回收该任务，
 再释放投影和结构。材料清单与材料 HUD 使用独立 UI 快照：前者只在用户打开清单时统计整张蓝图，
 后者为当前显示范围，开启 HUD 不得隐式触发整图清单计算，两者也不得相互覆盖。

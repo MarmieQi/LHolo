@@ -251,3 +251,11 @@ StructureWritePlan 保留区域、空气、源格式 -1 省略单元、两层方
 重新进入有指令任务正在执行的写入页时，将原生任务的模式及冻结选项接入当前页面草稿；任务取消或完成后保留本页的指令模式与选项，不退回结构方块模式。离开页面后的新实例仍按原默认规则初始化，不持久化这些选择。
 
 写入页排版按当前文件、模式说明、选项、写入说明与操作分组，不显示文件下方的重复摘要，复用现有选择框/复选框/按钮；模式行复用渲染设置页的共享设置列宽、选择框宽度和窄屏换行规则。空气效果与范围说明合并放在操作前，统一左对齐，指令范围分两行呈现；说明文字沿用共享字号，保持单一主文字色。描述语言表按范围、空气效果的顺序提供文本，以换行分隔显示行。
+
+## 材料缩略图变体
+
+材料清单保留原生统计与只读 itemPrototype。oreui/MaterialIconData 接收当前 View 所属的 IClientInstance，锁定其 getItemRegistry() 返回的弱引用，并通过 SDK 的 ItemRegistryManager::ScopedItemRegistry 建立/恢复线程局部注册表作用域，然后使用 ItemRendererDataHelpers::setItemRendererBindings 提取原生渲染属性，按当前版本 ScreenController 的物品绑定键形成 PropertyBag；不在前端解析 NBT 或维护染料/图案表。MenuBindings 下发可选 iconData:{id,bag}，页面及 hooks 只透传给 LHoloItemIcon。版本适配器沿用原版 fast-img 与 Facet 尺寸，构造 geo-item URL，并对 bag 做 encodeURIComponent。原生 ItemResourceResolver::tryResolveRequest 已核对支持 width、height、id 和 bag，bag 经 URL 解码后交给原生 PropertyBag / ItemHandleFactoryImpl；没有新增 Hook 或自定义贴图。id 对完整物品类型及视觉属性做 32 位哈希，为不同颜色、类型和图案提供不同 atlas tile 身份；回退物品无 iconData 时保留原通路。正式构建继续校验目标 bundle 的 SHA256、缩略图签名、样式类与 URL 模板。
+
+View::update 原调用返回后，原版临时注册表作用域已经结束；此时直接调用物品渲染辅助函数会在物品描述符解析中触发 ItemRegistryRef::_lockRegistry 原生断言，不能用 C++ catch 处理。注册表作用域覆盖属性提取及 ItemRendererData 析构，强引用只保活到本次转换结束，不缓存客户端/世界注册表。注册表不可用时清除发布版本标记，后续 View 更新继续重试，包括强制刷新同一 revision 的情况。
+
+隔离回归覆盖渲染属性透传、URL 编码和变体 tile 身份；当前版本的旗帜图标、库存匹配及材料清单开关已由用户实测通过。

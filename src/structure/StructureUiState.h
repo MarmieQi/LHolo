@@ -40,7 +40,9 @@ struct MaterialRequirement {
     // signs etc., 1 for filled buckets). Used for the JE-style "N (a x S + b)"
     // count display. Computed on the tick thread; 64 when unknown.
     int           stackSize{64};
-    std::shared_ptr<ItemStack const> iconItem; // Immutable native item, including banner patterns.
+    // Native material identity for grouping and inventory matching. The HUD
+    // also renders this immutable prototype to preserve colors and patterns.
+    std::shared_ptr<ItemStack const> itemPrototype;
 };
 
 // One coherent, versioned snapshot for material-list consumers.

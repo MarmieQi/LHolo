@@ -57,7 +57,7 @@ export function MaterialListModal({
                     {materials.map((item, index) => (
                       <div key={item.typeName + ':' + index} className="lholo-material-table-row">
                         <div className="lholo-material-col-item">
-                          <LHoloItemIcon iconId={item.iconId} />
+                          <LHoloItemIcon iconId={item.iconId} iconData={item.iconData} />
                           <div className="lholo-material-name">{formatMaterialDisplayName(item, labels)}</div>
                         </div>
                         <div className="lholo-material-col-id">{item.typeName}</div>

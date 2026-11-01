@@ -37,7 +37,7 @@ const context = {
       Interactive: ({ onClick, className, disabled, children }) => React.createElement('button', { onClick, className, disabled }, children),
       Scroll: ({ children }) => React.createElement('native-scroll', null, children),
       Completion: () => null,
-      ItemIcon: ({ itemId }) => React.createElement('native-item-icon', { itemId }),
+      ItemIcon: props => React.createElement('native-item-icon', props),
     },
     engine: {
       on(name, fn) { assert(['lholo:menu-entry', 'lholo:menu-labels', 'lholo:projection', 'lholo:materials', 'lholo:capture', 'lholo:transform', 'lholo:render', 'lholo:settings', 'lholo:tasks', 'lholo:preview', 'lholo:write'].includes(name)); listeners.add({ name, fn }); },
@@ -386,7 +386,7 @@ assert(nodeText(materialModal).includes(labels['hint.noPlaceableMaterials']), 'C
 receive(JSON.stringify({
   ready: true,
   items: [
-    { displayName: '石头', typeName: 'minecraft:stone', iconId: 'minecraft:stone', count: 128 },
+    { displayName: '石头', typeName: 'minecraft:stone', iconId: 'minecraft:stone', iconData: {id: 7, bag: '{}'}, count: 128 },
     { displayName: '橡木木板', typeName: 'minecraft:oak_planks', iconId: 'oak_planks', count: 96 },
     { displayName: '玻璃', typeName: 'minecraft:glass', iconId: 'glass', count: 48 },
     { displayName: '圆石楼梯', typeName: 'minecraft:stone_stairs', iconId: 'stone_stairs', count: 32 },
@@ -406,6 +406,8 @@ assert(materialModalText.includes('minecraft:stone'));
 assert.equal(materialModal.findAllByType('native-item-icon').length, 7,
   'All materials including liquids use native icons');
 assert.equal(materialModal.findAllByType('native-item-icon')[0].props.itemId, 'minecraft:stone');
+assert.equal(materialModal.findAllByType('native-item-icon')[0].props.iconData.id, 7,
+  'Material thumbnail data reaches the native adapter');
 assert(materialModalText.includes(labels['material.water']));
 renderer.act(() => materialModal.findAllByType('button').find(node => nodeText(node) === labels['button.close']).props.onClick());
 assert.equal(tree.root.findAllByProps({ className: 'lholo-material-modal' }).length, 0, 'Close button dismisses material modal');
@@ -938,9 +940,10 @@ assert([...inputMocks.values()].every(input => input.listeners.size === 0), 'DOM
 const theme = { press: 'press', hover: 'hover', focus: 'focus' };
 const adapterContext = {
   window: { engine: { trigger() {} } },
-  a: { createStaticFacet: value => value },
+  a: { createStaticFacet: value => value, useFacetWrap: value => value,
+    useFacetMap: (map, deps, inputs) => map(...inputs) },
   e: { createElement: (type, props, ...children) => ({ type, props, children }) },
-  Us: Symbol('native-input'), cf: Symbol('native-scroll'), u_: Symbol('native-item-icon'), uc: v => `${v}rem`, no: () => theme,
+  Us: Symbol('native-input'), cf: Symbol('native-scroll'), uc: v => v * 10, no: () => theme,
 };
 vm.createContext(adapterContext);
 vm.runInContext(fs.readFileSync('../tools/oreui/runtime_adapter.js', 'utf8'), adapterContext);
@@ -960,10 +963,15 @@ assert.equal(scroll.props.floating, true);
 assert.equal(scroll.props.scrollbarClassName, 'lholo-hidden-scrollbar');
 assert.equal(scroll.props.disableScrolling, undefined);
 const icon = adapterContext.window.__LHoloOreUiRuntime.ItemIcon({ itemId: 'minecraft:stone' });
-assert.equal(icon.type, adapterContext.u_);
-assert.equal(icon.props.itemID, 'stone');
-assert.equal(icon.props.width, '1.6rem');
-assert.equal(icon.props.height, '1.6rem');
-assert.equal(adapterContext.window.__LHoloOreUiRuntime.ItemIcon({itemId: 'custom:stone'}).props.itemID, 'custom:stone',
+assert.equal(icon.type, 'fast-img');
+assert.equal(icon.props.src, 'geo-item://stone?width=16&height=16');
+assert.equal(icon.props.style.width, '16px');
+assert.equal(icon.props.style.height, '16px');
+assert(adapterContext.window.__LHoloOreUiRuntime.ItemIcon({itemId: 'custom:stone'}).props.src.startsWith('geo-item://custom:stone?'),
   'Version adapter preserves non-vanilla namespaces');
+const bannerIcon = data => new URL(adapterContext.window.__LHoloOreUiRuntime.ItemIcon({itemId: 'minecraft:banner', iconData: data}).props.src);
+const plain = bannerIcon({id: 10, bag: '{"#banner_type":0}'}), ominous = bannerIcon({id: 11, bag: '{"#banner_type":1}'});
+assert.notEqual(plain.searchParams.get('id'), ominous.searchParams.get('id'), 'Banner variants have separate atlas tiles');
+assert.equal(plain.searchParams.get('bag'), '{"#banner_type":0}', 'Ordinary banner data survives URL encoding');
+assert.equal(ominous.searchParams.get('bag'), '{"#banner_type":1}', 'Ominous banner data survives URL encoding');
 console.log('Menu tests passed: task navigation and native catalog, deletion confirmations, task material entry, capture/export, transform/render/HUD/hotkeys/language/experimental settings, subscription cleanup and runtime adapters.');

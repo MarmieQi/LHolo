@@ -35,6 +35,8 @@ def main():
     bundle = raw.decode("utf-8")
     if bundle.count('function u_({itemID:t,width:n,height:r,floating:o})') != 1:
         raise ValueError("Unsupported native item icon component; review the runtime adapter")
+    if bundle.count('"e96d2bbd1477d4e72350"') != 1 or bundle.count('`geo-item://${e}?width=${t}&height=${n}`') != 1:
+        raise ValueError("Unsupported native thumbnail markup; review the runtime adapter")
     start_anchor = "function oL(){"
     end_anchor = "var iL,lL;iL=e.createElement(oL,null)"
     if bundle.count(start_anchor) != 1 or bundle.count(end_anchor) != 1:

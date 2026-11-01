@@ -9,7 +9,8 @@ export interface InteractiveProps {
   children?: React.ReactNode;
 }
 
-export interface ItemIconProps { itemId: string; }
+export interface ItemIconData { id: number; bag: string; }
+export interface ItemIconProps { itemId: string; iconData?: ItemIconData; }
 
 // Only the version-specific adapter may resolve private game symbols.
 export interface NativeRuntime {

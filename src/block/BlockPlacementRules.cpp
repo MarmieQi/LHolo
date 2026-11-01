@@ -12,12 +12,28 @@
 #include "mc/world/item/SaveContext.h"
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/world/item/ItemStack.h"
+#include "mc/world/item/BannerItem.h"
+#include "mc/world/level/block/actor/BannerBlockActor.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/BlockType.h"
 
 #include <cstddef>
 
 namespace lholo::block {
+
+bool sameMaterialItem(ItemStack const& left, ItemStack const& right) {
+    auto const type = left.getTypeName();
+    if (type != right.getTypeName() || !left.hasSameAuxValue(right)) return false;
+    if (type == "minecraft:banner") {
+        // Native reads normalize omitted/default banner fields. Unrelated
+        // user data (for example a display name) does not change the material.
+        return BannerBlockActor::getBannerType(left.mUserData.get())
+                == BannerBlockActor::getBannerType(right.mUserData.get())
+            && BannerItem::getPatternAndColorPairsFromItemStack(left)
+                == BannerItem::getPatternAndColorPairsFromItemStack(right);
+    }
+    return left.hasSameUserData(right);
+}
 
 ItemStack makePlacementItem(Block const& block) {
     std::string const blockName{placeableBaseName(block.getTypeName())};

@@ -2,6 +2,7 @@
 // Copyright (C) 2026  MarmieQi
 
 #include "structure/MaterialTracker.h"
+#include "structure/MaterialCounts.h"
 #include "structure/IndependentTaskFiles.h"
 
 #include "block/BlockPlacementRules.h"
@@ -20,6 +21,7 @@
 #include "mc/world/item/registry/ItemRegistry.h"
 #include "mc/world/item/registry/ItemRegistryManager.h"
 #include "mc/world/level/block/Block.h"
+#include "mc/deps/nbt/CompoundTag.h"
 
 #include <Windows.h>
 
@@ -44,14 +46,9 @@ constexpr int kInventorySlots = 36;
 constexpr std::uint64_t kAvailabilityRefreshMs = 400;
 constexpr std::uint64_t kMaterialHudRecountIntervalMs = 400;
 
-using BlockCounts = std::unordered_map<Block const*, std::uint64_t>;
-
 struct RawMaterialCounts {
-    BlockCounts body;
-    BlockCounts liquid;
-    // One representative per existing material/palette identity, not one
-    // native actor per projected cell. Keep source NBT immutable.
-    std::unordered_map<Block const*, std::shared_ptr<CompoundTag const>> blockEntitySamples;
+    MaterialCounts body;
+    MaterialCounts liquid;
 };
 
 using MaterialHudKey = projection::MaterialProgressKey;
@@ -73,12 +70,6 @@ MaterialHudWorkerState& materialHudWorkerState() {
     return state;
 }
 
-void countBlock(BlockCounts& counts, Block const* blockValue) {
-    if (!blockValue) return;
-    auto& count = counts[blockValue];
-    if (count != std::numeric_limits<std::uint64_t>::max()) ++count;
-}
-
 RawMaterialCounts collectRawMaterials(
     std::vector<LoadedStructure::RenderBlock> const& renderBlocks
 ) {
@@ -88,10 +79,8 @@ RawMaterialCounts collectRawMaterials(
     counts.body.reserve(std::min<std::size_t>(renderBlocks.size(), 4096));
     counts.liquid.reserve(std::min<std::size_t>(renderBlocks.size(), 64));
     for (auto const& entry : renderBlocks) {
-        countBlock(counts.body, entry.block);
-        if (entry.block && entry.blockEntityNbt)
-            counts.blockEntitySamples.try_emplace(entry.block, entry.blockEntityNbt);
-        countBlock(counts.liquid, entry.liquid);
+        counts.body.add(entry.block, entry.blockEntityNbt);
+        counts.liquid.add(entry.liquid);
     }
     return counts;
 }
@@ -124,59 +113,95 @@ std::string localizedBlockName(Block const& block, std::string_view localeCode) 
     return name;
 }
 
+std::vector<MaterialSourceCount> coalesceMaterialSources(MaterialCounts const& counts) {
+    std::vector<MaterialSourceCount> sources;
+    std::unordered_map<Block const*, std::unordered_map<std::string, std::size_t>> byContents;
+    for (auto const& source : counts.entries()) {
+        if (!source.nbt) {
+            // Plain blocks are already counted once per palette state.
+            sources.push_back(source);
+            continue;
+        }
+        CompoundTag identity{*source.nbt};
+        for (auto const* coordinate : {"x", "y", "z"}) identity.mTags.erase(coordinate);
+        auto const [found, inserted] = byContents[source.block].try_emplace(identity.toBinaryNbt(), sources.size());
+        if (inserted) sources.push_back(source);
+        else {
+            auto& total = sources[found->second].count;
+            auto const maximum = std::numeric_limits<std::uint64_t>::max();
+            total = source.count > maximum - total ? maximum : total + source.count;
+        }
+    }
+    return sources;
+}
+
 std::vector<MaterialRequirement> resolveMaterials(
     RawMaterialCounts counts,
     std::string_view localeCode,
     Level& level
 ) {
-    std::map<std::string, MaterialRequirement> byType;
-    std::map<std::string, MaterialRequirement> byLiquidType;
-    auto aggregate = [&](auto& destination, Block const* blockValue, std::uint64_t blockCount) {
+    using Groups = std::map<std::string, std::vector<MaterialRequirement>>;
+    Groups byType;
+    Groups byLiquidType;
+    auto aggregate = [&](auto& destination, MaterialSourceCount const& source) {
+        auto const* blockValue = source.block;
+        auto const blockCount = source.count;
         if (!blockValue || blockCount == 0) return;
 
         std::string const typeName{blockValue->getTypeName()};
         auto const key = block::materialKey(typeName);
         if (key.empty()) return;
-        auto const sample = counts.blockEntitySamples.find(blockValue);
-        auto const* nbt = sample == counts.blockEntitySamples.end() ? nullptr : sample->second.get();
         MaterialRequirement requirement;
         requirement.typeName = typeName;
         if (typeName == "minecraft:water" || typeName == "minecraft:flowing_water") {
             requirement.nameKey = i18n::TextKey::MaterialWater;
         } else if (typeName == "minecraft:lava" || typeName == "minecraft:flowing_lava") {
             requirement.nameKey = i18n::TextKey::MaterialLava;
-        } else if (auto const item = (nbt ? block::resolvePlacementItem(*blockValue, *nbt, level) : block::resolvePlacementItem(*blockValue)); item.valid) {
-            requirement.displayName = item.displayName;
-            requirement.itemId = item.itemId;
-            requirement.stackSize = item.stackSize;
-            requirement.iconItem = item.displayItem;
         } else {
-            requirement.displayName = localizedBlockName(*blockValue, localeCode);
+            auto const item = source.nbt
+                ? block::resolvePlacementItem(*blockValue, *source.nbt, level)
+                : block::resolvePlacementItem(*blockValue);
+            if (item.valid) {
+                requirement.displayName = item.displayName;
+                requirement.itemId = item.itemId;
+                requirement.stackSize = item.stackSize;
+                requirement.itemPrototype = item.displayItem;
+            } else requirement.displayName = localizedBlockName(*blockValue, localeCode);
         }
 
-        auto const result = destination.try_emplace(key, std::move(requirement));
-        auto& total = result.first->second.count;
+        // A block name is only the fallback identity. The native pick result
+        // distinguishes colors/patterns/types, and merges standing/wall forms.
+        auto& variants = destination[requirement.itemPrototype ? "item:" + requirement.itemId : key];
+        auto found = std::find_if(variants.begin(), variants.end(), [&](auto const& existing) {
+            if (requirement.itemPrototype && existing.itemPrototype)
+                return block::sameMaterialItem(*requirement.itemPrototype, *existing.itemPrototype);
+            return !requirement.itemPrototype && !existing.itemPrototype;
+        });
+        if (found == variants.end()) {
+            variants.push_back(std::move(requirement));
+            found = std::prev(variants.end());
+        }
+        auto& total = found->count;
         auto const maximum = std::numeric_limits<std::uint64_t>::max();
         total = blockCount > maximum - total ? maximum : total + blockCount;
     };
 
-    // Registry/localization work now runs once per unique palette state rather
-    // than once per projected cell. This is the critical path for million-block
-    // structures; the first pass above is only pointer counting.
-    for (auto const& [blockValue, count] : counts.body) aggregate(byType, blockValue, count);
-    for (auto const& [blockValue, count] : counts.liquid) {
-        aggregate(byLiquidType, blockValue, count);
-    }
+    // The worker only counts opaque source pointers. Native item resolution
+    // stays on the game tick thread. Merge duplicate contents before resolving
+    // and comparing items, rather than repeating that work for every position.
+    for (auto const& source : coalesceMaterialSources(counts.body)) aggregate(byType, source);
+    for (auto const& source : counts.liquid.entries()) aggregate(byLiquidType, source);
 
     std::vector<MaterialRequirement> materials;
     materials.reserve(byType.size() + byLiquidType.size());
     auto appendSorted = [&materials](auto& source) {
         std::vector<std::pair<std::string, MaterialRequirement>> sorted;
         sorted.reserve(source.size());
-        for (auto& [key, requirement] : source) {
-            sorted.emplace_back(key, std::move(requirement));
+        for (auto& [key, variants] : source) {
+            for (auto& requirement : variants)
+                sorted.emplace_back(key, std::move(requirement));
         }
-        std::sort(sorted.begin(), sorted.end(), [](auto const& left, auto const& right) {
+        std::stable_sort(sorted.begin(), sorted.end(), [](auto const& left, auto const& right) {
             if (left.second.count != right.second.count) {
                 return left.second.count > right.second.count;
             }
@@ -227,10 +252,8 @@ MaterialHudResult countMaterialHud(MaterialHudInput input) {
         }
         // Block pointers are opaque keys here. Registry, localization and item
         // resolution remain on the game tick thread after aggregation.
-        countBlock(result.counts.body, entry.block);
-        if (entry.block && entry.blockEntityNbt)
-            result.counts.blockEntitySamples.try_emplace(entry.block, entry.blockEntityNbt);
-        countBlock(result.counts.liquid, entry.liquid);
+        result.counts.body.add(entry.block, entry.blockEntityNbt);
+        result.counts.liquid.add(entry.liquid);
     }
     return result;
 }
@@ -239,19 +262,22 @@ std::vector<int> collectInventoryAvailability(
     LocalPlayer&                            player,
     std::vector<MaterialRequirement> const& requirements
 ) {
-    std::unordered_map<std::string, int> inventoryCounts;
+    std::unordered_map<std::string, std::vector<ItemStack const*>> inventoryItems;
     auto& inventory = player.getInventory();
     for (int slot = 0; slot < kInventorySlots; ++slot) {
         auto const& item = inventory.getItem(slot);
-        if (!item.isNull()) inventoryCounts[item.getTypeName()] += static_cast<int>(item.mCount);
+        if (!item.isNull()) inventoryItems[item.getTypeName()].push_back(&item);
     }
 
     std::vector<int> available(requirements.size(), 0);
     for (std::size_t index = 0; index < requirements.size(); ++index) {
         auto const& itemId = requirements[index].itemId;
         if (itemId.empty()) continue;
-        if (auto const found = inventoryCounts.find(itemId); found != inventoryCounts.end()) {
-            available[index] = found->second;
+        if (auto const found = inventoryItems.find(itemId); found != inventoryItems.end()) {
+            auto const& prototype = requirements[index].itemPrototype;
+            for (auto const* item : found->second)
+                if (prototype && block::sameMaterialItem(*prototype, *item))
+                    available[index] += static_cast<int>(item->mCount);
         }
     }
     return available;

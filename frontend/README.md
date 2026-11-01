@@ -98,7 +98,7 @@ App 只装配 useSettings 与四个具体页面 hook。useSettings 串行提交�
 
 ## 原版物品图标测试通路
 
-材料行通过 `LHoloItemIcon → platform/native.NativeItemIcon → tools/oreui/runtime_adapter.js` 复用原版物品缩略图组件。版本私有组件 `u_`、尺寸换算 `uc` 和 `geo-item` 协议只存在于目标游戏适配器；页面不拼 URL，不访问原生物品注册表。构建脚本继续校验原版 bundle SHA256，并校验图标组件签名。
+材料行通过 `LHoloItemIcon → platform/native.NativeItemIcon → tools/oreui/runtime_adapter.js` 复用原版 fast-img、Facet 尺寸与 GeometryAtlas 物品缩略图通路。版本私有尺寸换算 `uc`、样式类和 `geo-item` 协议只存在于目标游戏适配器；页面不拼 URL，不访问原生物品注册表。原生 MaterialIconData 从只读物品提取渲染 PropertyBag，iconData:{id,bag} 经桥接和控件透传，适配器将 bag 编码为 URL 参数，并传递完整视觉属性的 tile id，区分相同物品 ID 下的旗帜类型、底色和图案。构建脚本继续校验原版 bundle SHA256，并校验图标组件签名。
 
 `MaterialItem.iconId` 是可选的显示身份（物品或方块），与业务层用于背包计数的 `MaterialRequirement.itemId` 分离。绑定层优先使用实际物品身份，无直接物品时使用方块身份供原版渲染；保留完整命名空间，仅在版本适配器中剥除原版前缀。水/岩浆沿用方块图标身份，不改变材料 HUD 的背包计数规则。
 

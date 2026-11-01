@@ -1,10 +1,10 @@
 import React from 'react';
-import { NativeItemIcon } from '../platform/native';
+import { NativeItemIcon, type ItemIconData } from '../platform/native';
 
-// The row supplies item identity only. Runtime rendering and private URL syntax
-// stay in the platform adapter; unresolved display identities keep an empty slot.
-export function LHoloItemIcon({ iconId }: { iconId?: string }) {
+// Rows forward native identity and opaque visual data. Runtime rendering and
+// private URL syntax stay in the adapter; unresolved identities keep an empty slot.
+export function LHoloItemIcon({ iconId, iconData }: { iconId?: string; iconData?: ItemIconData }) {
   return <div className="lholo-material-icon">
-    {iconId ? <NativeItemIcon itemId={iconId} /> : <div className="lholo-material-icon-empty" />}
+    {iconId ? <NativeItemIcon itemId={iconId} iconData={iconData} /> : <div className="lholo-material-icon-empty" />}
   </div>;
 }

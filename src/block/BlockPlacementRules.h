@@ -92,6 +92,11 @@ struct PlacementItem {
 // Shared native pick path for blueprint block-entity data (beds, banners, etc.).
 [[nodiscard]] PlacementItem resolvePlacementItem(Block const& block, CompoundTag const& nbt, Level& level);
 
+// Material aggregation and inventory availability share the same native item
+// comparison; banners use native type/pattern reads to normalize default NBT.
+// Stack count and banner display names do not change the material identity.
+[[nodiscard]] bool sameMaterialItem(ItemStack const& left, ItemStack const& right);
+
 [[nodiscard]] std::string stripMinecraftFormatting(std::string_view text);
 
 } // namespace lholo::block
