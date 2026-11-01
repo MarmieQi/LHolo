@@ -3,6 +3,7 @@
 
 #include "structure/MaterialTracker.h"
 #include "structure/MaterialCounts.h"
+#include "structure/MaterialUnits.h"
 #include "structure/IndependentTaskFiles.h"
 
 #include "block/BlockPlacementRules.h"
@@ -26,6 +27,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <future>
@@ -45,11 +47,9 @@ namespace {
 constexpr int kInventorySlots = 36;
 constexpr std::uint64_t kAvailabilityRefreshMs = 400;
 constexpr std::uint64_t kMaterialHudRecountIntervalMs = 400;
-
-struct RawMaterialCounts {
-    MaterialCounts body;
-    MaterialCounts liquid;
-};
+// File-load completion and task selection can invalidate from other threads.
+// Only the player tick (and shutdown after producers stop) owns worker state.
+std::atomic_bool materialInvalidated{};
 
 using MaterialHudKey = projection::MaterialProgressKey;
 using MaterialHudInput = projection::MaterialProgressSnapshot;
@@ -63,6 +63,8 @@ struct MaterialHudWorkerState {
     std::optional<std::future<MaterialHudResult>> inFlight;
     std::optional<MaterialHudKey>                 published;
     std::uint64_t                                 nextScheduleAt{};
+    std::weak_ptr<LoadedStructure const>           unitSource;
+    std::shared_ptr<MaterialUnitOwners const>      unitOwners;
 };
 
 MaterialHudWorkerState& materialHudWorkerState() {
@@ -70,19 +72,8 @@ MaterialHudWorkerState& materialHudWorkerState() {
     return state;
 }
 
-RawMaterialCounts collectRawMaterials(
-    std::vector<LoadedStructure::RenderBlock> const& renderBlocks
-) {
-    RawMaterialCounts counts;
-    // Palette cardinality is normally tiny compared with the block count. Do
-    // not reserve one hash bucket per projected cell for very large structures.
-    counts.body.reserve(std::min<std::size_t>(renderBlocks.size(), 4096));
-    counts.liquid.reserve(std::min<std::size_t>(renderBlocks.size(), 64));
-    for (auto const& entry : renderBlocks) {
-        counts.body.add(entry.block, entry.blockEntityNbt);
-        counts.liquid.add(entry.liquid);
-    }
-    return counts;
+MaterialUnitOwners materialUnits(std::vector<LoadedStructure::RenderBlock> const& blocks) {
+    return buildMaterialUnits(blocks, [](Block const* value) { return block::placementPart(*value); });
 }
 
 std::string localizedBlockName(Block const& block, std::string_view localeCode) {
@@ -217,12 +208,15 @@ std::vector<MaterialRequirement> resolveMaterials(
     return materials;
 }
 
+template <class IsIncluded>
 std::vector<MaterialRequirement> collectMaterials(
     std::vector<LoadedStructure::RenderBlock> const& renderBlocks,
     std::string_view localeCode,
-    Level& level
+    Level& level,
+    IsIncluded included
 ) {
-    return resolveMaterials(collectRawMaterials(renderBlocks), localeCode, level);
+    auto const owners = materialUnits(renderBlocks);
+    return resolveMaterials(collectRawMaterials(renderBlocks, owners, included), localeCode, level);
 }
 
 std::optional<MaterialHudKey> currentMaterialHudKey() {
@@ -233,28 +227,20 @@ std::optional<MaterialHudInput> captureMaterialHudInput(MaterialHudKey const& ke
     return projection::captureMaterialProgress(key);
 }
 
-MaterialHudResult countMaterialHud(MaterialHudInput input) {
+MaterialHudResult countMaterialHud(MaterialHudInput input, MaterialUnitOwners const& owners) {
     MaterialHudResult result;
     result.key = input.key;
     auto const& blocks = input.structure->renderBlocks;
-    result.counts.body.reserve(std::min<std::size_t>(blocks.size(), 4096));
-    result.counts.liquid.reserve(std::min<std::size_t>(blocks.size(), 64));
-    for (std::size_t index = 0; index < blocks.size(); ++index) {
-        if (input.progressCorrect[index] != 0) continue;
+    result.counts = collectRawMaterials(blocks, owners, [&](std::size_t index) {
+        if (input.progressCorrect[index] != 0) return false;
         auto const& entry = blocks[index];
-        if (input.structure->composed && entry.sourceIndex!=input.key.selectedSource) continue;
+        if (input.structure->composed && entry.sourceIndex!=input.key.selectedSource) return false;
         auto const layer = input.key.layerAxis == LayerAxis::X ? entry.x : entry.y;
-        if (!projection::isLayerVisible(
+        return projection::isLayerVisible(
             layer, input.key.layerDisplayMode, input.key.displayLayer,
                 entry.materialIndex, entry.liquidMaterialIndex, input.key.layerAxis
-            )) {
-            continue;
-        }
-        // Block pointers are opaque keys here. Registry, localization and item
-        // resolution remain on the game tick thread after aggregation.
-        result.counts.body.add(entry.block, entry.blockEntityNbt);
-        result.counts.liquid.add(entry.liquid);
-    }
+            );
+    });
     return result;
 }
 
@@ -307,6 +293,8 @@ void updateMaterialHud(LocalPlayer& player) {
     auto const key = currentMaterialHudKey();
     if (!key) {
         worker.published.reset();
+        worker.unitSource.reset();
+        worker.unitOwners.reset();
         return;
     }
     if (worker.inFlight || (worker.published && *worker.published == *key)) return;
@@ -316,9 +304,16 @@ void updateMaterialHud(LocalPlayer& player) {
     auto input = captureMaterialHudInput(*key);
     if (!input) return;
 
+    if (worker.unitSource.lock() != input->structure) {
+        worker.unitOwners = std::make_shared<MaterialUnitOwners const>(materialUnits(input->structure->renderBlocks));
+        worker.unitSource = input->structure;
+    }
+
     worker.inFlight.emplace(std::async(
         std::launch::async,
-        [input = std::move(*input)]() mutable { return countMaterialHud(std::move(input)); }
+        [input = std::move(*input), owners = worker.unitOwners]() mutable {
+            return countMaterialHud(std::move(input), *owners);
+        }
     ));
     worker.nextScheduleAt = now + kMaterialHudRecountIntervalMs;
 }
@@ -331,16 +326,17 @@ void processPendingMaterialList(LocalPlayer& player) {
     auto const source=StructureSession::getInstance().selectedSource();
     std::vector<MaterialRequirement> materials;
     if (loaded && loaded->composed) {
-        std::vector<LoadedStructure::RenderBlock> selected;
         if (auto const* file=independentTaskFile(*loaded,source); file && file->visible && file->loaded) {
-            for (auto const& block:file->loaded->renderBlocks)
-                if (projection::isLayerVisible(file->slice.axis==LayerAxis::X ? block.x : block.y,
-                    file->slice.mode,file->slice.layer,block.materialIndex,block.liquidMaterialIndex,file->slice.axis))
-                    selected.push_back(block);
-        } else for (auto const& block:loaded->renderBlocks)
-            if (block.sourceIndex==source) selected.push_back(block);
-        materials=collectMaterials(selected,player.getLocaleCode(), player.getLevel());
-    } else if (loaded) materials = collectMaterials(loaded->renderBlocks, player.getLocaleCode(), player.getLevel());
+            materials = collectMaterials(file->loaded->renderBlocks, player.getLocaleCode(), player.getLevel(),
+                [&](std::size_t index) {
+                    auto const& entry = file->loaded->renderBlocks[index];
+                    return projection::isLayerVisible(file->slice.axis==LayerAxis::X ? entry.x : entry.y,
+                        file->slice.mode,file->slice.layer,entry.materialIndex,entry.liquidMaterialIndex,file->slice.axis);
+                });
+        } else materials = collectMaterials(loaded->renderBlocks, player.getLocaleCode(), player.getLevel(),
+            [&](std::size_t index) { return loaded->renderBlocks[index].sourceIndex == source; });
+    } else if (loaded) materials = collectMaterials(loaded->renderBlocks, player.getLocaleCode(), player.getLevel(),
+        [](std::size_t) { return true; });
     // Loading another structure can overlap this game-thread calculation. Never
     // publish a completed list for a structure that is no longer active.
     if (StructureSession::getInstance().loaded() != loaded || StructureSession::getInstance().selectedSource()!=source) {
@@ -379,12 +375,15 @@ void requestMaterialListRefresh() {
 void invalidateMaterialList() {
     auto& ui = StructureUiState::getInstance();
     ui.clearMaterials();
-    auto& worker = materialHudWorkerState();
-    worker.published.reset();
-    worker.nextScheduleAt = 0;
+    materialInvalidated.store(true, std::memory_order_release);
 }
 
 void tickMaterialTracker(LocalPlayer& player) {
+    if (materialInvalidated.exchange(false, std::memory_order_acq_rel)) {
+        auto& worker = materialHudWorkerState();
+        worker.published.reset();
+        worker.nextScheduleAt = 0;
+    }
     processPendingMaterialList(player);
     updateMaterialHud(player);
     refreshAvailability(player);
@@ -400,6 +399,9 @@ void shutdownMaterialTracker() {
     }
     worker.published.reset();
     worker.nextScheduleAt = 0;
+    worker.unitSource.reset();
+    worker.unitOwners.reset();
+    materialInvalidated.store(false, std::memory_order_relaxed);
     StructureUiState::getInstance().clearMaterialHud();
 }
 

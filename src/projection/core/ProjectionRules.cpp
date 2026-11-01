@@ -131,11 +131,10 @@ bool projectionStatesMatch(Block const& expected, Block const& actual) {
     // A real door stores its placement state across two blocks: the lower half
     // owns direction/open, the upper half owns hinge. Bedrock may normalize the
     // duplicated fields differently after a structure load, so the complete
-    // serialization hash can differ even for a correctly placed door. Only real
-    // doors carry upper_block_bit; trapdoor names also end with "door", so the
-    // presence of that state is the reliable discriminator.
+    // serialization hash can differ even for a correctly placed door. Require
+    // the native Door property too: tall plants also carry upper_block_bit.
     auto const expectedUpper = expected.getState<bool>(VanillaStates::UpperBlockBit());
-    if (expectedUpper) {
+    if (expected.hasProperty(BlockProperty::Door) && expectedUpper) {
         auto const actualUpper = actual.getState<bool>(VanillaStates::UpperBlockBit());
         if (!actualUpper || *actualUpper != *expectedUpper) return false;
         return *expectedUpper
@@ -147,7 +146,7 @@ bool projectionStatesMatch(Block const& expected, Block const& actual) {
     // Trapdoors are single blocks: compare their own placement states instead
     // of treating them like a two-block door.
     auto const expectedOpen = expected.getState<bool>(VanillaStates::OpenBit());
-    if (expectedOpen) {
+    if (expected.hasProperty(BlockProperty::Trapdoor) && expectedOpen) {
         auto const actualOpen = actual.getState<bool>(VanillaStates::OpenBit());
         return actualOpen && *actualOpen == *expectedOpen
             && stateMatches(VanillaStates::Direction())

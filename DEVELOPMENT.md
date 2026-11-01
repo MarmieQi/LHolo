@@ -137,6 +137,7 @@ LHolo/
 │  │  ├─ LayerDisplayTypes.h    分层轴/显示范围枚举与持久化整数边界转换
 │  │  ├─ LayerSettings.h        分层值与真实范围快照，不含 UI 或通信协议
 │  │  ├─ MaterialTracker.*      材料需求聚合、物品标识缓存与游戏线程背包快照
+│  │  ├─ MaterialUnits.h        材料放置单元归并、来源代表索引；不读取真实世界
 │  │  ├─ StructureSession.*    结构会话状态（已加载结构、变换/分层、恢复快照、状态文案）
 │  │  ├─ StructureUiState.*     UI 会话状态（GUI、热键、HUD、待处理动作、材料清单）
 │  │  ├─ StructureLoader.cpp    动作提示、快捷键事件、加载入口与公开 getter（菜单/GUI 由 MenuController 负责）
@@ -233,6 +234,9 @@ LHolo/
 - `block/BlockPlacementRules` 集中维护运行态方块到可放置基础方块的身份规则和稳定材料 key，并通过
   Bedrock 原生 `Block`/`ItemStack` 转换解析实际放置物品。解析阶段的材料分层使用无需注册表的方块类别 key；
   材料清单和 HUD 在原生取物品后按完整物品变体归组，分组与背包匹配共用 `sameMaterialItem`。
+  多格放置描述也由此模块读取：优先使用 `BlockMultiBlockComponent` 的原生起点偏移与部分编号；传统上下半块使用
+  `VanillaStates::UpperBlockBit`，床使用 `HeadPieceBit`、原生方向状态与 `Direction::STEP_X/STEP_Z`。不以名称后缀、碰撞箱或
+  `getSecondPart` 推断材料消耗，后者也用于需要两个箱子物品的双箱。
   `place`、格式加载、材料统计和投影纠错不得各自复制名称映射。
 - `structure/MaterialTracker` 只在本地玩家 tick 线程聚合材料需求和扫描背包；同一投影的材料清单只计算
   一次，后台保留 Block/NBT 来源计数，游戏线程先合并相同源内容的计数，再解析原生物品、归组并按相同变体读取背包。HUD/菜单
@@ -634,6 +638,8 @@ LHolo 不自制草方块、楼梯等材质模型。它使用：
 
 判定顺序：空气 → 类型名 → 完整 `Block` 相等 → 状态错误。这个顺序不能交换，否则空气可能被算成普通类型错误，方向错误也可能被吞掉。
 
+门与活板门的分半/放置状态比较分别由原生 `BlockProperty::Door` / `Trapdoor` 限定。门还需有 `UpperBlockBit`：下半比较方向与开关，上半比较门轴，忽略非本半部生效的重复字段；不能仅凭 `UpperBlockBit` 或 `OpenBit` 把双格植物、栅栏门等套入门的规则。门轴不一致仍属于状态错误。
+
 旗帜另外比较原生 `BannerBlockActor` 的底色、普通/不详类型、图案和图案颜色：底色/类型不同为 `WrongType`，图案/颜色不同或朝向状态不同为 `WrongState`。`projection/correction/BannerCorrection` 使用 SDK 声明的原生工厂与 `load` 解码源 NBT，只缓存不可变 `BannerAppearance`，缓存跟随 `ProjectionState` 生命周期；旋转、移动、分层不改变旗帜外观。实际旗帜数据直接读取当前真实方块实体，不构造物品或访问物品注册表。源结构没有旗帜 NBT 时沿用方块状态判断，不猜测底色或图案；实体数据尚未到达时不计为完成。`ProjectionWorldEvents::onBlockEntityChanged` 仅对旗帜复用现有位置通知队列，`destroyedAt=0`，保持原有纠错预算和拆除抑制规则。类型判断、进度、错误计数和材料 HUD 继续消费同一纠错结果，不增加稳定帧全图扫描。纯规则回归覆盖底色、类型、图案顺序、图案颜色与错误优先级，当前版本旗帜纠错已由用户实测通过；后续版本适配需回归同朝向不同旗帜、放置后的实体数据同步及替换旗帜。
 
 ### 7.2 为什么错误位置不再绘制投影模型
@@ -760,7 +766,10 @@ HUD 每帧只读取原子计数，不查询世界、不遍历结构。`ui/hud/Hu
 版本查询和快照复制必须通过 `Projection.h` 的 `getMaterialProgressKey()` /
 `captureMaterialProgress()` 门面完成；`structure` 模块不得包含 `ProjectionSession.h`、获取投影锁或读取
 `ProjectionState` 内部字段。
-后台任务只以不透明的 `Block const*` 和 NBT 来源指针计数并保活源数据，统计当前显示范围内未正确放置单元；物品注册表、
+`MaterialUnits` 按原生起点坐标、方块类型、方向和任务来源生成每格到放置单元代表格的索引；代表优先使用起始格及其 NBT，源结构裁切掉起始格时保留已有部分。材料清单和缺失材料 HUD 共用 `MaterialCounts.h` 中的 `collectRawMaterials`：先判断各格是否在统计范围内，再按单元去重，因此只显示上半格、只缺一半或多格组件仍只需求一个物品；同类型的不同门、不同任务来源不会合并，液体副层逐格统计。建造进度和纠错仍逐坐标计算。
+HUD 首次遇到结构时在游戏 tick 线程按唯一方块状态解析原生放置描述，索引快照按不可变结构对象身份缓存；只改变纠错进度、偏移或分层时复用，结构对象更换时重建，缓存只弱引用源结构，后台任务独立持有只读索引及结构快照。不会因 HUD 重算逐次读取原生组件或逐帧扫描全图。
+加载完成和任务选择通过原子失效信号请求 HUD 重算，`published` 和调度时间只由玩家 tick 消费后修改；其它线程不得直接修改材料 Worker 状态。卸载先停止加载与任务生产者，再回收材料后台任务。
+后台任务只以代表索引、不透明的 `Block const*` 和 NBT 来源指针计数并保活源数据，统计当前显示范围内未正确放置单元；物品注册表、
 NBT 内容合并、本地化和背包读取仍在游戏 tick 线程执行，普通方块每个唯一状态只解析一次，带 NBT 的方块每种唯一源内容只解析一次。同时最多一个统计任务，活跃建造时最多
 每 400 ms 重算一次；结果发布前再校验全部版本键，过期结果直接丢弃。卸载模组时由 `AppKernel` 先回收该任务，
 再释放投影和结构。材料清单与材料 HUD 使用独立 UI 快照：前者只在用户打开清单时统计整张蓝图，

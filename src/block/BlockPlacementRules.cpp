@@ -16,10 +16,42 @@
 #include "mc/world/level/block/actor/BannerBlockActor.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/BlockType.h"
+#include "mc/world/Direction.h"
+#include "mc/world/level/block/VanillaStates.h"
+#include "mc/world/level/block/components/BlockMultiBlockComponent.h"
+#include "mc/world/level/block/states/BuiltInBlockStates.h"
 
 #include <cstddef>
 
 namespace lholo::block {
+
+PlacementPart placementPart(Block const& block) {
+    auto const* type = &block.getBlockType();
+    if (auto const* multi = block.tryGetComponent<BlockMultiBlockComponent>()) {
+        auto const offset = multi->getDistanceToMultiBlockStart(block);
+        return {type, {offset.x, offset.y, offset.z},
+            static_cast<int>(BlockMultiBlockComponent::getMultiBlockPartId(block))};
+    }
+    // These native states identify placement halves. getSecondPart alone is
+    // unsuitable: connected chests also implement it but consume two items.
+    if (auto const upper = block.getState<bool>(VanillaStates::UpperBlockBit()))
+        return {type, {0, *upper ? -1 : 0, 0}, *upper ? 1 : 0};
+    if (auto const head = block.getState<bool>(VanillaStates::HeadPieceBit())) {
+        auto direction = block.getState<Direction::Type>(BuiltInBlockStates::CardinalDirection());
+        if (!direction) {
+            if (auto const legacy = block.getState<int>(VanillaStates::Direction()))
+                direction = static_cast<Direction::Type>(*legacy);
+        }
+        if (direction && *direction < Direction::Type::Count) {
+            auto const index = static_cast<unsigned>(*direction);
+            return {type,
+                {*head ? -Direction::STEP_X()[index] : 0, 0,
+                 *head ? -Direction::STEP_Z()[index] : 0},
+                *head ? 1 : 0, static_cast<int>(*direction)};
+        }
+    }
+    return {};
+}
 
 bool sameMaterialItem(ItemStack const& left, ItemStack const& right) {
     auto const type = left.getTypeName();

@@ -1,10 +1,14 @@
 #pragma once
 
+#include "structure/StructureLoader.h"
+
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
+#include <span>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -50,5 +54,34 @@ public:
 
     auto const& entries() const { return sources; }
 };
+
+struct RawMaterialCounts {
+    MaterialCounts body;
+    MaterialCounts liquid;
+};
+
+template <class IsIncluded>
+RawMaterialCounts collectRawMaterials(
+    std::span<LoadedStructure::RenderBlock const> blocks,
+    std::span<std::size_t const> owners,
+    IsIncluded included
+) {
+    RawMaterialCounts counts;
+    counts.body.reserve(std::min<std::size_t>(blocks.size(), 4096));
+    counts.liquid.reserve(std::min<std::size_t>(blocks.size(), 64));
+    std::vector<unsigned char> counted(blocks.size());
+    for (std::size_t i = 0; i < blocks.size(); ++i) {
+        if (!included(i)) continue;
+        auto const owner = owners[i];
+        if (!counted[owner]) {
+            counted[owner] = 1;
+            auto const& source = blocks[owner];
+            counts.body.add(source.block, source.blockEntityNbt);
+        }
+        // Fluids belong to individual cells, never to the multi-block item.
+        counts.liquid.add(blocks[i].liquid);
+    }
+    return counts;
+}
 
 } // namespace lholo::structure::detail

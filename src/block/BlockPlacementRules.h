@@ -8,6 +8,7 @@
 #pragma once
 
 #include <memory>
+#include <array>
 #include <string>
 #include <string_view>
 
@@ -16,6 +17,7 @@ class BlockActor;
 class ItemStack;
 class CompoundTag;
 class Level;
+class BlockType;
 
 namespace lholo::block {
 
@@ -26,6 +28,19 @@ struct PlacementItem {
     bool        valid{false};
     std::shared_ptr<ItemStack const> displayItem; // Native pick result, including item NBT.
 };
+
+// Blueprint-space offset to the start of one placement. A null type means an
+// independent cell. This describes placement parts, not connected containers.
+struct PlacementPart {
+    BlockType const* type{};
+    std::array<int, 3> toStart{};
+    int index{};
+    int direction{};
+};
+
+// Reads immutable native states/components on the game thread, once per palette
+// state. The resulting value can be used by background material counting.
+[[nodiscard]] PlacementPart placementPart(Block const& block);
 
 // Maps game-driven runtime variants to the block form the player can actually
 // place. Names without a runtime-only variant are returned unchanged.
