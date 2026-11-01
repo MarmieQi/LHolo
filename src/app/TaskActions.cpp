@@ -4,7 +4,9 @@
 #include "tasks/TaskStoreWriter.h"
 #include "structure/StructureFileLoader.h"
 #include "structure/StructureSession.h"
+#include "structure/StructureUiState.h"
 #include "structure/MaterialTracker.h"
+#include <Windows.h>
 #include <algorithm>
 #include <deque>
 #include <mutex>
@@ -39,14 +41,25 @@ structure::detail::StructureTransformSnapshot transform(tasks::File const& f) {
             f.slice.layer,
             f.slice.axis};
 }
-void selectEditor(tasks::Task& task) {
+void selectEditor(tasks::Task& task, bool notifyDimension = false) {
     if (!activeDefinition) return;
+    auto& ui = structure::detail::StructureUiState::getInstance();
+    ui.clearActionHint(i18n::TextKey::ActionHintSelectedFileOtherDimension);
     structure::detail::invalidateMaterialList();
     activeDefinition->selectedFileId = task.selectedFileId;
     auto* file = tasks::findFile(*activeDefinition, task.selectedFileId);
     auto player=detail::taskPlayerOrigin();
-    if (!file || !player || file->dimension!=player->dimensionId) {
+    if (!file) {
         session().selectCompositionFile({}, {}, -2, {});
+        return;
+    }
+    if (!player || file->dimension!=player->dimensionId) {
+        session().selectCompositionFile({}, transform(*file), -2, file->path);
+        if (notifyDimension && player && file->dimension && player->dimensionId
+            && file->dimension != player->dimensionId) {
+            ui.setActionHint(
+                i18n::Message{i18n::TextKey::ActionHintSelectedFileOtherDimension}, GetTickCount64() + 3000, true);
+        }
         return;
     }
     auto loaded = structure::detail::cachedTaskFile(file->path);
@@ -115,7 +128,7 @@ bool mutate(TaskIntent const& i) {
     task = tasks::findTask(state.catalog, i.taskId);
     if (task && task->id == state.activeTaskId) {
         if (i.action == TaskAction::SelectFile)
-            selectEditor(*task);
+            selectEditor(*task, true);
         else if (i.action != TaskAction::Rename && i.action != TaskAction::Select) {
             pendingDefinition = *task;
             dirty = true;

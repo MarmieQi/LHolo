@@ -364,6 +364,7 @@
     /* Transient action hints */                                                                         \
     LHOLO_TEXT_KEY("actionHint.projectionSuspended", ActionHintProjectionSuspended, "")                  \
     LHOLO_TEXT_KEY("actionHint.projectionRestored", ActionHintProjectionRestored, "")                    \
+    LHOLO_TEXT_KEY("actionHint.selectedFileOtherDimension", ActionHintSelectedFileOtherDimension, "")      \
     LHOLO_TEXT_KEY("actionHint.worldExited", ActionHintWorldExited, "")                                  \
     LHOLO_TEXT_KEY("actionHint.noMatchingItem", ActionHintNoMatchingItem, "")                            \
     LHOLO_TEXT_KEY("actionHint.manualModeBlocked", ActionHintManualModeBlocked, "")                      \

@@ -315,13 +315,13 @@ i18n::Message makeLoadedStatusMessage(LoadedStructure const& loaded) {
     };
 }
 
-bool actionHintActive() {
-    return uiState().actionHintActive(GetTickCount64());
+bool actionHintActive(bool menuVisible) {
+    return uiState().actionHintActive(GetTickCount64(), menuVisible);
 }
 
-void renderActionHint() {
+void renderActionHint(bool menuVisible) {
     auto const now = GetTickCount64();
-    auto const hint = uiState().actionHint(now);
+    auto const hint = uiState().actionHint(now, menuVisible);
     auto const expiry = hint.expiry;
     if (!hint.persistent && now >= expiry) return;
     if (hint.text.empty()) return;

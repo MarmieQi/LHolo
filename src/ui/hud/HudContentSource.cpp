@@ -40,7 +40,8 @@ HudContent readHudContent() {
     if (!settings.enabled && !materialEnabled) return result;
     auto const session = structure::detail::StructureSession::getInstance().snapshot();
     if (!session.loaded || projection::isDimensionSuspended()
-        || (session.loaded->composed && !structure::hasVisibleTaskFiles(*session.loaded))) {
+        || (session.loaded->composed && (!session.editor || session.selectedSource < 0
+            || !structure::hasVisibleTaskFiles(*session.loaded)))) {
         paging = {};
         if (editing) {
             auto example = makeHudEditorContent(settings.position, state.materialHudPosition());
@@ -51,14 +52,13 @@ HudContent readHudContent() {
     result.context = session.loaded->generation;
     if (settings.enabled) {
         ProjectionHudData data;
-        auto editor=structure::detail::StructureSession::getInstance().editorStructure();
         data.fileName = structure::detail::pathToUtf8((session.loaded->composed
             ? structure::detail::pathFromUtf8(session.lastPath) : session.loaded->sourcePath).filename());
         data.axis = session.transform.layerAxis;
         data.mode = session.transform.layerDisplayMode;
         data.layer = session.transform.displayLayer;
         data.maxLayer = data.axis == structure::LayerAxis::Material
-            ? std::max(0, editor ? static_cast<int>(editor->materialCount) - 1 : 0)
+            ? std::max(0, static_cast<int>(session.editor->materialCount) - 1)
             : data.axis == structure::LayerAxis::X ? session.maxLayerX : session.maxLayerY;
         if (settings.showOverallProgress || settings.showProgress || settings.showWrongState || settings.showWrongType || settings.showExtraBlocks)
             data.progress = projection::getBuildProgress();
@@ -77,7 +77,7 @@ HudContent readHudContent() {
     if (materialEnabled) {
         auto const materials = state.materialHudSnapshot();
         auto const changed = paging.setContext({session.loaded->generation,
-            structure::detail::StructureSession::getInstance().selectedSource(), state.materialHudMaxItems(),
+            session.selectedSource, state.materialHudMaxItems(),
             static_cast<int>(session.transform.layerAxis), static_cast<int>(session.transform.layerDisplayMode), session.transform.displayLayer});
         result.materials = editing && !materials.ready
             ? makeHudEditorContent(settings.position, state.materialHudPosition()).materials

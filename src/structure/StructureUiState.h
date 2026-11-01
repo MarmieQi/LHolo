@@ -171,9 +171,11 @@ public:
     void setMaterialHudPosition(int position);
     // Hints are stored as key plus arguments so a pending hint follows a
     // language switch like every other interface string.
-    void setActionHint(i18n::Message message, std::uint64_t expiry);
-    [[nodiscard]] ActionHintSnapshot actionHint(std::uint64_t now = 0) const;
-    [[nodiscard]] bool actionHintActive(std::uint64_t now) const;
+    // Only explicitly opted-in transient hints may also appear above a menu.
+    void setActionHint(i18n::Message message, std::uint64_t expiry, bool showOverMenu = false);
+    void clearActionHint(i18n::TextKey expected);
+    [[nodiscard]] ActionHintSnapshot actionHint(std::uint64_t now = 0, bool menuVisible = false) const;
+    [[nodiscard]] bool actionHintActive(std::uint64_t now, bool menuVisible = false) const;
     // Loading shares the existing hint bar, but does not expire or overwrite
     // transient hints. Completion tokens cannot clear a later loading hint.
     [[nodiscard]] std::uint64_t beginLoadingHint(i18n::TextKey key = i18n::TextKey::StatusLoading);
@@ -253,6 +255,7 @@ private:
     std::atomic_int  mMaterialHudPosition{3};
     mutable std::mutex mActionHintMutex;
     i18n::Message      mActionHintMessage;
+    bool               mActionHintOverMenu{}; // protected by mActionHintMutex
     std::atomic_uint64_t mActionHintExpiry{};
     std::uint64_t       mLoadingHintSequence{}; // protected by mActionHintMutex
     i18n::TextKey       mLoadingHintKey{i18n::TextKey::StatusLoading}; // protected by mActionHintMutex

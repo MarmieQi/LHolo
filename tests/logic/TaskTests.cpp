@@ -299,7 +299,8 @@ int runTaskTests() {
     auto stale = session.beginFileLoad({});
     session.clearLoaded(i18n::Message{i18n::TextKey::StatusWorldExited});
     check(!session.completeCompositionLoad(stale, result.loaded, {}), "world exit rejects stale composition");
-    check(!session.editorStructure() && session.selectedSource() == -1,
+    auto const clearedSelection = session.snapshot();
+    check(!clearedSelection.editor && clearedSelection.selectedSource == -1,
           "world exit clears file editor target");
     std::printf("TaskTests: %d failures\n", failures);
     return failures;

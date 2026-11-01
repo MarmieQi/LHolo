@@ -401,6 +401,8 @@ bool initializeImGui(IDXGISwapChain* swapChain) {
     if (!gImGuiInitialized) {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
+        // Action hints never own input or the native scene's cursor.
+        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
         ImGui::StyleColorsDark();
         loadFonts();
         if (!ImGui_ImplWin32_Init(window)) {
@@ -439,18 +441,18 @@ void render(IDXGISwapChain* swapChain) {
     // attempt is intentionally retried on the next Present.
     if (auto callback = gControlFrameCallback.load(std::memory_order_acquire)) callback();
     if (!initializeImGui(swapChain)) return;
-    // Keep input/backend initialization and control processing above, but do
-    // not draw action hints over the native menu.
-    if (oreui::isMenuOnTop() || ui::hud::hudLayoutEditorActive() || ui::preview::structurePreviewActive()) return;
-    if (!structure::actionHintActive()) return;
+    // Only explicitly opted-in transient hints can appear above the menu.
+    if (ui::hud::hudLayoutEditorActive() || ui::preview::structurePreviewActive()) return;
+    auto const menuVisible = oreui::isMenuOnTop();
+    if (!structure::actionHintActive(menuVisible)) return;
     ImGui::GetIO().MouseDrawCursor = false;
 
-    auto draw = [](ID3D11RenderTargetView* target) {
+    auto draw = [menuVisible](ID3D11RenderTargetView* target) {
         gDeviceContext->OMSetRenderTargets(1, &target, nullptr);
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
-        structure::renderActionHint();
+        structure::renderActionHint(menuVisible);
         ImGui::Render();
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         ID3D11RenderTargetView* empty{};

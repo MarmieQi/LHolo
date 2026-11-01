@@ -71,10 +71,11 @@ StructureSessionSnapshot StructureSession::snapshot() const {
     result.lastPath  = mLastPath;
     result.transform = transformRelaxed();
     result.saved     = savedProjectionLocked();
-    auto editor = mLoaded && mLoaded->composed ? mEditorStructure : mLoaded;
-    if (editor) {
-        result.maxLayerY = maxLayerFor(*editor, LayerAxis::Y);
-        result.maxLayerX = maxLayerFor(*editor, LayerAxis::X);
+    result.editor = mLoaded && mLoaded->composed ? mEditorStructure : mLoaded;
+    result.selectedSource = mSelectedSource.load(std::memory_order_acquire);
+    if (result.editor) {
+        result.maxLayerY = maxLayerFor(*result.editor, LayerAxis::Y);
+        result.maxLayerX = maxLayerFor(*result.editor, LayerAxis::X);
     }
     return result;
 }
@@ -211,10 +212,6 @@ void StructureSession::selectCompositionFile(std::shared_ptr<LoadedStructure con
     mEditorStructure=std::move(loaded); mSelectedSource=source; mLastPath=std::move(path); ++mLoadRevision;
     setRotation(t.rotation); setMirror(t.mirror); setOffsetX(t.offsetX); setOffsetY(t.offsetY); setOffsetZ(t.offsetZ);
     setLayerAxis(t.layerAxis); setLayerDisplayMode(t.layerDisplayMode); setDisplayLayer(t.displayLayer);
-}
-std::shared_ptr<LoadedStructure const> StructureSession::editorStructure() const {
-    std::lock_guard lock(mMutex);
-    return mLoaded && mLoaded->composed ? mEditorStructure : mLoaded;
 }
 int StructureSession::selectedSourceFor(LoadedStructure const& loaded) const {
     std::lock_guard lock(mMutex);

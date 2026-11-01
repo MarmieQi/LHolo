@@ -3,7 +3,9 @@
 #include "structure/StructureFileLoader.h"
 #include "structure/IndependentTaskFiles.h"
 #include "structure/MaterialTracker.h"
+#include "structure/StructureUiState.h"
 #include "tasks/TaskStore.h"
+#include <Windows.h>
 #include <cstdio>
 #include <algorithm>
 #include <array>
@@ -224,7 +226,35 @@ int runTaskActionsTests() {
     finish(true);
     check(fileWorldPosition(fileId)==originalPosition && !fileWorldPosition(netherId),
         "returning to Overworld restores only its files without coordinate conversion");
+    auto& ui = structure::detail::StructureUiState::getInstance();
+    ui.setActionHint({}, 0);
+    command(TaskAction::SelectFile, {}, netherId);
+    auto selected = session.snapshot();
+    check(selected.loaded && !selected.editor && selected.selectedSource < 0
+        && selected.lastPath == "nether.mcstructure",
+        "foreign-dimension selection keeps metadata but has no HUD/editor target");
+    check(!inFlight && fileWorldPosition(fileId) == originalPosition,
+        "selecting a foreign file leaves current-dimension projections running");
+    check(ui.actionHint(GetTickCount64(), true).text == i18n::tr(i18n::TextKey::ActionHintSelectedFileOtherDimension),
+        "explicit foreign-file selection displays the existing bottom hint above the menu");
+    ui.setActionHint({}, 0);
+    processTaskActions();
+    check(!ui.actionHintActive(GetTickCount64(), true), "idle control frames never repeat the selection hint");
+    playerOrigin = {500, 90, 600, 1};
+    processTaskActions(); finish(true);
+    selected = session.snapshot();
+    check(selected.editor && selected.selectedSource >= 0 && selected.lastPath == "nether.mcstructure"
+        && fileWorldPosition(netherId) == netherPosition,
+        "entering the selected file's dimension restores its HUD target and original placement");
+    check(!ui.actionHintActive(GetTickCount64(), true), "automatic dimension rebinding does not display selection hints");
+    playerOrigin = {700, 100, 800, 0};
+    processTaskActions(); finish(true);
+    command(TaskAction::SelectFile, {}, netherId);
     command(TaskAction::SelectFile,{},fileId);
+    selected = session.snapshot();
+    check(selected.editor && selected.selectedSource >= 0 && selected.lastPath == "repaired.mcstructure",
+        "selecting a local file restores a coherent filename and HUD source");
+    check(!ui.actionHintActive(GetTickCount64(), true), "selecting a local file cancels the stale dimension hint");
     command(TaskAction::Create, "第二个任务"); finish(true);
     auto const otherTask = getTaskSnapshot().catalog.selectedTaskId;
     command(TaskAction::Select, {}, {}, originalTask);

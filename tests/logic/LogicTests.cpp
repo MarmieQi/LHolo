@@ -679,13 +679,31 @@ void testLoadingActionHint() {
     LHOLO_CHECK(hint.persistent);
     LHOLO_CHECK(hint.text == lholo::i18n::format(lholo::i18n::Message{lholo::i18n::TextKey::StatusLoading}));
     LHOLO_CHECK(state.actionHintActive(1000000)); // no fixed timeout
+    LHOLO_CHECK(!state.actionHintActive(1000000, true));
+    LHOLO_CHECK(state.actionHint(1000000, true).text.empty());
     state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::StatusProjectionClosed}, 300);
     hint = state.actionHint(200);
     LHOLO_CHECK(!hint.persistent && hint.expiry == 300);
+    LHOLO_CHECK(!state.actionHintActive(200, true));
+    LHOLO_CHECK(state.actionHint(200, true).text.empty());
     LHOLO_CHECK(state.actionHint(300).persistent); // loading resumes after transient hint
     state.finishLoadingHint(first);
     LHOLO_CHECK(!state.actionHintActive(300));
     LHOLO_CHECK(state.actionHint(300).text.empty());
+
+    state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::ActionHintSelectedFileOtherDimension}, 500, true);
+    LHOLO_CHECK(state.actionHintActive(400, true));
+    LHOLO_CHECK(state.actionHint(400, true).text == lholo::i18n::tr(lholo::i18n::TextKey::ActionHintSelectedFileOtherDimension));
+    LHOLO_CHECK(!state.actionHintActive(500, true));
+    LHOLO_CHECK(state.actionHint(500, true).text.empty());
+    state.clearActionHint(lholo::i18n::TextKey::StatusProjectionClosed);
+    LHOLO_CHECK(state.actionHintActive(400, true));
+    state.clearActionHint(lholo::i18n::TextKey::ActionHintSelectedFileOtherDimension);
+    LHOLO_CHECK(!state.actionHintActive(400, true));
+    state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::StatusProjectionClosed}, 600);
+    state.clearActionHint(lholo::i18n::TextKey::ActionHintSelectedFileOtherDimension);
+    LHOLO_CHECK(state.actionHintActive(400) && !state.actionHintActive(400, true));
+    state.setActionHint({}, 0);
 
     auto const old = state.beginLoadingHint();
     state.resetWorldSession();

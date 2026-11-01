@@ -381,23 +381,37 @@ void StructureUiState::setMaterialHudPosition(int position) {
     mHudPlacements[1] = {};
 }
 
-void StructureUiState::setActionHint(i18n::Message message, std::uint64_t expiry) {
+void StructureUiState::setActionHint(i18n::Message message, std::uint64_t expiry, bool showOverMenu) {
     std::lock_guard lock(mActionHintMutex);
     mActionHintMessage = std::move(message);
+    mActionHintOverMenu = showOverMenu;
     mActionHintExpiry.store(expiry, std::memory_order_release);
 }
 
-ActionHintSnapshot StructureUiState::actionHint(std::uint64_t now) const {
+void StructureUiState::clearActionHint(i18n::TextKey expected) {
+    std::lock_guard lock(mActionHintMutex);
+    if (mActionHintMessage.key != expected) return;
+    mActionHintMessage = {};
+    mActionHintOverMenu = false;
+    mActionHintExpiry.store(0, std::memory_order_release);
+}
+
+ActionHintSnapshot StructureUiState::actionHint(std::uint64_t now, bool menuVisible) const {
     std::lock_guard lock(mActionHintMutex);
     auto const expiry = mActionHintExpiry.load(std::memory_order_acquire);
-    if (expiry > now) return {i18n::format(mActionHintMessage), expiry};
-    if (mLoadingHintToken.load(std::memory_order_acquire) != 0) {
+    if (expiry > now && (!menuVisible || mActionHintOverMenu))
+        return {i18n::format(mActionHintMessage), expiry};
+    if (!menuVisible && mLoadingHintToken.load(std::memory_order_acquire) != 0) {
         return {i18n::format(i18n::Message{mLoadingHintKey}), 0, true};
     }
     return {};
 }
 
-bool StructureUiState::actionHintActive(std::uint64_t now) const {
+bool StructureUiState::actionHintActive(std::uint64_t now, bool menuVisible) const {
+    if (menuVisible) {
+        std::lock_guard lock(mActionHintMutex);
+        return mActionHintOverMenu && mActionHintExpiry.load(std::memory_order_acquire) > now;
+    }
     return mActionHintExpiry.load(std::memory_order_acquire) > now
         || mLoadingHintToken.load(std::memory_order_acquire) != 0;
 }

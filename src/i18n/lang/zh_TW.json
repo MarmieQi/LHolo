@@ -305,6 +305,7 @@
   "captureStatus.point2Recorded": "已記錄選取區點 2",
   "actionHint.projectionSuspended": "維度發生變化，投影已暫停",
   "actionHint.projectionRestored": "已返回投影所在維度，投影已恢復",
+  "actionHint.selectedFileOtherDimension": "所選檔案不屬於目前維度，暫不顯示該檔案的投影和 HUD",
   "actionHint.worldExited": "已退出世界，投影已關閉",
   "actionHint.noMatchingItem": "背包中沒有對應的投影方塊",
   "actionHint.manualModeBlocked": "已被手動放置模式阻止（對準投影方塊才能放置）",

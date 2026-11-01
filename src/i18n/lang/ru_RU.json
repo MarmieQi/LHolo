@@ -305,6 +305,7 @@
   "captureStatus.point2Recorded": "Точка выделения 2 сохранена",
   "actionHint.projectionSuspended": "Измерение изменилось; проекция приостановлена",
   "actionHint.projectionRestored": "Вы вернулись в измерение проекции; проекция восстановлена",
+  "actionHint.selectedFileOtherDimension": "Выбранный файл находится в другом измерении. Его проекция и HUD здесь скрыты.",
   "actionHint.worldExited": "Вы вышли из мира; проекция закрыта",
   "actionHint.noMatchingItem": "В инвентаре нет соответствующего блока проекции",
   "actionHint.manualModeBlocked": "Заблокировано режимом ручной установки (наведите на блок проекции)",

@@ -43,6 +43,9 @@ struct SavedProjectionSnapshot {
 
 struct StructureSessionSnapshot {
     std::shared_ptr<LoadedStructure const> loaded;
+    // Selected file in the current projection view; empty across dimensions.
+    std::shared_ptr<LoadedStructure const> editor;
+    int                                    selectedSource{-1};
     std::string                            status;
     std::string                            lastPath;
     int                                    maxLayerY{};
@@ -99,7 +102,6 @@ public:
     bool failFileLoad(StructureLoadRequest const& request, i18n::Message status);
     bool completeCompositionLoad(StructureLoadRequest const&, std::shared_ptr<LoadedStructure>, StructureLoadOrigin);
     void selectCompositionFile(std::shared_ptr<LoadedStructure const>, StructureTransformSnapshot const&, int sourceIndex, std::string path);
-    [[nodiscard]] std::shared_ptr<LoadedStructure const> editorStructure() const;
     [[nodiscard]] int selectedSource() const { return mSelectedSource.load(std::memory_order_acquire); }
     [[nodiscard]] int selectedSourceFor(LoadedStructure const&) const;
 

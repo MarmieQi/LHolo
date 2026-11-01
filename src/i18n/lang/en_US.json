@@ -305,6 +305,7 @@
   "captureStatus.point2Recorded": "Selection point 2 recorded",
   "actionHint.projectionSuspended": "Dimension changed; projection paused",
   "actionHint.projectionRestored": "Back in the projection's dimension; projection restored",
+  "actionHint.selectedFileOtherDimension": "Selected file is in another dimension. Its projection and HUD are hidden here.",
   "actionHint.worldExited": "Left the world; projection closed",
   "actionHint.noMatchingItem": "No matching block in your inventory",
   "actionHint.manualModeBlocked": "Blocked by manual placement mode (aim at a projected block)",
