@@ -3,12 +3,13 @@ import type {MenuLabels} from '../src/platform/bridge';
 import fixture from './settings-fixture.json';
 import en from '../../src/i18n/lang/en_US.json';
 import ru from '../../src/i18n/lang/ru_RU.json';
+import ja from '../../src/i18n/lang/ja_JP.json';
 import zh from '../../src/i18n/lang/zh_CN.json';
 import tw from '../../src/i18n/lang/zh_TW.json';
 
 // Development boundary only: simulate native capture and settings, never bundled in the game.
 export function createPreviewSettings(emit: (name: string, value: unknown) => void, publish: () => void) {
-  const locales: Record<string, typeof zh> = {en_US: en, ru_RU: ru, zh_CN: zh, zh_TW: tw};
+  const locales: Record<string, typeof zh> = {en_US: en, ja_JP: ja, ru_RU: ru, zh_CN: zh, zh_TW: tw};
   let state: SettingsState = {values: {...fixture.values}, hotkeys: fixture.defaults.map((b, slot) => ({...b, slot, display: '', capturing: false})),
     languages: Object.entries(locales).map(([code, l]) => ({code, name: l._meta.displayName})),
     consent: false, context: 0, ack: 0, accepted: false, hotkeysRevision: 0};
