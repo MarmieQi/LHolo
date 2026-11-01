@@ -20,7 +20,4 @@ StructureFileDialogResult selectMcstructureOutput(
     std::filesystem::path const& current, std::stop_token stop = {}
 );
 
-std::optional<std::filesystem::path> openStructureFile(std::filesystem::path const& current);
-std::optional<std::filesystem::path> saveMcstructureFile();
-
 } // namespace lholo::ui

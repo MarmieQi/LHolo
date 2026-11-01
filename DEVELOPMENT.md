@@ -33,7 +33,7 @@
 
 HUD 布局编辑使用独立原生 UIScene，入口仍在 OreUI HUD 设置页。editor/HudEditor 管理草稿和输入状态，HudEditorScene 在客户端更新中创建/弹出场景，HudEditorView 与正常 HUD 共用 NativeHudPainter。HUD、边框与按钮均原生绘制，鼠标由游戏场景管理；完成保存，取消/Esc 丢弃，待原生场景移除后重新打开 HUD 设置页。有结构时使用真实内容，没有结构时使用编辑专用本地化示例。编辑器支持独立调整位置及背景不透明度（0～100%、精度 1%，默认 60%），底部为“重置、透明度、缩放”，后两者复用向上展开的百分比滑条；缩放范围 50～200%，默认 100%，两个 HUD 分别保存；完成保存、取消丢弃，“重置”恢复选中 HUD 的位置、默认透明度 60% 和缩放 100%；全部重置恢复两个 HUD 的位置、默认不透明度与缩放。全部按钮背景统一默认 0.5，悬停 0.6，按下 0.7。用户已于 2026-10-26 确认原生编辑器可用。操作按钮移至顶部居中，共用 HUD 圆角背景，顶部三个按钮默认不透明度为 0.5，不额外显示面板名称，仅选中项显示红色边框。2026-10-27 用户已验证 `UIDefRepository::findDef` 提供的内存场景定义可用于原生编辑，不再依赖资源包中的 HUD JSON UI 注册；OreUI 菜单仍依赖资源包。
 
-OreUI 渐进迁移状态（2026-10-25）：聊天命令和菜单快捷键均打开当前自有样式的 OreUI 主菜单，旧 ImGui 菜单保留代码但不开放入口。
+OreUI 渐进迁移状态（2026-11-01）：聊天命令和菜单快捷键均打开当前自有样式的 OreUI 主菜单。旧 C++ ImGui 菜单、专用模型/控件/控制器和同步文件对话框已移除；ImGui 后端仍承载动作提示、全局快捷键与应用控制帧，须在这些活跃功能迁移后再移除。FluentTheme 目前仅供动作提示和后端使用。
 主界面入口试验：菜单快捷键允许在 Idle + start_screen 打开同一页面；路由调度在主 ClientInstance::update 上执行，不依赖已有 OreUI View。进入/退出世界或加载状态变化关闭旧上下文页面。无世界时允许浏览文件和编辑偏好，禁用加载/恢复投影、选区/导出与辅助放置启用；前后端均校验 worldAvailable。主界面实机结果待验收。
 默认入口为建造任务，旧单文件“投影”页面和专用浏览/加载/恢复桥接已移除；材料清单位于任务页。前端任务意图经 TaskBindings/TaskProtocol 进入 app/TaskActions，复用现有加载器、合成器和投影会话；MenuBindings 只提供材料与运行上下文快照。OreUI 不提供缩放控件，不写旧 ImGui 缩放。协议、取消、测试与部署要求见
 [OreUI 迁移说明](docs/OREUI_MIGRATION.md)；前端入口见 [frontend/README.md](frontend/README.md)。
@@ -49,9 +49,9 @@ HUD/快捷键/语言/实验性功能由 app/SettingsActions 统一接收字段�
 
 建造任务的数据规则和原子存储位于 `src/tasks/`，`app/TaskActions` 负责控制帧、运行态和发布，`structure/TaskComposer` 合成获胜方块并保留文件来源与真实覆盖区域。原始文件缓存复用 `StructureFileLoader` 的世界生命周期，现有投影管线消费单个不可变合成快照；选中文件决定变换、切片、HUD/材料和放置目标。任务保存在 `data/tasks.json`，与全局配置及旧单文件恢复记录分离。实现边界和验证清单见 [建造任务](docs/TASKS_DESIGN.md)；本次多文件运行仍需游戏内验收。
 
-任务审计修正：`TaskActions` 保留成功/待合成两份运行定义，失败不阻断旧投影的文件编辑；`TaskContext` 隔离玩家锚点和数据路径，隔离测试可运行真实任务控制帧。`TaskStoreWriter` 使用单写入线程合并 300 ms 内连续编辑，停用时完成最终保存；任务级变换与切片不重复写全局配置。任务 Facet 的 JSON 信封大小与任务协议一致，前端超长输入有明确错误且不进入等待；任务名称 IME 候选确认不误提交。无调用的 `restoreSavedProjection()` 门面已删除，隐藏旧 ImGui 菜单仍按现有约束保留。
+任务审计修正：`TaskActions` 保留成功/待合成两份运行定义，失败不阻断旧投影的文件编辑；`TaskContext` 隔离玩家锚点和数据路径，隔离测试可运行真实任务控制帧。`TaskStoreWriter` 使用单写入线程合并 300 ms 内连续编辑，停用时完成最终保存；任务级变换与切片不重复写全局配置。任务 Facet 的 JSON 信封大小与任务协议一致，前端超长输入有明确错误且不进入等待；任务名称 IME 候选确认不误提交。无调用的 `restoreSavedProjection()` 门面及旧 C++ 菜单已移除。
 
-OreUI 可视控件集中在 frontend/src/components/LHoloControls.tsx，视觉与排版以当前旧 ImGui 的 FluentTheme.cpp / MenuPages.cpp 为准；原版仅提供交互焦点/激活原语，输入框显式绑定真实 DOM input 事件，不直接套用原版表单外观。
+OreUI 可视控件集中在 frontend/src/components/LHoloControls.tsx，保留 LHolo 既有深色样式和排版；原版仅提供交互焦点/激活原语，输入框显式绑定真实 DOM input 事件，不直接套用原版表单外观。
 
 迁移必须逐项对照旧 UI 的按钮、选项和操作流程，不擅自增加应用/确认等步骤。创建结构页自动同步有效输入，连续编辑合并并防止旧应答覆盖新内容。浏览器与游戏菜单隐藏滚动条，但保留滚轮、触摸及焦点滚动；不以禁用滚动替代隐藏。
 
@@ -140,17 +140,16 @@ LHolo/
 │  │  ├─ MaterialUnits.h        材料放置单元归并、来源代表索引；不读取真实世界
 │  │  ├─ StructureSession.*    结构会话状态（已加载结构、变换/分层、恢复快照、状态文案）
 │  │  ├─ StructureUiState.*     UI 会话状态（GUI、热键、HUD、待处理动作、材料清单）
-│  │  ├─ StructureLoader.cpp    动作提示、快捷键事件、加载入口与公开 getter（菜单/GUI 由 MenuController 负责）
+│  │  ├─ StructureLoader.cpp    动作提示、快捷键事件、加载入口与公开 getter
 │  │  └─ StructureLoader.h      LoadedStructure 统一数据模型
 │  ├─ ui/
 │  │  ├─ hud/                  普通/材料 HUD：快照读取、内容整理、布局与原生绘制
 │  │  ├─ MaterialFormat.*      菜单与原生 HUD 共用的材料名称/组数/图标身份规则
 │  │  ├─ FileDialog.*           通用结构打开与 `.mcstructure` 保存对话框
 │  │  ├─ HotkeyFormat.*         纯按键名/修饰键格式化（不读会话状态）
-│  │  ├─ MenuController.*       菜单模型构建/应用、路径缓冲、页面状态、动作回调与 GUI 渲染
-│  │  ├─ MenuWidgets.*          通用菜单控件（分节、行、步进器、居中数值）
-│  │  ├─ MenuPages.*            各页面渲染、导航与材料清单弹窗
-│  │  └─ LHoloMenu.*            纯菜单模型、页面分发与动作回调类型
+│  │  ├─ StructureFilePicker.*  可取消的异步文件选择服务
+│  │  ├─ preview/              独立原生结构文件预览
+│  │  └─ FluentTheme.*         剩余 ImGui 动作提示使用的样式与度量
 │  ├─ projection/
 │  │  ├─ Projection.cpp         对外门面：Hook 生命周期、设置与查询转发
 │  │  ├─ Projection.h           GUI/HUD 和辅助放置使用的投影控制接口
@@ -193,8 +192,8 @@ LHolo/
 │  └─ input/
 │     ├─ HotkeyTypes.h          快捷键槽位、顺序与数量的唯一共享定义
 │     ├─ ViewMoveBasis.*        朝向/视线到整块步进的纯方向规则
-│     ├─ MenuInputGuard.cpp     Bedrock 鼠标与 HID 键盘输入源拦截
-│     └─ MenuInputGuard.h       输入保护安装状态与生命周期接口
+│     ├─ ProjectionInputGuard.cpp 投影滚轮的原生热栏输入保护
+│     └─ ProjectionInputGuard.h   滚轮保护安装与卸载接口
 ├─ tools/java_to_bedrock/       开发期映射生成器（运行时不需要 Java）
 ├─ manifest.json                Mod Packer 模板
 ├─ xmake.lua                    依赖、编译选项和发布规则
@@ -243,8 +242,8 @@ LHolo/
   关闭且没有消费者时停止刷新，渲染线程只读取 `StructureUiState` 的一致快照。
 - `structure/StructureUiState` 持有 UI/菜单会话状态：GUI 可见性、热键配置与按下状态、HUD 开关、
   固定手势开关（Alt+滚轮结构偏移）、待处理偏移/切层/保存与材料清单；atomic、mutex 和容器均不向
-  调用者暴露，交互逻辑仍在 `StructureLoader`，菜单线程专属的路径输入缓冲和当前页面由
-  `MenuController` 私有持有。固定手势开关是裸 `Alt` 认领、滚轮准入和快捷栏锁三处判据的唯一来源，
+  调用者暴露，快捷键交互逻辑仍在 `StructureLoader`；菜单页面及临时输入由 OreUI 前端持有。
+  旧可见性与输入交接字段暂留作后端输入迁移的边界，不再对应可打开的 C++ 菜单。固定手势开关是裸 `Alt` 认领、滚轮准入和快捷栏锁三处判据的唯一来源，
   只能由它统一开关，禁止任一处单独读取其它状态。
 - `structure/StructureSession` 持有结构会话状态：已加载结构、变换/分层值、恢复快照与状态文案；
   mutex、原子量、字符串和容器均不向调用者暴露，菜单/HUD 通过一致快照读取，变更通过具体操作完成。
@@ -283,12 +282,9 @@ LHolo/
   不进入语言表。
 - Dear ImGui 的 `##`/`###` ID、`CalcTextSize` 数字宽度探针（`"0000000000"`、`"-0.0"` 等）
   与 `Ctrl`/`Alt`/`Shift`、`X`/`Y`/`Z` 等标识符不参与翻译。
-- `MenuPage` 以尾部 `Count` 收尾并由此推导 `kMenuPageCount`（同 `HotkeyId`/`TextKey`）；导航标签表
-  按 `kMenuPageCount` 定长，新增页面若不登记标签会因 `TextKey::None` 残留而编译失败。
-- `ui/MenuController` 负责菜单模型构建/应用、动作回调与 GUI 渲染，只通过 `StructureSession`/
-  `StructureUiState` 访问状态；`StructureLoader` 保留动作提示、快捷键事件与加载入口；普通和材料 HUD 绘制位于 `ui/hud/`。
-- `ui/MenuWidgets` 提供通用菜单控件（分节、值行、复选框、步进器、居中数值绘制），不读取会话状态。
-- `ui/MenuPages` 承载各页面渲染、导航指示与材料清单弹窗；`LHoloMenu.cpp` 只保留 `renderMenu` 分发。
+- 菜单布局与导航由 `frontend/src/LHoloMenu.tsx` 负责，页面与可视控件分别位于 `frontend/src/pages/` 和 `components/`；原生业务只通过现有绑定、动作队列及一致快照接入。
+- `StructureLoader` 保留动作提示、快捷键事件与加载入口；普通和材料 HUD 绘制位于 `ui/hud/`。旧菜单的模型、控件及同步文件对话框已删除，不以空渲染函数保留调用链。
+- 材料清单通过 `materialListSnapshotIfChanged` 同时读取 revision、ready 与 requirements，不保留旧菜单分开读取状态/内容的接口；动作提示读取现有完整快照。FluentTheme 保留动作提示使用的度量与样式，不保留旧菜单紧凑布局标记。
 - `structure/StructurePaths` 提供 UTF-8 路径转换，结构模块与 UI 共用。
 - `projection` 负责“结构如何出现在世界中”，不弹文件选择框、不直接操作 ImGui。
 - `projection/ProjectionTypes.h` 不包含运行状态、Hook 或 Minecraft 资源所有权；内部纯数据定义集中在
@@ -354,7 +350,7 @@ LHolo/
 - `place/PlacementExecutor` 承载轻松/手动/范围放置的规划与执行（背包查找、交换、放置事务、
   点击候选与预测匹配），不直接读取操作系统物理输入；游戏 Hook 和右键物理状态边界留在 `PlaceHelper`，
   只向 `PlacementState` 提交状态转换并调用 `tickEasyPlace`/`tickRangePlace`。
-- `input` 负责菜单期间的 Minecraft 输入边界：在 `MouseDevice`/`HIDControllerGameCoreDesktop` 输入源阻断游戏与原生页面输入；是否捕获统一读取 `StructureLoader::isMenuInputCaptured()`，不得在各输入入口分别组合 GUI 与过渡状态。
+- `input` 负责投影滚轮的原生热栏输入保护和共享快捷键捕获；原生页面管理自身输入，不恢复旧 ImGui 菜单输入拦截。
 - `plugin` 只把生命周期委托给 `app/AppKernel`，不承载业务逻辑。
 
 ---
@@ -367,7 +363,7 @@ LHolo/
 
 1. 开放结构文件后台任务入口，再安装投影相关 LeviLamina Hook。
 2. 安装辅助放置 Hook：`LocalPlayer::$tickWorld` 负责每 tick 驱动，三个 `GameMode` build Hook 负责命中真实方块时的右键状态和原版放置抑制，`GameMode::$useItem` 负责捕获指向空气的右键操作（tick Hook 失败仅告警，不阻断；单个手动 Hook 失败会分别告警并降级对应行为）。
-3. 安装菜单输入保护：`MouseDevice::feed` 与 `HIDControllerGameCoreDesktop::$onKeyDown/$onKeyUp` 在游戏和原生 UI 处理前取得输入所有权。三项 Hook 状态独立告警，不阻断菜单启用。
+3. 安装投影滚轮保护：`MouseDevice::feed` 只在投影取得滚轮所有权时阻止原生热栏滚动；失败告警，不阻断菜单启用。
 4. 尝试安装 ImGui/DXGI Hook；图形环境尚未可用时允许后续 `Present` 重试。
 
 配置由 `LHolo::load()` 在 enable 之前从 `mods/LHolo/config/config.json` 读取。世界退出由 `LevelListener::onLevelDestruction()` 发布轻量信号；投影渲染入口和 Overlay Present 都能观察该信号，真正的结构、辅助放置、捕获和投影清理在引擎回调之外执行。投影渲染入口仍通过 `client/level/dimension` 身份变化检测世界/维度切换，并在上下文失效时清理投影。
@@ -394,10 +390,10 @@ LevelListener，即使首个投影尚未激活，世界销毁回调也先清空�
 
 1. 关闭结构文件任务入口、取消待发布结果并等待已有文件任务完成，再保存配置。
 2. 清理辅助放置、结构、菜单、捕获和投影状态；投影停止接收网格任务，提升 Worker generation，清空待处理结果并等待 in-flight Worker 退出。
-3. 卸载菜单鼠标/HID 输入源 Hook。
+3. 卸载投影滚轮输入源 Hook。
 4. 卸载辅助放置的 tick/build Hook。
 5. 卸载投影 Hook，防止渲染路径再次触发 Overlay 安装重试。
-6. 关闭 ImGui 图形后端、恢复原 WndProc、移除 MinHook，并清空 Overlay 输入缓存。
+6. 关闭 ImGui 图形后端、恢复原 WndProc、移除 MinHook，并清空图形资源。
 
 ### 3.3 世界切换
 
@@ -501,7 +497,7 @@ Java→Bedrock 映射不再手工散落维护。`GeneratedChunkerMappings.inc` �
 
 原生 IntentFacet 必须在构造时建立 EnableNonOwnerReferences::mControlBlock；SDK 生成头文件未提供初始化构造，不能直接依赖默认空指针。销毁、discard 和 init 失败都会经过游戏基类析构。回归测试同时覆盖原生对象生命周期与前端协议；具体转储依据见 OreUI 迁移说明。
 
-OreUI 创建页使用 application/useCapture → bridge → CaptureProtocol/CaptureBindings → capture/CaptureActions。坐标文本暂存在前端，有效坐标和实体选项自动同步原生选区，不增加“应用选区”按钮；取玩家位置和捕获在现有应用控制帧执行。另存为使用独立 STA 的现代 IFileSaveDialog，关闭页面取消选择；提交前校验 revision，防止旧保存结果用于已变化的世界或选区。旧 ImGui 页仍复用原有捕获 API。
+OreUI 创建页使用 application/useCapture → bridge → CaptureProtocol/CaptureBindings → capture/CaptureActions。坐标文本暂存在前端，有效坐标和实体选项自动同步原生选区，不增加“应用选区”按钮；取玩家位置和捕获在现有应用控制帧执行。另存为使用独立 STA 的现代 IFileSaveDialog，关闭页面取消选择；提交前校验 revision，防止旧保存结果用于已变化的世界或选区。旧 ImGui 创建页已删除，捕获业务 API 保留。
 
 “创建结构”不经过 `LoadedStructure`，也不会自动载入投影。选区端点先按每轴最小值/最大值归一化，两个端点都包含在内；导出前由 `BlockSource::areChunksFullyLoaded(min, max)` 拒绝客户端尚未完整加载的范围。
 
@@ -753,7 +749,7 @@ Worker 初始化失败，或构建/上传连续失败三次后，本次游戏会
 
 材料 HUD 标题左侧显示本地化“缺失材料”，页码单独放在同一行右端，与材料数量右对齐，每页沿用 materialHudMaxItems（默认 5）。ui/hud/MaterialHudPaging 持有临时页码与上下文；input/MaterialHudPageRequest 仅传递原子翻页意图，不依赖 HUD。上一页/下一页追加到 HotkeyId 尾部，默认按键/修饰键均为空，沿用现有捕获、重复绑定清除、按住去重、释放处理与 SettingsStore 保存。HUD 未启用或维度暂停时不认领翻页输入，菜单及编辑期间丢弃请求；退出世界清除待处理意图。文件、分层或每页项数改变回第一页，数量减少自动钳制有效页，首尾不循环。分页只消费原有材料/背包快照，不增加世界查询；nth_element 分离前页后仅排序当前页，数量相同按原索引稳定排序。页码不写配置、不进入任务或投影业务。
 
-材料 HUD 的 `materialHudStackConversion` 是独立持久化布尔偏好，默认关闭；OreUI 材料 HUD 页通过现有 SettingsActions 字段通路即时修改。关闭只显示缺失总数，开启使用 `43x64+34` 格式并按物品实际堆叠上限换算，不同时显示总数。格式化位于 `ui/MaterialFormat`，原生 HUD 与编辑示例共用；材料业务统计与菜单材料清单保持原有行为。显示项数通过 `materialHudMaxItems` 持久化，范围 1～50、默认 5，只对当前页排序；数量独立存入 HudLine 并在 NativeHudPainter 统一右对齐，材料名称完整显示，面板按每行名称与数量的实际合计宽度自适应，列间距为字高的 0.8 倍，不将不同材料的最长名称和最长数量额外相加留白；超过视口宽度时同比例缩小文字、图标和间距；视口高度限制继续生效。材料图标通过完整 ItemStack 保留原生附加值与用户数据；后台计数以 Block 指针及不可变 NBT 来源指针为键，保留同一方块状态下的所有物品变体。游戏线程先按去掉顶层 x/y/z 的源 NBT 内容合并计数，再经临时 BlockActor 和原生 asItemInstance 取得床/旗帜等物品；同内容不同坐标只解析和比较一次，源 NBT 不修改，不另存重复的物品解析缓存。材料清单与材料 HUD 按原生物品 ID 和 hasSameAuxValue 分组，背包计数共用 block::sameMaterialItem；旗帜使用 BannerBlockActor::getBannerType 和 BannerItem::getPatternAndColorPairsFromItemStack 读取原生类型与图案，不比较缺省字段写法或自定义名称，其他物品比较 hasSameUserData。MaterialRequirement::itemPrototype 持有只读物品身份，HUD 复用它绘制图标，不反向依赖 UI 数据。不逐帧建物品、不扫描真实世界。最终审计删除无调用的 formatStackCount、完整物品接入后重复的 aux 转发/缓存及仅测试消费的布局输出，保留默认关闭的堆叠换算；旧隐藏 ImGui 按项目约束保留。
+材料 HUD 的 `materialHudStackConversion` 是独立持久化布尔偏好，默认关闭；OreUI 材料 HUD 页通过现有 SettingsActions 字段通路即时修改。关闭只显示缺失总数，开启使用 `43x64+34` 格式并按物品实际堆叠上限换算，不同时显示总数。格式化位于 `ui/MaterialFormat`，原生 HUD 与编辑示例共用；材料业务统计与菜单材料清单保持原有行为。显示项数通过 `materialHudMaxItems` 持久化，范围 1～50、默认 5，只对当前页排序；数量独立存入 HudLine 并在 NativeHudPainter 统一右对齐，材料名称完整显示，面板按每行名称与数量的实际合计宽度自适应，列间距为字高的 0.8 倍，不将不同材料的最长名称和最长数量额外相加留白；超过视口宽度时同比例缩小文字、图标和间距；视口高度限制继续生效。材料图标通过完整 ItemStack 保留原生附加值与用户数据；后台计数以 Block 指针及不可变 NBT 来源指针为键，保留同一方块状态下的所有物品变体。游戏线程先按去掉顶层 x/y/z 的源 NBT 内容合并计数，再经临时 BlockActor 和原生 asItemInstance 取得床/旗帜等物品；同内容不同坐标只解析和比较一次，源 NBT 不修改，不另存重复的物品解析缓存。材料清单与材料 HUD 按原生物品 ID 和 hasSameAuxValue 分组，背包计数共用 block::sameMaterialItem；旗帜使用 BannerBlockActor::getBannerType 和 BannerItem::getPatternAndColorPairsFromItemStack 读取原生类型与图案，不比较缺省字段写法或自定义名称，其他物品比较 hasSameUserData。MaterialRequirement::itemPrototype 持有只读物品身份，HUD 复用它绘制图标，不反向依赖 UI 数据。不逐帧建物品、不扫描真实世界。最终审计删除无调用的 formatStackCount、完整物品接入后重复的 aux 转发/缓存及仅测试消费的布局输出，保留默认关闭的堆叠换算；旧 C++ 菜单已移除，ImGui 动作提示及后端暂留。
 
 纠错扫描同时维护：
 
@@ -791,54 +787,34 @@ NBT 内容合并、本地化和背包读取仍在游戏 tick 线程执行，普�
 3. 同一表面是否由投影模型、纠错面和 hit-select 重复绘制。
 4. 材质是否写深度、混合状态是否被其他 Hook 污染。
 
-### 8.7 菜单输入保护开销
+### 8.7 投影滚轮保护开销
 
-`input/MenuInputGuard.cpp` 只 Hook 鼠标输入源和键盘按下/释放三个入口。菜单关闭时只额外判断当前事件是否为投影已取得所有权的滚轮输入，随后立即进入原函数；不扫描方块、不分配内存、不加锁、不查询玩家、不写逐次日志。
+`input/ProjectionInputGuard.cpp` 只 Hook 鼠标输入源，判断当前事件是否为投影已取得所有权的滚轮输入，其余事件立即进入原函数；不扫描方块、不分配内存、不加锁、不查询玩家、不写逐次日志。
 
 ---
 
 ## 9. GUI、快捷键与输入交接
 
-### 9.1 ImGui 页面
+### 9.1 页面与绘制边界
 
-GUI 覆盖当前 `ImGuiIO::DisplaySize`，侧栏导航包含：投影、创建结构、结构变换、渲染设置、HUD、快捷键、界面设置和实验性功能。界面缩放范围 1～5。
+主菜单和 HUD 设置使用 OreUI，页面位于 frontend/，原生绑定集中在 src/oreui/。普通、材料和写入 HUD、布局编辑器及结构预览使用原生通路。不要把 JS 协议加入结构或投影内部模块。
 
-此处记录仍在使用的 ImGui 实现。OreUI 在 `frontend/` 独立开发，按功能接入后逐步删除对应旧页面；
-菜单与 HUD 设置接入位于 `src/oreui/`；普通/材料 HUD 的画面由 `src/ui/hud/` 在原版 HUD 回调绘制。不要把 JS 协议加入结构或投影内部模块。原生 HUD 使用游戏 GUI 缩放，不读取旧 ImGui 的 uiScale。
-
-GUI 是全屏 ImGui 窗口，不是切换 Minecraft 窗口模式。
+旧 C++ ImGui 菜单、同步文件选择、菜单可见/输入过渡状态及菜单缩放已删除。ImGui 仍承载动作提示，后端仍负责快捷键输入和 Present 控制帧；迁移这些活跃功能前保留后端和 FluentTheme。
 
 ### 9.2 输入所有权
 
-菜单打开时，WndProc 将鼠标、键盘、字符和 Raw Input 交给 ImGui；`MenuInputGuard` 同时在 `MouseDevice::feed` 和 HID 键盘入口阻止输入进入 Minecraft 原生页面。两层都读取 `StructureLoader::isMenuInputCaptured()`，避免窗口消息已被界面消费、原生页面仍收到内部输入。
+OreUI、HUD 编辑器或结构预览位于栈顶时，WndProc 将常规输入交还原版场景，不执行投影快捷键和滚轮移动。快捷键捕获期间，键盘、中键和侧键进入 input/HotkeyCapture，已认领的重复按下和释放成对消费；失焦时清理捕获释放记录和修饰键状态。F11 仍先处理图形后端生命周期，再交还游戏。
 
-打开菜单前记录游戏当前按键/鼠标按下状态，并向游戏补发必要的 key-up/button-up，避免“按住移动键打开菜单，关闭后角色自动走”。
+旧菜单的 ShowCursor 计数、ClipCursor/居中接管、合成释放、ESC 过渡阻断及 ImGui 消息消费分支均已删除；原生页面管理自身的输入与光标。
 
-关闭菜单时：
+### 9.3 投影滚轮保护
 
-- 将鼠标恢复到游戏客户区中心。
-- 短暂限制鼠标到客户区并设置输入阻断窗口。
-- 消费菜单关闭动作对应的释放消息。
-- 防止关闭后的首次右键变成 ESC/暂停效果或鼠标落到客户区外。
+input/ProjectionInputGuard 仅保留 MouseDevice::feed Hook：活动投影取得滚轮所有权时，阻止 MouseAction::ActionWheel 继续进入原生热栏路径，其余输入直接调用原函数。WndProc 仍负责将 Alt+滚轮交给投影移动。
 
-菜单可见期间必须让系统光标保持可见，这是与其它覆盖层模组之间的隐含契约：
-
-- ImGui 的自绘光标会让 Win32 后端每帧执行 `SetCursor(nullptr)`，`GetCursorInfo()` 因此报告光标隐藏。其它模组（例如 ChiyanMap）以该系统标志判断“游戏是否仍抓着鼠标”，会把光标夹回客户区中心，导致菜单里的鼠标无法移动。
-- 因此菜单期间 `MouseDrawCursor` 保持 false，光标形状交给 ImGui 后端设置；并在窗口线程通过 `kMsgAcquireMenuCursor` 用 `ShowCursor` 把显示计数顶到 ≥ 0。`ShowCursor` 返回的是调用后的计数，`> 0` 表示光标本来就可见、需要撤销这次探测增量；关闭、失焦和卸载时只归还自己加的增量，Minecraft 的负数计数不受影响。
-- 菜单可见时，客户端区域的 `WM_SETCURSOR` 不再分发给游戏，避免光标被重新隐藏；窗口边框等非客户端区域仍然放行，不影响缩放光标。
-
-不要依赖“消息积压”解释输入 bug；应检查鼠标坐标、Capture/ClipCursor、按键状态和 Raw Input 所有权。
-
-### 9.3 Bedrock 输入源保护
-
-WndProc/Raw Input 只覆盖 Windows 消息边界，不能作为阻止 Minecraft 原生 UI 和游戏动作的唯一保证。当前在 Bedrock 输入源增加第二道边界：
-
-- `MouseDevice::feed` 与 `HIDControllerGameCoreDesktop::$onKeyDown/$onKeyUp` 是主路径；菜单可见或关闭过渡期间直接停止向原生 UI 分发，F11 例外并继续交给 Minecraft 的全屏切换生命周期。只有存在活动投影时才取得 Alt 按键所有权，按住 Alt 后也仅 `MouseAction::ActionWheel` 由投影移动取得所有权；没有投影时的 Alt，以及数字键、手柄和其他选槽路径均不受影响。
-- 打开菜单前向 Minecraft 补发的释放消息由 `MenuInputHandoffScope` 临时放行；禁止把所有 key-up/button-up 长期放行，否则原生按钮通常会在释放边沿触发，重新产生穿透。
-- 三个 Hook 的安装状态由 `MenuInputGuardStatus` 分别返回；单个 Hook 冲突不得伪装成整体成功，也不得导致菜单模块无法启用。
-- PreLoader/LeviLamina Hook 返回值是 0 成功、非 0 失败，禁止用 `< 0` 判断安装结果。
-- 输入源 Hook 只在菜单持有输入期间暂停本机的移动、放置、使用、攻击和原生 UI 操作；关闭菜单后立即恢复，不修改其他玩家或服务端状态。
-- 鼠标按下状态在打开菜单前通过合成释放消息归还给游戏，因此无需再维护 `GameMode::$startDestroyBlock/$continueDestroyBlock` 专用保护。
+- 旧菜单专用的 HID 键盘 Hook 和输入临时放行作用域已删除。
+- 只有存在活动投影且偏好已启用时才认领 Alt；没有投影时的 Alt，以及数字键、手柄和其他选槽路径保持原行为。
+- 安装失败单独告警，不阻断菜单；卸载只处理已成功安装的 Hook。
+- LeviLamina Hook 返回值是 0 成功、非 0 失败，禁止用 `< 0` 判断安装结果。
 
 ### 9.4 快捷键配置
 
@@ -874,7 +850,7 @@ WndProc/Raw Input 只覆盖 Windows 消息边界，不能作为阻止 Minecraft 
 
 ### 10.2 每帧资源规则
 
-需要绘制旧 ImGui GUI 或动作提示时（普通/材料 HUD 不经过此路径）：
+需要绘制 ImGui 动作提示时（普通/材料 HUD 不经过此路径）：
 
 1. 从当前 swap chain 取得当前 back buffer。
 2. 为该帧创建 wrapped resource 和 RTV。
@@ -884,7 +860,7 @@ WndProc/Raw Input 只覆盖 Windows 消息边界，不能作为阻止 Minecraft 
 6. `ReleaseWrappedResources` 并 `Flush`。
 7. 释放该帧 wrapped resource 和 RTV。
 
-不跨帧持有 back buffer wrapper。旧 GUI 和动作提示都不显示时跳过这条提交路径。
+不跨帧持有 back buffer wrapper。动作提示不显示时跳过这条提交路径；输入和控制帧调度仍保留原后端生命周期。
 
 ### 10.3 历史崩溃根因
 
@@ -947,7 +923,7 @@ LeviLamina Hook：
 - `LocalPlayer::$tickWorld`（`place` 模块）：轻松、手动和范围放置的每 tick 驱动。
 - `GameMode::$startBuildBlock` / `$buildBlock` / `$stopBuildBlock`（`place` 模块）：手动模式命中真实方块时的右键按下、持续、释放状态及原版重复放置抑制。
 - `GameMode::$useItem`（`place` 模块）：手动模式指向空气时创建单次放置请求，使浮空投影方块也能进入放置链路。
-- `MouseDevice::feed` 与 `HIDControllerGameCoreDesktop::$onKeyDown/$onKeyUp`（`input` 模块）：菜单期间在 Bedrock 输入源阻止游戏和原生 UI 接收输入；Alt 投影移动期间只阻止对应的滚轮动作进入原生热栏路径。
+- `MouseDevice::feed`（`input` 模块）：Alt 投影移动期间只阻止对应的滚轮动作进入原生热栏路径。
 
 `PlaceHelper` 分别记录上述放置 Hook 的安装结果，并且卸载时只逆序卸载成功安装的入口。Hook 返回值按
 PreLoader/LeviLamina 的约定处理：`0` 表示成功，任何非 `0` 值都表示失败；不得用 `< 0` 判断。
@@ -1004,7 +980,7 @@ mods/LHolo/config/config.json
 
 配置只保存界面、渲染、HUD、输入、辅助放置偏好，按 `interface`、`rendering`、`hud`、`input`、`placement` 分组。HUD 内容、位置、缩放与背景不透明度归入各自面板；快捷键以 `Alt+M` 等组合字符串或 `null` 保存；百分比与秒明确标注单位，固定分组顺序、4 空格缩进和末尾换行。
 
-旧单文件最近路径、`saved*` 恢复记录及旧 ImGui `uiScale` 不再进入正式偏好文件。任务与各文件维度/坐标继续由 tasks 独立保存。隐藏 ImGui 和旧单文件恢复的内存逻辑按项目约束保留，但不再从配置恢复或写入。运行态 Settings 值只保留实际偏好，菜单/应用用例不依赖新 JSON 分组。
+旧单文件最近路径、`saved*` 恢复记录及旧 ImGui `uiScale` 不再进入正式偏好文件。任务与各文件维度/坐标继续由 tasks 独立保存。旧 ImGui 菜单状态已删除，单文件恢复快照仍只保留在内存中，不从配置恢复或写入。运行态 Settings 值只保留实际偏好，菜单/应用用例不依赖新 JSON 分组。
 
 SettingsStore 在读取时兼容旧平铺字段（包括旧世界轴快捷键和 hudShowBlockEntity 别名），完整校验后一次性发布；保存只写 v13，第一次覆盖旧格式前备份为 config.json.legacy.bak。有效配置在启动应用后规范化；损坏、错误类型、非法组合键/锚点和未来版本拒绝读取，后续保存也不会覆盖。写入经临时文件关闭和系统原子替换，进程内写入串行化。原生 HUD 使用的归一化位置、缩放和不透明度均保持原偏好。
 

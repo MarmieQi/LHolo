@@ -231,7 +231,7 @@ void processMenuScreen() {
     if (name == "chat_screen") return;
     openPending = false;
     if (!canOpenMenuContext(state == ClientInstanceState::Playing,
-            state == ClientInstanceState::Idle, name) || structure::isMenuInputCaptured()) return;
+            state == ClientInstanceState::Idle, name)) return;
     if (!resourcesAvailable()) return;
     auto& router = client->$getCurrentUIRouter();
     if (!ensureRoute(router)) return;

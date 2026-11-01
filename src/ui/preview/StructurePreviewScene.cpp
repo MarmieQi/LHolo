@@ -4,7 +4,6 @@
 #include "ui/preview/StructurePreviewDefinition.h"
 #include "structure/StructureLoader.h"
 #include "plugin/LHolo.h"
-#include "input/MenuInputGuard.h"
 #include "ll/api/memory/Hook.h"
 #include "ll/api/mod/NativeMod.h"
 #include "ll/api/service/Bedrock.h"

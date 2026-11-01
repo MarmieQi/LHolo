@@ -67,36 +67,6 @@ StructureUiState::HotkeyStorage const* StructureUiState::hotkeyStorage(std::size
     return index < mHotkeys.size() ? &mHotkeys[index] : nullptr;
 }
 
-bool StructureUiState::guiVisible() const {
-    return mGuiVisible.load(std::memory_order_acquire);
-}
-
-void StructureUiState::setGuiVisible(bool visible) {
-    mGuiVisible.store(visible, std::memory_order_release);
-}
-
-bool StructureUiState::openingInputBlocked() const {
-    return mOpeningInputBlockFrames.load(std::memory_order_acquire) > 0;
-}
-
-void StructureUiState::setOpeningInputBlockFrames(int frames) {
-    mOpeningInputBlockFrames.store(frames, std::memory_order_release);
-}
-
-void StructureUiState::consumeOpeningInputBlockFrame() {
-    if (mOpeningInputBlockFrames.load(std::memory_order_acquire) > 0) {
-        mOpeningInputBlockFrames.fetch_sub(1, std::memory_order_acq_rel);
-    }
-}
-
-std::uint64_t StructureUiState::blockGameInputUntil() const {
-    return mBlockGameInputUntil.load(std::memory_order_acquire);
-}
-
-void StructureUiState::setBlockGameInputUntil(std::uint64_t deadline) {
-    mBlockGameInputUntil.store(deadline, std::memory_order_release);
-}
-
 HudStateSnapshot StructureUiState::hud() const {
     return {
         mHudEnabled.load(std::memory_order_relaxed),
@@ -108,8 +78,7 @@ HudStateSnapshot StructureUiState::hud() const {
         mHudShowWrongType.load(std::memory_order_relaxed),
         mHudShowExtraBlocks.load(std::memory_order_relaxed),
         mHudShowProjectedBlockName.load(std::memory_order_relaxed),
-        mHudPosition.load(std::memory_order_relaxed),
-        mUiScale.load(std::memory_order_relaxed)
+        mHudPosition.load(std::memory_order_relaxed)
     };
 }
 
@@ -136,10 +105,6 @@ settings::HudPlacements StructureUiState::hudPlacements() const {
 void StructureUiState::setHudPlacements(settings::HudPlacements const& placements) {
     std::lock_guard lock(mHudLayoutMutex);
     mHudPlacements = placements;
-}
-
-bool StructureUiState::setUiScale(float scale) {
-    return updateRelaxed(mUiScale, scale);
 }
 
 bool StructureUiState::setHudFlag(HudFlag field, bool enabled) {
@@ -178,7 +143,6 @@ bool StructureUiState::applyHud(HudStateSnapshot const& snapshot) {
         mHudShowProjectedBlockName, snapshot.showProjectedBlockName
     ) || changed;
     changed = updateRelaxed(mHudPosition, snapshot.position) || changed;
-    changed = updateRelaxed(mUiScale, snapshot.uiScale) || changed;
     return changed;
 }
 
@@ -423,10 +387,6 @@ void StructureUiState::setActionHint(i18n::Message message, std::uint64_t expiry
     mActionHintExpiry.store(expiry, std::memory_order_release);
 }
 
-std::uint64_t StructureUiState::actionHintExpiry() const {
-    return mActionHintExpiry.load(std::memory_order_acquire);
-}
-
 ActionHintSnapshot StructureUiState::actionHint(std::uint64_t now) const {
     std::lock_guard lock(mActionHintMutex);
     auto const expiry = mActionHintExpiry.load(std::memory_order_acquire);
@@ -473,10 +433,6 @@ bool StructureUiState::consumeMaterialListRequest() {
     return mMaterialListRequested.exchange(false, std::memory_order_acq_rel);
 }
 
-bool StructureUiState::materialListReady() const {
-    return mMaterialListReady.load(std::memory_order_acquire);
-}
-
 std::optional<MaterialListSnapshot> StructureUiState::materialListSnapshotIfChanged(
     std::optional<std::uint64_t> revision
 ) const {
@@ -491,11 +447,6 @@ void StructureUiState::replaceMaterialRequirements(std::vector<MaterialRequireme
     mMaterialRequirements = std::move(materials);
     mMaterialListReady.store(true, std::memory_order_release);
     ++mMaterialListRevision;
-}
-
-std::vector<MaterialRequirement> StructureUiState::materialRequirements() const {
-    std::lock_guard lock(mMaterialMutex);
-    return mMaterialRequirements;
 }
 
 void StructureUiState::replaceMaterialHudSnapshot(
@@ -538,9 +489,6 @@ void StructureUiState::clearMaterials() {
 
 void StructureUiState::resetWorldSession() {
     input::clearMaterialHudPageRequest();
-    mGuiVisible.store(false, std::memory_order_release);
-    mOpeningInputBlockFrames.store(0, std::memory_order_release);
-    mBlockGameInputUntil.store(0, std::memory_order_release);
     mPendingOffsetX.store(0, std::memory_order_release);
     mPendingOffsetY.store(0, std::memory_order_release);
     mPendingOffsetZ.store(0, std::memory_order_release);

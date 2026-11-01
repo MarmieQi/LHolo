@@ -77,7 +77,6 @@ struct HudStateSnapshot {
     bool  showExtraBlocks{true};
     bool  showProjectedBlockName{true};
     int   position{1};
-    float uiScale{2.0f};
 };
 enum class HudFlag { Enabled, FileName, Layer, OverallProgress, Progress, WrongState, WrongType, ExtraBlocks, ProjectedBlockName };
 
@@ -104,14 +103,6 @@ public:
     StructureUiState& operator=(StructureUiState const&) = delete;
     StructureUiState& operator=(StructureUiState&&)      = delete;
 
-    [[nodiscard]] bool guiVisible() const;
-    void setGuiVisible(bool visible);
-    [[nodiscard]] bool openingInputBlocked() const;
-    void setOpeningInputBlockFrames(int frames);
-    void consumeOpeningInputBlockFrame();
-    [[nodiscard]] std::uint64_t blockGameInputUntil() const;
-    void setBlockGameInputUntil(std::uint64_t deadline);
-
     [[nodiscard]] HudStateSnapshot hud() const;
     [[nodiscard]] settings::HudPlacements hudPlacements() const;
     void setHudPlacements(settings::HudPlacements const& placements);
@@ -119,7 +110,6 @@ public:
     void setHudScales(settings::HudPercentages const& values);
     [[nodiscard]] settings::HudPercentages hudBackgroundOpacities() const;
     void setHudBackgroundOpacities(settings::HudPercentages const& values);
-    bool setUiScale(float scale);
     bool applyHud(HudStateSnapshot const& snapshot);
     bool setHudFlag(HudFlag field, bool enabled);
     bool setHudPosition(int position);
@@ -182,7 +172,6 @@ public:
     // Hints are stored as key plus arguments so a pending hint follows a
     // language switch like every other interface string.
     void setActionHint(i18n::Message message, std::uint64_t expiry);
-    [[nodiscard]] std::uint64_t actionHintExpiry() const;
     [[nodiscard]] ActionHintSnapshot actionHint(std::uint64_t now = 0) const;
     [[nodiscard]] bool actionHintActive(std::uint64_t now) const;
     // Loading shares the existing hint bar, but does not expire or overwrite
@@ -193,12 +182,10 @@ public:
 
     void requestMaterialList();
     [[nodiscard]] bool consumeMaterialListRequest();
-    [[nodiscard]] bool materialListReady() const;
     [[nodiscard]] std::optional<MaterialListSnapshot> materialListSnapshotIfChanged(
         std::optional<std::uint64_t> revision
     ) const;
     void replaceMaterialRequirements(std::vector<MaterialRequirement> materials);
-    [[nodiscard]] std::vector<MaterialRequirement> materialRequirements() const;
     // The material-list popup and the current-layer HUD deliberately own
     // separate snapshots: the popup covers the whole structure, while the HUD
     // follows projection correction and layer visibility.
@@ -232,10 +219,6 @@ private:
     [[nodiscard]] HotkeyStorage* hotkeyStorage(std::size_t index);
     [[nodiscard]] HotkeyStorage const* hotkeyStorage(std::size_t index) const;
 
-    std::atomic_bool     mGuiVisible{false};
-    std::atomic_int      mOpeningInputBlockFrames{0};
-    std::atomic_uint64_t mBlockGameInputUntil{};
-
     std::atomic_bool  mHudEnabled{true};
     std::atomic_bool  mHudShowFileName{true};
     std::atomic_bool  mHudShowLayer{true};
@@ -246,7 +229,6 @@ private:
     std::atomic_bool  mHudShowExtraBlocks{true};
     std::atomic_bool  mHudShowProjectedBlockName{true};
     std::atomic_int   mHudPosition{1};
-    std::atomic<float> mUiScale{2.0f};
 
     std::array<HotkeyStorage, input::kHotkeyCount> mHotkeys;
     std::atomic_bool mControlHeld{false};

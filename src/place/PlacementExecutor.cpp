@@ -848,7 +848,7 @@ void tickEasyPlaceImpl() {
     consumeBrokenProjectionCells(*player, tickNow);
     // Only act during gameplay: menus, pause screens and the LHolo GUI itself
     // disable in-game input.
-    if (!client->isInGameInputEnabled() || structure::isGuiVisible()) {
+    if (!client->isInGameInputEnabled()) {
         updateAimedProjectedBlock(nullptr);
         return;
     }

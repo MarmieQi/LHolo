@@ -12,7 +12,6 @@ struct UiMetrics {
     float  outerPadding{16.0f};
     float  sectionPadding{16.0f};
     float  rounding{8.0f};
-    bool   compact{};
 };
 
 UiMetrics calculateMetrics(ImVec2 viewport, float uiScale);

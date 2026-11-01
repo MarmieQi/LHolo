@@ -39,18 +39,15 @@
 
 #include <atomic>
 #include <array>
-#include <cfloat>
 #include <filesystem>
 #include <mutex>
 
-#include "input/MenuInputGuard.h"
 #include "plugin/LHolo.h"
 #include "structure/StructureLoader.h"
 #include "ui/FluentTheme.h"
 #include "oreui/OreUiScreen.h"
 #include "ll/api/mod/NativeMod.h"
 
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
 namespace lholo::overlay {
 namespace {
@@ -99,34 +96,10 @@ std::atomic_bool gShuttingDown{false};
 std::atomic_bool gRendering{false};
 std::atomic_ullong gGraphicsResumeAt{};
 std::mutex       gResourceMutex;
-std::mutex       gInputStateMutex;
 std::mutex       gInstallMutex;
 std::atomic_ullong gInstallRetryAt{};
 bool             gImGuiInitialized{};
 bool             gGraphicsInitialized{};
-bool             gGuiVisibleLastFrame{};
-std::atomic_bool gMouseHandoffActive{};
-// Cursor ownership while the menu is open.
-//
-// The mods in this ecosystem decide "a UI owns the mouse" from GetCursorInfo():
-// a displayed OS cursor means somebody has opened a UI, a hidden one means the
-// player is in gameplay and the game holds the mouse. ImGui's software cursor
-// breaks that contract - its Win32 backend calls SetCursor(nullptr) on every
-// frame, which removes the cursor from the screen, so other mods keep re-centring
-// a cursor they believe the game still owns (ChiyanMap clamps it to the client
-// centre, freezing the mouse over our menu). The menu therefore draws with the
-// native cursor and holds the ShowCursor display counter at >= 0 while visible.
-//
-// ShowCursor is per-thread state, so both halves run on the window thread via
-// these messages. LHolo only ever releases the increments it forced itself, so
-// the counter Minecraft owns ends up exactly where it was.
-constexpr UINT kMsgRestoreNativeCursor = WM_APP + 0x101;
-constexpr UINT kMsgAcquireMenuCursor   = WM_APP + 0x102;
-std::atomic_int gMenuCursorShowCount{};
-std::array<bool, 256> gGameKeysDown{};
-std::array<bool, 5>   gGameMouseButtonsDown{};
-std::atomic_bool      gConsumeEscapeRelease{false};
-
 constexpr ULONGLONG kFullscreenGraphicsResumeDelayMs = 750;
 constexpr ULONGLONG kResizeGraphicsResumeDelayMs     = 100;
 constexpr ULONGLONG kInstallRetryIntervalMs          = 1000;
@@ -270,208 +243,10 @@ void loadFonts() {
     }
 }
 
-LRESULT forwardToGame(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
-    {
-        std::lock_guard lock(gInputStateMutex);
-        if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) && wParam < gGameKeysDown.size()) {
-            gGameKeysDown[static_cast<std::size_t>(wParam)] = true;
-        } else if ((message == WM_KEYUP || message == WM_SYSKEYUP) && wParam < gGameKeysDown.size()) {
-            gGameKeysDown[static_cast<std::size_t>(wParam)] = false;
-        }
-        switch (message) {
-        case WM_LBUTTONDOWN: gGameMouseButtonsDown[0] = true; break;
-        case WM_LBUTTONUP: gGameMouseButtonsDown[0] = false; break;
-        case WM_RBUTTONDOWN: gGameMouseButtonsDown[1] = true; break;
-        case WM_RBUTTONUP: gGameMouseButtonsDown[1] = false; break;
-        case WM_MBUTTONDOWN: gGameMouseButtonsDown[2] = true; break;
-        case WM_MBUTTONUP: gGameMouseButtonsDown[2] = false; break;
-        case WM_XBUTTONDOWN: gGameMouseButtonsDown[GET_XBUTTON_WPARAM(wParam) == XBUTTON1 ? 3 : 4] = true; break;
-        case WM_XBUTTONUP: gGameMouseButtonsDown[GET_XBUTTON_WPARAM(wParam) == XBUTTON1 ? 3 : 4] = false; break;
-        default: break;
-        }
-    }
-    return gOriginalWndProc ? CallWindowProcW(gOriginalWndProc, window, message, wParam, lParam)
-                            : DefWindowProcW(window, message, wParam, lParam);
-}
-
-void releaseGameInput(HWND window) {
-    // Minecraft has already seen these down events. Send matching releases
-    // before the menu starts swallowing input, otherwise movement/use remains
-    // latched after the physical key is released while ImGui is open.
-    input::MenuInputHandoffScope inputHandoff;
-    std::array<bool, 256> keysDown{};
-    std::array<bool, 5> mouseButtonsDown{};
-    {
-        std::lock_guard lock(gInputStateMutex);
-        keysDown = gGameKeysDown;
-        mouseButtonsDown = gGameMouseButtonsDown;
-    }
-    for (std::size_t key = 0; key < keysDown.size(); ++key) {
-        if (!keysDown[key]) continue;
-        auto const virtualKey = static_cast<UINT>(key);
-        auto scanCode = MapVirtualKeyW(virtualKey, MAPVK_VK_TO_VSC);
-        auto const extended = virtualKey == VK_LEFT || virtualKey == VK_UP
-            || virtualKey == VK_RIGHT || virtualKey == VK_DOWN
-            || virtualKey == VK_PRIOR || virtualKey == VK_NEXT
-            || virtualKey == VK_END || virtualKey == VK_HOME
-            || virtualKey == VK_INSERT || virtualKey == VK_DELETE
-            || virtualKey == VK_DIVIDE || virtualKey == VK_NUMLOCK;
-        LPARAM keyUp = 1 | (static_cast<LPARAM>(scanCode) << 16) | (1LL << 30) | (1LL << 31);
-        if (extended) keyUp |= 1LL << 24;
-        auto const systemKey = virtualKey == VK_MENU || virtualKey == VK_LMENU || virtualKey == VK_RMENU;
-        forwardToGame(window, systemKey ? WM_SYSKEYUP : WM_KEYUP, virtualKey, keyUp);
-    }
-
-    POINT cursor{};
-    GetCursorPos(&cursor);
-    ScreenToClient(window, &cursor);
-    auto const mousePosition = MAKELPARAM(cursor.x, cursor.y);
-    constexpr std::array<UINT, 5> upMessages{
-        WM_LBUTTONUP, WM_RBUTTONUP, WM_MBUTTONUP, WM_XBUTTONUP, WM_XBUTTONUP
-    };
-    for (std::size_t button = 0; button < mouseButtonsDown.size(); ++button) {
-        if (!mouseButtonsDown[button]) continue;
-        WPARAM buttonParam{};
-        if (button == 3) buttonParam = MAKEWPARAM(0, XBUTTON1);
-        if (button == 4) buttonParam = MAKEWPARAM(0, XBUTTON2);
-        forwardToGame(window, upMessages[button], buttonParam, mousePosition);
-    }
-
-}
-
-bool confineMouseToClientCenter(HWND window) {
-    RECT clientRect{};
-    if (!window || !GetClientRect(window, &clientRect)) return false;
-    POINT topLeft{clientRect.left, clientRect.top};
-    POINT bottomRight{clientRect.right, clientRect.bottom};
-    if (!ClientToScreen(window, &topLeft) || !ClientToScreen(window, &bottomRight)) return false;
-    RECT screenRect{topLeft.x, topLeft.y, bottomRight.x, bottomRight.y};
-    if (!ClipCursor(&screenRect)) return false;
-    return SetCursorPos(
-        (screenRect.left + screenRect.right) / 2,
-        (screenRect.top + screenRect.bottom) / 2
-    ) != FALSE;
-}
-
-void prepareMouseHandoff(HWND window) {
-    if (!window) return;
-
-    // ImGui keeps button/position state independently from Win32. Clear it
-    // before Minecraft resumes relative mouse input so the closing click can
-    // never survive into the first gameplay frame.
-    if (gImGuiInitialized && ImGui::GetCurrentContext()) {
-        auto& io = ImGui::GetIO();
-        for (bool& down : io.MouseDown) down = false;
-        io.MouseWheel = 0.0f;
-        io.MouseWheelH = 0.0f;
-        io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
-    }
-    {
-        std::lock_guard lock(gInputStateMutex);
-        gGameMouseButtonsDown.fill(false);
-    }
-
-    // A full-screen menu can leave the absolute OS cursor anywhere. Bedrock
-    // converts that absolute position back to relative-look input when it
-    // captures the mouse again; centering first prevents a one-frame camera
-    // jump proportional to the distance from the menu button to the center.
-    if (confineMouseToClientCenter(window)) {
-        gMouseHandoffActive.store(true, std::memory_order_release);
-    }
-}
-
-void maintainMouseHandoff(HWND window) {
-    if (!gMouseHandoffActive.load(std::memory_order_acquire) || !window) return;
-    if (!structure::isInputTransitionBlocked()) {
-        // Keep the client-area clip installed after the transition. Minecraft
-        // replaces it itself when opening one of its own UI screens, while
-        // releasing it here left the cursor free to reach the title-bar close
-        // button before gameplay input had recaptured it.
-        gMouseHandoffActive.store(false, std::memory_order_release);
-        return;
-    }
-    confineMouseToClientCenter(window);
-}
-
-// -- window thread only ------------------------------------------------------
-// Raise the ShowCursor display counter until the OS cursor can be shown.
-// ShowCursor returns the counter AFTER the call, so a result above 0 means the
-// cursor was already visible and this probe increment has to be undone - that
-// keeps repeated calls idempotent instead of drifting upward frame after frame.
-void acquireMenuCursor() {
-    if (ShowCursor(TRUE) > 0) {
-        ShowCursor(FALSE);
-        return;
-    }
-    gMenuCursorShowCount.fetch_add(1, std::memory_order_relaxed);
-}
-
-// Drop exactly the increments acquireMenuCursor() forced. Minecraft's own
-// negative counter is never touched, so gameplay still hides the cursor.
-void releaseMenuCursor() {
-    while (gMenuCursorShowCount.load(std::memory_order_relaxed) > 0) {
-        gMenuCursorShowCount.fetch_sub(1, std::memory_order_relaxed);
-        ShowCursor(FALSE);
-    }
-}
-
-bool isMenuInputMessage(UINT message) {
-    switch (message) {
-    case WM_INPUT:
-    case WM_INPUT_DEVICE_CHANGE:
-    case WM_MOUSEMOVE:
-    case WM_LBUTTONDOWN:
-    case WM_LBUTTONUP:
-    case WM_RBUTTONDOWN:
-    case WM_RBUTTONUP:
-    case WM_MBUTTONDOWN:
-    case WM_MBUTTONUP:
-    case WM_XBUTTONDOWN:
-    case WM_XBUTTONUP:
-    case WM_MOUSEWHEEL:
-    case WM_MOUSEHWHEEL:
-    case WM_KEYDOWN:
-    case WM_KEYUP:
-    case WM_SYSKEYDOWN:
-    case WM_SYSKEYUP:
-    case WM_CHAR:
-        return true;
-    default:
-        return false;
-    }
-}
-
-bool isFullscreenKeyMessage(UINT message, WPARAM wParam) {
-    return wParam == VK_F11
-        && (message == WM_KEYDOWN || message == WM_KEYUP
-            || message == WM_SYSKEYDOWN || message == WM_SYSKEYUP);
-}
-
-LRESULT consumeMenuInputMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
-    if (message == WM_INPUT) {
-        // Foreground RIM_INPUT must reach DefWindowProc for User32 cleanup,
-        // but must not be forwarded to Minecraft's original WndProc.
-        return DefWindowProcW(window, message, wParam, lParam);
-    }
-    return 1;
-}
-
 LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
-    if (message == kMsgAcquireMenuCursor) {
-        acquireMenuCursor();
-        return 0;
-    }
-    if (message == kMsgRestoreNativeCursor) {
-        releaseMenuCursor();
-        ::SetCursor(::LoadCursorW(nullptr, IDC_ARROW));
-        return 0;
-    }
     if (message == WM_KILLFOCUS || (message == WM_ACTIVATEAPP && wParam == FALSE)) {
         gCaptureKeyReleases.fill(false);
         structure::resetHotkeyState();
-        gMouseHandoffActive.store(false, std::memory_order_release);
-        releaseMenuCursor();
-        ClipCursor(nullptr);
     }
     if (!gShuttingDown.load(std::memory_order_acquire)
         && message == WM_KEYDOWN && wParam == VK_F11
@@ -520,21 +295,14 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         return gOriginalWndProc ? CallWindowProcW(gOriginalWndProc, window, message, wParam, lParam)
                                 : DefWindowProcW(window, message, wParam, lParam);
     }
-    auto const guiWasVisible = structure::isGuiVisible();
     if (!gShuttingDown.load(std::memory_order_acquire) && gImGuiInitialized
         && (message == WM_KEYDOWN || message == WM_SYSKEYDOWN)
         && structure::handleGuiHotkeyKeyDown(static_cast<unsigned int>(wParam))) {
-        if (!guiWasVisible && structure::isGuiVisible()) releaseGameInput(window);
-        if (guiWasVisible && !structure::isGuiVisible()) confineMouseToClientCenter(window);
         return 1;
     }
     if (!gShuttingDown.load(std::memory_order_acquire) && gImGuiInitialized
         && (message == WM_KEYUP || message == WM_SYSKEYUP)
         && structure::handleGuiHotkeyKeyUp(static_cast<unsigned int>(wParam))) {
-        return 1;
-    }
-    if ((message == WM_KEYUP || message == WM_SYSKEYUP) && wParam == VK_ESCAPE
-        && gConsumeEscapeRelease.exchange(false, std::memory_order_acq_rel)) {
         return 1;
     }
     // Mouse middle/side buttons can be bound as hotkeys too. They arrive as their
@@ -561,8 +329,6 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         if (mouseKey != 0) {
             if (message == WM_MBUTTONDOWN || message == WM_XBUTTONDOWN) {
                 if (structure::handleGuiHotkeyKeyDown(mouseKey)) {
-                    if (!guiWasVisible && structure::isGuiVisible()) releaseGameInput(window);
-                    if (guiWasVisible && !structure::isGuiVisible()) confineMouseToClientCenter(window);
                     return 1;
                 }
             } else if (structure::handleGuiHotkeyKeyUp(mouseKey)) {
@@ -570,35 +336,8 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             }
         }
     }
-    if (!gShuttingDown.load(std::memory_order_acquire) && gImGuiInitialized && structure::isGuiVisible()) {
-        gMouseHandoffActive.store(false, std::memory_order_release);
-        ClipCursor(nullptr);
-        ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam);
-        if (isFullscreenKeyMessage(message, wParam)) {
-            return gOriginalWndProc
-                ? CallWindowProcW(gOriginalWndProc, window, message, wParam, lParam)
-                : DefWindowProcW(window, message, wParam, lParam);
-        }
-        if (message == WM_KEYDOWN && wParam == VK_ESCAPE) {
-            gConsumeEscapeRelease.store(true, std::memory_order_release);
-            structure::closeLegacyGui();
-            confineMouseToClientCenter(window);
-            return 1;
-        }
-        if (isMenuInputMessage(message)) {
-            return consumeMenuInputMessage(window, message, wParam, lParam);
-        }
-        // The handler above already installed the cursor shape ImGui asked for.
-        // Passing WM_SETCURSOR on to the game lets it hide the cursor again, and
-        // other mods read a hidden cursor as "gameplay has the mouse".
-        if (message == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT) return 1;
-    }
-    if (structure::isMenuInputCaptured()
-        && isMenuInputMessage(message)
-        && !isFullscreenKeyMessage(message, wParam)) {
-        return consumeMenuInputMessage(window, message, wParam, lParam);
-    }
-    return forwardToGame(window, message, wParam, lParam);
+    return gOriginalWndProc ? CallWindowProcW(gOriginalWndProc, window, message, wParam, lParam)
+                            : DefWindowProcW(window, message, wParam, lParam);
 }
 
 void executeCommandListsHook(ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists) {
@@ -695,54 +434,22 @@ void render(IDXGISwapChain* swapChain) {
     if (!canUseSwapChainLocked(swapChain)) return;
 
     // Initialize the backend and install the WndProc on the first usable
-    // Present even while the menu is hidden. This matches ChiyanMap's proven
-    // lifecycle: input must be ready before a hotkey can make the UI visible.
+    // Present so hotkeys are available even when no action hint is visible.
     // D3D12 startup may not have exposed its command queue yet, so a failed
     // attempt is intentionally retried on the next Present.
     if (auto callback = gControlFrameCallback.load(std::memory_order_acquire)) callback();
     if (!initializeImGui(swapChain)) return;
     // Keep input/backend initialization and control processing above, but do
-    // not draw the legacy GUI or action hints over the native menu.
+    // not draw action hints over the native menu.
     if (oreui::isMenuOnTop() || ui::hud::hudLayoutEditorActive() || ui::preview::structurePreviewActive()) return;
-    auto const showGui = structure::isGuiVisible();
-    if (gGuiVisibleLastFrame != showGui) {
-        if (!showGui) {
-            prepareMouseHandoff(gWindow);
-            PostMessageW(gWindow, kMsgRestoreNativeCursor, 0, 0);
-        }
-    }
-    gGuiVisibleLastFrame = showGui;
-    if (!showGui) maintainMouseHandoff(gWindow);
-    // Keep the native cursor for the menu: ImGui's software cursor would hide
-    // the OS one and make other mods believe the game still owns the mouse.
-    // See the cursor-ownership note at the top of this file.
+    if (!structure::actionHintActive()) return;
     ImGui::GetIO().MouseDrawCursor = false;
-    auto const showHint = structure::actionHintActive();
-    if (!showGui && !showHint) return;
-
-    if (showGui) {
-        // Re-asserted every frame: a Minecraft screen transition, an alt-tab or
-        // another overlay can hide the cursor again behind our back. The handler
-        // is idempotent, so this never drifts the display counter.
-        PostMessageW(gWindow, kMsgAcquireMenuCursor, 0, 0);
-        ClipCursor(nullptr);
-    }
 
     auto draw = [](ID3D11RenderTargetView* target) {
         gDeviceContext->OMSetRenderTargets(1, &target, nullptr);
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
-        if (structure::isGuiVisible()) {
-            structure::renderGui();
-            // The close button changes visibility during this render call,
-            // after the frame-level transition check above.
-            if (!structure::isGuiVisible()) {
-                prepareMouseHandoff(gWindow);
-                PostMessageW(gWindow, kMsgRestoreNativeCursor, 0, 0);
-                gGuiVisibleLastFrame = false;
-            }
-        }
         structure::renderActionHint();
         ImGui::Render();
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
@@ -855,7 +562,7 @@ HRESULT __stdcall resizeHook(
     // Although LHolo creates its wrapped back buffer and RTV per frame, the
     // D3D11On12 context may still retain state from the last submission. Use
     // the same full graphics-backend teardown as the proven F11 path, while
-    // preserving the ImGui context, Win32 backend and menu state.
+    // preserving the ImGui context, Win32 backend and control-frame callback.
     prepareForSwapChainResizeLocked();
 
     auto const result = gOriginalResizeBuffers(swapChain, count, width, height, format, flags);
@@ -1022,11 +729,6 @@ namespace {
 
 void shutdownLocked() {
     gShuttingDown.store(true, std::memory_order_release);
-    gMouseHandoffActive.store(false, std::memory_order_release);
-    // Best effort: leave the cursor exactly where Minecraft expects it if the
-    // mod is unloaded while the menu is still open.
-    releaseMenuCursor();
-    ClipCursor(nullptr);
     removeHook(gExecuteTarget);
     removeHook(gResize1Target);
     removeHook(gPresent1Target);
@@ -1048,15 +750,8 @@ void shutdownLocked() {
     if (gGameQueue) gGameQueue->Release();
     gGameQueue = nullptr;
     gActiveSwapChain = nullptr;
-    {
-        std::lock_guard inputLock(gInputStateMutex);
-        gGameKeysDown.fill(false);
-        gGameMouseButtonsDown.fill(false);
-    }
-    gConsumeEscapeRelease.store(false, std::memory_order_release);
     gGraphicsResumeAt.store(0, std::memory_order_release);
     gInstallRetryAt.store(0, std::memory_order_release);
-    gGuiVisibleLastFrame = false;
     gWindow = nullptr;
     gInstalled.store(false, std::memory_order_release);
 }

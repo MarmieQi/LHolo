@@ -93,14 +93,7 @@ struct LoadedStructure {
 // The first covering region owns schematic air; solid/liquid winners keep their own sourceIndex.
 int coveringSource(LoadedStructure const&, int x, int y, int z);
 
-// Legacy ImGui is retained for compatibility but has no opening entry point.
-void closeLegacyGui();
-bool isGuiVisible();
 bool shouldShowProjectedBlockName();
-bool isInputTransitionBlocked();
-// True while the LHolo menu owns keyboard and mouse input. Keep input guards
-// on every platform-facing path behind this single policy predicate.
-bool isMenuInputCaptured();
 bool handleGuiHotkeyKeyDown(unsigned int virtualKey);
 bool handleGuiHotkeyKeyUp(unsigned int virtualKey);
 bool handleProjectionOffsetWheel(short wheelDelta);
@@ -133,7 +126,6 @@ void setMaterialHudEnabled(bool enabled);
 // (same encoding as the projection HUD position). Default 3.
 int  materialHudPosition();
 void setMaterialHudPosition(int position);
-void renderGui();
 void requestMaterialList();
 void loadSettings();
 void saveSettings();

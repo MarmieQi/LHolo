@@ -503,7 +503,6 @@ void testStructureUiState() {
     hud.showLayer = false;
     hud.showProjectedBlockName = false;
     hud.position = 3;
-    hud.uiScale = 1.5f;
     LHOLO_CHECK(state.applyHud(hud));
     LHOLO_CHECK(!state.applyHud(hud));
     auto const appliedHud = state.hud();
@@ -511,7 +510,6 @@ void testStructureUiState() {
     LHOLO_CHECK(!appliedHud.showLayer);
     LHOLO_CHECK(!appliedHud.showProjectedBlockName);
     LHOLO_CHECK(appliedHud.position == 3);
-    LHOLO_CHECK(appliedHud.uiScale == 1.5f);
 
     state.resetHotkeys();
     auto const guiSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::Gui);
@@ -560,7 +558,7 @@ void testStructureUiState() {
     LHOLO_CHECK(pending.settingsSave);
 
     state.clearMaterials();
-    LHOLO_CHECK(!state.materialListReady());
+    LHOLO_CHECK(!state.materialListSnapshotIfChanged(std::nullopt)->ready);
     state.requestMaterialList();
     LHOLO_CHECK(state.consumeMaterialListRequest());
     LHOLO_CHECK(!state.consumeMaterialListRequest());
@@ -568,11 +566,11 @@ void testStructureUiState() {
         {.displayName = "Stone", .typeName = "minecraft:stone",
          .itemId = "minecraft:stone", .count = 12}
     });
-    LHOLO_CHECK(state.materialListReady());
+    LHOLO_CHECK(state.materialListSnapshotIfChanged(std::nullopt)->ready);
     // Reopening a completed list must not queue another full structure scan.
     state.requestMaterialList();
     LHOLO_CHECK(!state.consumeMaterialListRequest());
-    auto const materials = state.materialRequirements();
+    auto const materials = state.materialListSnapshotIfChanged(std::nullopt)->requirements;
     LHOLO_CHECK(materials.size() == 1);
     LHOLO_CHECK(materials[0].typeName == "minecraft:stone");
     LHOLO_CHECK(materials[0].itemId == "minecraft:stone");
@@ -592,7 +590,7 @@ void testStructureUiState() {
     LHOLO_CHECK(hudMaterials.available.size() == 1);
     LHOLO_CHECK(hudMaterials.available[0] == 2);
     // Updating the current-layer HUD must not replace the whole-structure list.
-    LHOLO_CHECK(state.materialRequirements()[0].typeName == "minecraft:stone");
+    LHOLO_CHECK(state.materialListSnapshotIfChanged(std::nullopt)->requirements[0].typeName == "minecraft:stone");
     state.clearMaterialHud();
     LHOLO_CHECK(!state.materialHudSnapshot().ready);
 
@@ -621,18 +619,6 @@ void testStructureUiState() {
     LHOLO_CHECK(hint.text == lholo::i18n::tr(lholo::i18n::TextKey::StatusWorldExited));
     LHOLO_CHECK(hint.expiry == 1234);
 
-    state.setGuiVisible(false);
-    state.setGuiVisible(true); // Fixture for legacy-state cleanup, not an opening entry point.
-    LHOLO_CHECK(state.guiVisible());
-    LHOLO_CHECK(state.guiVisible());
-    state.setOpeningInputBlockFrames(1);
-    LHOLO_CHECK(state.openingInputBlocked());
-    state.consumeOpeningInputBlockFrame();
-    LHOLO_CHECK(!state.openingInputBlocked());
-
-    state.setGuiVisible(true);
-    state.setOpeningInputBlockFrames(3);
-    state.setBlockGameInputUntil(900);
     state.beginHotkeyCapture(moveLeftSlot);
     state.setControlHeld(true);
     state.queueOffsetDelta(1, 0, 0);
@@ -650,12 +636,9 @@ void testStructureUiState() {
     );
     state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::StatusWorldExited}, 9999);
     state.resetWorldSession();
-    LHOLO_CHECK(!state.guiVisible());
-    LHOLO_CHECK(!state.openingInputBlocked());
-    LHOLO_CHECK(state.blockGameInputUntil() == 0);
     LHOLO_CHECK(!state.capturingHotkey());
     LHOLO_CHECK(state.currentHotkeyModifiers() == 0);
-    LHOLO_CHECK(!state.materialListReady());
+    LHOLO_CHECK(!state.materialListSnapshotIfChanged(std::nullopt)->ready);
     LHOLO_CHECK(!state.materialHudSnapshot().ready);
     LHOLO_CHECK(state.actionHint().text.empty());
     LHOLO_CHECK(state.actionHint().expiry == 0);
@@ -673,13 +656,12 @@ void testStructureUiState() {
     // it whereas the transient flags above are cleared.
     LHOLO_CHECK(!state.altWheelOffsetEnabled());
 
-    state.setGuiVisible(false);
     state.resetHotkeys();
     // "Reset all hotkeys" also restores the fixed-gesture switch.
     LHOLO_CHECK(state.altWheelOffsetEnabled());
     state.resetHotkeyState();
     state.clearMaterials();
-    LHOLO_CHECK(!state.materialListReady());
+    LHOLO_CHECK(!state.materialListSnapshotIfChanged(std::nullopt)->ready);
     state.setExperimentalConsentGiven(false);
     state.setMaterialHudEnabled(false);
     state.setMaterialHudPosition(3);

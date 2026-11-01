@@ -16,7 +16,7 @@
 #include "ll/api/service/Bedrock.h"
 #include "mc/client/game/ClientInstance.h"
 #include "mc/client/game/ClientInstanceState.h"
-#include "input/MenuInputGuard.h"
+#include "input/ProjectionInputGuard.h"
 #include "input/MenuOpenRequest.h"
 #include "oreui/OreUiBridge.h"
 #include "oreui/OreUiScreen.h"
@@ -99,15 +99,8 @@ bool AppKernel::enable() {
         logger.warn("Failed to install easy-place hooks");
     }
 
-    auto const menuInputGuardStatus = input::installMenuInputGuard();
-    if (!menuInputGuardStatus.mouseInputHookInstalled) {
-        logger.warn("Failed to install menu mouse-input guard");
-    }
-    if (!menuInputGuardStatus.keyDownInputHookInstalled) {
-        logger.warn("Failed to install menu key-down guard");
-    }
-    if (!menuInputGuardStatus.keyUpInputHookInstalled) {
-        logger.warn("Failed to install menu key-up guard");
+    if (!input::installProjectionInputGuard()) {
+        logger.warn("Failed to install projection mouse-wheel guard");
     }
 
     overlay::setControlFrameCallback([] { AppKernel::getInstance().processControlFrame(); });
@@ -145,7 +138,7 @@ bool AppKernel::disable() {
     place::resetWorldSession();
     structure::resetWorldSession();
     structure::capture::clear();
-    input::uninstallMenuInputGuard();
+    input::uninstallProjectionInputGuard();
     place::uninstallHook();
     projection::detail::projectionController().uninstallHooks();
     // Projection hooks contain the automatic overlay-install retry path, so

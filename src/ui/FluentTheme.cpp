@@ -13,10 +13,7 @@ ImGuiStyle gBaseStyle{};
 float      gLastScale{-1.0f};
 ImVec2     gLastViewport{-1.0f, -1.0f};
 
-// The 36px CJK atlas is deliberately displayed larger than the default ImGui
-// logical size.  The additional 1.30 factor is the requested global increase
-// and applies consistently to navigation, fields, buttons and hit areas,
-// without changing uiScale's persisted 1.0–5.0 meaning.
+// Keep action hints at the original UI density with the existing 36px atlas.
 constexpr float kMenuDensity{1.18f * 1.30f};
 
 ImVec4 color(float r, float g, float b, float a = 1.0f) { return {r, g, b, a}; }
@@ -27,10 +24,7 @@ UiMetrics calculateMetrics(ImVec2 viewport, float uiScale) {
     UiMetrics metrics;
     metrics.viewport = viewport;
     metrics.scale = std::clamp(uiScale, 1.0f, 5.0f);
-    auto const logicalWidth = viewport.x / metrics.scale;
-    metrics.compact = logicalWidth < 900.0f || viewport.x < viewport.y * 1.15f;
-    // Keep the menu visually quiet.  These are logical dimensions and are
-    // scaled once below, rather than being tied to a particular resolution.
+    // Logical dimensions are scaled once below.
     metrics.gap = 8.0f * metrics.scale * kMenuDensity;
     metrics.outerPadding = 16.0f * metrics.scale * kMenuDensity;
     metrics.sectionPadding = 12.0f * metrics.scale * kMenuDensity;

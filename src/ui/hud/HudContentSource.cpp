@@ -21,7 +21,7 @@ HudContent readHudContent() {
     auto const pageDelta = input::consumeMaterialHudPageRequest();
     HudContent result;
     bool const editing = hudLayoutEditorActive();
-    if (!editing && (structure::isGuiVisible() || oreui::isMenuOnTop())) return result;
+    if (!editing && oreui::isMenuOnTop()) return result;
     auto& state = structure::detail::StructureUiState::getInstance();
     auto settings = state.hud();
     if (editing) settings.enabled = true;

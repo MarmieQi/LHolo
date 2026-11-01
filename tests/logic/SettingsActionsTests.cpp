@@ -33,7 +33,6 @@ int runSettingsActionsTests() {
     auto check = [&](bool ok, char const* msg) { if (!ok) {++failures; std::fprintf(stderr, "SettingsActionsTests: %s\n", msg);} };
     resetSettingsActions(); ui.resetHotkeys(); ui.setExperimentalConsentGiven(false);
     place::setEnabled(false); place::setManualMode(false); place::setRangeEnabled(false);
-    ui.setUiScale(3.7f);
     auto snapshot = getSettingsSnapshot();
     nlohmann::json j{{"id", 1}, {"context", snapshot.context}, {"action", "set"}, {"field", "hudEnabled"}, {"expected", ui.hud().enabled}, {"value", false}};
     check(oreui::parseSettingsIntent(j.dump()).has_value(), "valid HUD boolean");
@@ -54,7 +53,6 @@ int runSettingsActionsTests() {
         check(submitSettingsIntent(i), "queue setting"); return processSettingsActions();
     };
     check(apply(F::HudEnabled, !ui.hud().enabled), "HUD change needs persistence");
-    check(ui.hud().uiScale == 3.7f, "HUD edits preserve old ImGui scale");
     check(apply(F::HudPosition, (ui.hud().position + 1) % 4), "HUD position persisted");
     check(apply(F::WriteHudEnabled, !ui.writeHudEnabled()), "independent write HUD toggle uses saved-settings path");
     check(apply(F::MaterialHudEnabled, !ui.materialHudEnabled()), "material HUD toggle");

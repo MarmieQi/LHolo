@@ -1,10 +1,10 @@
 # LHolo OreUI 架构与渐进迁移
 
-## 当前状态（2026-10-27）
+## 当前状态（2026-11-01）
 
 保留当前自有深色菜单，原版设置页风格试验已回滚。
 左侧“建造任务”已接入原生任务目录：新建、重命名、删除、附加外部文件、路径修复、顺序、显隐和选中项均通过 tasks 协议保存到 `data/tasks.json`。世界中选择/新建任务后自动加载，先按文件各自的变换/切片和优先级合成，再交给现有投影管线；结构变换、切片、移动快捷键、HUD/材料及放置查询作用于激活任务的选中文件。任务页使用一个加载/关闭按钮：当前选中任务未激活时显示“加载任务”，已激活或原生正在加载时显示“关闭任务投影”；关闭后可重新加载以读取外部文件，标题界面只管理任务数据。示例数据只存在于 `frontend/preview/tasks.ts`；正式前端不保存任务副本。文件三维预览现使用独立原生场景，仍待实机验收。代码和隔离测试完成，游戏内验收待进行；打开菜单默认显示“建造任务”页，旧“投影”页和它专用的路径浏览、加载、关闭、恢复 query 已移除。材料清单入口移至任务页，统计选中文件并显示文件名。
-聊天输入 LHolo 或使用已配置的菜单快捷键（默认 Alt+M）打开 OreUI 主菜单。旧 ImGui 菜单保留代码但隐藏，不再提供打开入口。
+聊天输入 LHolo 或使用已配置的菜单快捷键（默认 Alt+M）打开 OreUI 主菜单。旧 C++ ImGui 菜单、模型、控件、控制器及其可见/输入过渡/缩放状态已删除，光标接管和失效键盘 Hook 一并移除。投影滚轮保护保留在 input/ProjectionInputGuard；ImGui 暂留动作提示及后端快捷键捕获/控制帧，普通 HUD、编辑器和预览仍使用原生通路。
 任务删除和文件移除按用户要求增加二次确认，复用新建/重命名任务的同一个弹窗。弹窗显示操作对象名称，只有点击“确定”才提交原生意图；取消、点击遮罩或切换页面都不删除数据。确认目标按打开弹窗时的任务/文件 ID 保存。
 现行界面通过建造任务管理文件与投影，并提供创建结构、结构变换、渲染设置、HUD、快捷键、语言和实验性功能。
 快捷键页不再提供“加载投影”和“关闭投影”绑定；加载与关闭由建造任务页控制。
@@ -47,8 +47,8 @@ OreUiMenuResources 负责内置资源包的限定 URL 读取适配，只处理 L
 Gameface 的普通 div 默认按纵向 flex 排列直接子节点。连续文案须先组成一个字符串再交给单个文本节点；需要不同样式时，使用显式横向容器与独立 span。当前选中文件提示由 SelectedFileContext 统一提供。任务错误显式分为两行：第一行“任务错误: 文件名”，第二行错误原因；每行各自保持单个文本节点，避免标点单独成行。
 打开与另存为的全局互斥由 StructureFilePicker 服务负责，两个功能绑定不互相引用。
 FilePicker 不依赖 Gameface、ImGui、结构会话、投影或模组日志。
-MenuBindings 将投影意图提交给 structure/ProjectionActions，不复制 LoadedStructure 或 MenuModel。
-ProjectionActions 在现有应用控制帧统一执行加载、关闭和恢复，读取玩家坐标并复用 StructureFileLoader / StructureSession；业务模块不依赖 OreUI 协议。旧菜单和快捷键也复用这一入口。
+MenuBindings 将投影意图提交给 structure/ProjectionActions，不复制结构加载逻辑。
+ProjectionActions 在现有应用控制帧统一执行加载、关闭和恢复，读取玩家坐标并复用 StructureFileLoader / StructureSession；业务模块不依赖 OreUI 协议。快捷键也复用这一入口。
 应用控制帧在 ImGui 初始化之前处理请求，操作执行不依赖旧菜单成功初始化。
 不为首个功能预建通用服务框架；后续按选定业务扩展绑定。
 
@@ -68,7 +68,7 @@ ProjectionActions 在现有应用控制帧统一执行加载、关闭和恢复�
 - 只提供现有客户端模式。两点可手动输入完整的 int32 XYZ，或记录玩家脚下坐标；整组留空表示该点尚未设置，半组坐标、分数、越界输入禁止提交。
 - 创建页沿用旧 UI 的操作集合：两处“使用玩家当前位置”、包含实体、清除选区、导出 .mcstructure，不增加“应用选区”按钮。坐标文本换页保留，有效坐标和实体开关自动提交给原生会话，原有红色线框随原生选区更新；不完整或越界的文本保留对应点的上一次有效值，禁止导出无效输入。重新开屏从原生会话恢复，不写配置。
 - 自动同步同一时刻只有一个请求，连续输入合并到最新草稿；较早的应答不覆盖新文本，应答后继续同步最新内容。自动同步期间允许继续编辑，取位置、清除、导出等操作等待当前请求结束；外部选区/世界变化仍以原生快照为准。
-- 显示包含两端点的尺寸与体积；可视按钮、输入框和勾选框由 components/LHoloControls.tsx 自行绘制，旧 ImGui 的 src/ui/FluentTheme.cpp 与 MenuPages.cpp 是外观与排版基准。坐标以 XYZ 与取当前位置按钮紧凑横排。platform/native 只暴露原版焦点/激活原语，版本符号只在 runtime_adapter.js 中解析，不再直接使用 Form.TextField、BaseTextField 或 Switch 的可视组件。
+- 显示包含两端点的尺寸与体积；可视按钮、输入框和勾选框由 components/LHoloControls.tsx 自行绘制，沿用 LHolo 既有深色样式和排版。坐标以 XYZ 与取当前位置按钮紧凑横排。platform/native 只暴露原版焦点/激活原语，版本符号只在 runtime_adapter.js 中解析，不再直接使用 Form.TextField、BaseTextField 或 Switch 的可视组件。
 - 记录位置、坐标/实体自动同步、清除与导出先进入 CaptureActions，现有应用控制帧统一执行。捕获调用原有 StructureTemplate / exporter，同步读取世界，不把 BlockSource 移到后台线程。
 - 导出使用独立 STA 上的现代 IFileSaveDialog，默认 structure.mcstructure，仅允许 .mcstructure，保留覆盖确认。取消不改选区、不触发导出、不自动载入投影。
 - 保存期间禁用编辑和重复提交；关闭菜单取消未完成保存选择。已提交应用控制帧的操作由业务层完成。
@@ -115,14 +115,14 @@ lholo.transform.intent 接收 {id, context, field, expected, value}；lholo:tran
 
 - SettingsActions 在 AppKernel 控制帧执行，返回是否需要保存；HUD、材料 HUD、Alt+滚轮、语言、半径/冷却和知情确认沿用现有持久化。三个辅助放置模式是实时会话状态，互斥切换，未授权不能开启，单纯启停不请求保存。模式切换先清除原有模式及手动按压状态。context 沿用加载 revision，旧世界或加载前排队的意图失效。
 - settings snapshot 发布 values、hotkeys、languages、consent、context、ack、accepted、hotkeysRevision。字段编辑仅传对应 expected/value；动作包括 set/capture/clearHotkey/resetHotkey/resetHotkeys/consent。快捷键动作携带原生 revision 和受限 slot，拒绝旧快照；取消捕获为独立无参 query，可取消尚未执行的 capture。字段和类型均白名单，拒绝分数、越界、未知字段、无效 locale 和超 4096 字节 payload；协议不接受 uiScale。
-- input/HotkeyCapture 抽出旧菜单原有捕获规则，两个入口共用，原生正式前端不自行翻译 KeyboardEvent.key。Overlay 在 OreUI 激活捕获期间只把按键/中键/侧键交给捕获器，其余时候仍由原版场景接收；保留 F11 的完整生命周期，认领的重复按下和释放不泄漏给场景。Esc 取消捕获不会同时关闭菜单。切页 query、关闭菜单、原生上下文销毁清理捕获。HotkeyDefinitions 共用于旧菜单和 OreUI 标签，按键名称仍由 HotkeyFormat 格式化；默认键值只在 StructureUiState 原有表中维护。
-- 语言代码和列表来自 i18n 动态注册表，不硬编码四个语言索引。OreUiBridge 观察语言变化主动重发 labels，开屏中旧菜单/后端改变语言也能刷新；名称沿用每种语言自己的 displayName。
-- OreUI 界面设置仅提供语言选择，已移除缩放占位控件、说明与局部状态，不影响旧 ImGui 缩放。HUD 通过 StructureUiState 的原子单字段 setter 修改目标字段，不经过包含 uiScale 的整份 applyHud 回写。
+- input/HotkeyCapture 抽出旧菜单原有捕获规则，两个入口共用，原生正式前端不自行翻译 KeyboardEvent.key。Overlay 在 OreUI 激活捕获期间只把按键/中键/侧键交给捕获器，其余时候仍由原版场景接收；保留 F11 的完整生命周期，认领的重复按下和释放不泄漏给场景。Esc 取消捕获不会同时关闭菜单。切页 query、关闭菜单、原生上下文销毁清理捕获。HotkeyDefinitions 共用于输入处理和 OreUI 标签，按键名称仍由 HotkeyFormat 格式化；默认键值只在 StructureUiState 原有表中维护。
+- 语言代码和列表来自 i18n 动态注册表，不硬编码四个语言索引。OreUiBridge 观察语言变化主动重发 labels，开屏中后端改变语言也能刷新；名称沿用每种语言自己的 displayName。
+- OreUI 界面设置仅提供语言选择，已移除缩放占位控件、说明与局部状态；旧 ImGui 菜单缩放状态也已删除。HUD 通过 StructureUiState 的原子单字段 setter 修改目标字段，保留各自的原生缩放设置。
 - 实验性说明继续使用旧 UI 的原文和确认流程；取消无启用请求，确认后等原生授权/模式应答。后端独立校验授权，模式勾选不能由前端草稿自称成功。半径 1～4、冷却 0～60，原生与前端均验证。
 
 本次检查纠正了前端写死语言表/语言索引、复制快捷键默认值、将 Esc/退格/F11 当普通绑定、恢复默认仅改前端、知情授权和模式互斥只存在于草稿的问题。这些状态现在由原生拥有，正式页面只保留 UI 文本/弹窗；没有新增用户操作。检查范围是这些页面与共用设置/输入通路，不宣称完成全仓库审计。
 
-验证：原生测试覆盖字段与 slot/范围/locale 校验、HUD 不覆盖旧缩放、未授权拒绝、模式互斥且不保存、原生默认与快捷键 revision、捕获重复冲突及 Esc/退格/F11/侧键；前端测试覆盖连续编辑、原生回显、动态语言、新世界丢弃旧模式、取消无启用与界面设置无缩放占位控件。浏览器捕获模拟仅在 preview/，不替代游戏 Win32/Gameface 的输入验证。
+验证：原生测试覆盖字段与 slot/范围/locale 校验、HUD 单字段编辑、未授权拒绝、模式互斥且不保存、原生默认与快捷键 revision、捕获重复冲突及 Esc/退格/F11/侧键；前端测试覆盖连续编辑、原生回显、动态语言、新世界丢弃旧模式、取消无启用与界面设置无缩放占位控件。浏览器捕获模拟仅在 preview/，不替代游戏 Win32/Gameface 的输入验证。
 
 ## 当前协议
 
@@ -168,7 +168,7 @@ CaptureFacetLifetimeTests 使用生产 Facet 类与 SDK 继承布局，替换独
 
 ## 控件与旧 UI 对齐约束
 
-迁移以旧 ImGui 的 MenuPages.cpp / MenuController.cpp 为行为依据，原有按钮、选项与操作集合保持一致；不得擅自新增确认、应用等步骤。创建页不显示“应用选区”按钮，协议内部 apply 仅用于自动同步，不是额外的用户操作。
+正式页面保留既有按钮、选项与操作集合；不得因移除旧 C++ 菜单而擅自新增确认、应用等步骤。创建页不显示“应用选区”按钮，协议内部 apply 仅用于自动同步，不是额外的用户操作。
 
 菜单滚动条在浏览器预览和 Gameface 中均隐藏，仍支持滚轮、触摸及原版焦点滚动。浏览器只隐藏原生滚动条，不设置 overflow:hidden；Gameface 使用原版 ScrollView 的 floating 和 scrollbarClassName 参数，仅让滚动条不可见且不接收指针，保留其测量和滚动机制，不禁用滚动。
 

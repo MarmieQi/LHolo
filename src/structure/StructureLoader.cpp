@@ -30,12 +30,10 @@
 #include "ui/HotkeyFormat.h"
 #include "structure/ProjectionActions.h"
 #include "structure/TransformActions.h"
-#include "ui/MenuController.h"
 #include "structure/capture/StructureCapture.h"
 #include "structure/capture/CaptureActions.h"
 #include "structure/java_to_bedrock/JavaToBedrock.h"
 #include "ui/FluentTheme.h"
-#include "ui/LHoloMenu.h"
 #include "place/PlaceHelper.h"
 #include "plugin/LHolo.h"
 #include "projection/Projection.h"
@@ -112,24 +110,9 @@ void requestMaterialList() {
     detail::requestMaterialListRefresh();
 }
 
-void closeLegacyGui() {
-    uiState().setGuiVisible(false);
-    uiState().setBlockGameInputUntil(GetTickCount64() + 180);
-}
-
-bool isGuiVisible() { return uiState().guiVisible(); }
-
 bool shouldShowProjectedBlockName() {
     auto const hud = uiState().hud();
     return hud.enabled && hud.showProjectedBlockName;
-}
-
-bool isInputTransitionBlocked() {
-    return GetTickCount64() <= uiState().blockGameInputUntil();
-}
-
-bool isMenuInputCaptured() {
-    return isGuiVisible() || isInputTransitionBlocked();
 }
 
 bool handleGuiHotkeyKeyDown(unsigned int virtualKey) {
@@ -167,7 +150,6 @@ bool handleGuiHotkeyKeyDown(unsigned int virtualKey) {
         }
         return true;
     }
-    if (isGuiVisible()) return false;
 
     for (std::size_t index = 0; index < input::kMoveHotkeyCount; ++index) {
         auto const hotkey = uiState().inputHotkey(index + input::kMoveHotkeyFirst);
@@ -234,7 +216,7 @@ bool handleGuiHotkeyKeyUp(unsigned int virtualKey) {
 }
 
 bool handleProjectionOffsetWheel(short wheelDelta) {
-    if (isGuiVisible() || !uiState().altWheelOffsetEnabled() || !uiState().altHeld()
+    if (!uiState().altWheelOffsetEnabled() || !uiState().altHeld()
         || !detail::StructureSession::getInstance().hasLoaded()) {
         return false;
     }
@@ -384,10 +366,6 @@ void renderActionHint() {
     ImGui::End();
     ImGui::PopStyleVar(2);
     ImGui::PopStyleColor();
-}
-
-void renderGui() {
-    lholo::ui::renderStructureMenu();
 }
 
 void loadSettings() {
@@ -574,7 +552,7 @@ void recordProjectionAnchor(int x, int y, int z) {
 // gesture is enabled, a projection is loaded AND the Alt key is held.
 // Deliberately reads the same event-tracked Alt state the wheel handler uses,
 // so the lock and the projection move engage under exactly the same condition
-// and cost nothing while idle. The mouse-input hook (input/MenuInputGuard)
+// and cost nothing while idle. The mouse-input hook (input/ProjectionInputGuard)
 // consults this to suppress wheel-driven hotbar changes at the Bedrock input
 // boundary, so disabling the gesture releases the wheel immediately instead of
 // waiting for a key-up.
