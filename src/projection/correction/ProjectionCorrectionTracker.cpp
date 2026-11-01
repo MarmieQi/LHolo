@@ -172,12 +172,12 @@ CorrectionProgressChanges updateCorrectionTracker(
             || bannerState == CorrectionState::WrongType) {
             nextState = CorrectionState::WrongType;
         } else if ((expected && !projectionStatesMatch(
-                        // Native wall/fence/pane connections are derived from
+                        // Native component/wall connections are derived from
                         // the neighborhood, rather than player orientation.
                         // Normalize Java or unflattened palette states before
                         // comparing with the real world's current permutation.
                         withNeighborConnections(*expected, region, position),
-                        actual
+                        actual, region, position
                     ))
             || (expectedLiquid && !projectionStatesMatch(*expectedLiquid, actualLiquid))
             || bannerState == CorrectionState::WrongState) {

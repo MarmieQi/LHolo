@@ -7,11 +7,13 @@
 // (at your option) any later version.
 
 #include "projection/core/ProjectionRules.h"
+#include "projection/correction/StairShapeComparison.h"
 
 #include <array>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/deps/nbt/IntTag.h"
@@ -25,7 +27,9 @@
 #include "mc/world/level/block/NeighborDirection.h"
 #include "mc/world/level/block/VanillaStates.h"
 #include "mc/world/level/block/WallBlock.h"
+#include "mc/world/level/block/components/BlockConnectionComponent.h"
 #include "mc/world/level/block/states/VanillaBlockStateTransformUtils.h"
+#include "mc/world/level/block/states/BuiltInBlockStates.h"
 #include "mc/world/level/levelgen/structure/LegacyStructureSettings.h"
 
 #include "projection/world/ProjectionVirtualWorld.h"
@@ -114,10 +118,11 @@ Block const& withNeighborConnections(
 ) {
     auto const& blockType = block.getBlockType();
     auto const wall = blockType.isWallBlock();
-    if (!wall && !blockType.isFenceBlock() && !blockType.isThinFenceBlock()) return block;
-    // The flattened connection update handles data-driven families (panes,
-    // iron bars) whose arms are not in builtin Connection states. It also
-    // APPLIES the recomputed block to the region
+    // Native connection callbacks also own derived states such as stair
+    // corners. Select the capability, rather than an incomplete family list.
+    if (!wall && !block.tryGetComponent<BlockConnectionComponent>()) return block;
+    // The connection update resolves the callbacks registered by the game.
+    // It also APPLIES the recomputed block to the region
     // it is given — that filled the real world with ghost blocks — so run it
     // with region writes suppressed and use only its return value. Neighbor
     // reads still answer with the projected blocks while a tessellation scope
@@ -200,6 +205,34 @@ bool projectionStatesMatch(Block const& expected, Block const& actual) {
     }
 
     return false;
+}
+
+bool projectionStatesMatch(
+    Block const& expected, Block const& actual, IConstBlockSource const& region, BlockPos const& position
+) {
+    if (projectionStatesMatch(expected, actual)) return true;
+    if (expected.getTypeName() != actual.getTypeName()
+        || !expected.getTypeName().starts_with("minecraft:")
+        || !expected.hasProperty(BlockProperty::Stair)
+        || !actual.hasProperty(BlockProperty::Stair)) return false;
+
+    auto const expectedCorner = expected.getState<CornerShape>(BuiltInBlockStates::Corner());
+    auto const actualCorner = actual.getState<CornerShape>(BuiltInBlockStates::Corner());
+    if (!expectedCorner || !actualCorner
+        || *expectedCorner == CornerShape::None || *actualCorner == CornerShape::None) return false;
+    auto const actualDirection = actual.getState<int>(VanillaStates::WeirdoDirection());
+    if (!actualDirection) return false;
+    // Only the direction/corner representation may differ. Palette setters
+    // preserve the upside-down flag and every other present or future state.
+    auto const alignedDirection = expected.setState(VanillaStates::WeirdoDirection(), *actualDirection);
+    if (!alignedDirection) return false;
+    auto const aligned = alignedDirection->setState(BuiltInBlockStates::Corner(), static_cast<int>(*actualCorner));
+    if (!aligned || !(*aligned == actual)) return false;
+
+    std::vector<AABB> expectedShape, actualShape;
+    expected.getBlockType().addAABBs(expected, region, position, nullptr, expectedShape);
+    actual.getBlockType().addAABBs(actual, region, position, nullptr, actualShape);
+    return sameStairShape(expectedShape, actualShape);
 }
 
 // Front face (Facing 0-5) for a block-entity placeholder, read from whichever

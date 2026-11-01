@@ -343,9 +343,9 @@ void buildProjectionSection(
                     nullptr
                 ));
             }
-            // Normalize native wall arms/posts and flattened fence/pane arms
-            // against the projected neighborhood. Java wall states may differ
-            // from Bedrock, and palettes omit flattened connection states.
+            // Resolve native connection components and legacy wall arms/posts
+            // against the projected neighborhood. Java states may differ
+            // from Bedrock, and palettes can omit derived connection states.
             // This scope supplies projected blocks to native reads; region
             // writes attempted by the update are suppressed.
             Block const& renderBlock = withNeighborConnections(

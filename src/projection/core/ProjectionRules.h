@@ -19,6 +19,7 @@
 
 class Block;
 class BlockSource;
+class IConstBlockSource;
 class LegacyStructureSettings;
 
 namespace lholo::projection::detail {
@@ -34,8 +35,9 @@ Block const* transformExpectedBlock(
     bool                           identityTransform
 );
 
-// Recomputes neighbor-owned geometry using native rules: WallBlock helpers
-// for wall arms/posts, and connectionUpdate for fences, panes and iron bars.
+// Recomputes neighbor-owned states using native rules: WallBlock helpers for
+// legacy wall arms/posts, and connectionUpdate for blocks with the native
+// BlockConnectionComponent (including stair corners and fence/pane arms).
 // Returns the immutable palette block normalized for the neighborhood
 // the caller sees at `position` (the projected virtual
 // world while a tessellation scope is active, the real world otherwise), or
@@ -50,6 +52,11 @@ Block const& withNeighborConnections(
 );
 
 bool projectionStatesMatch(Block const& expected, Block const& actual);
+// World-aware correction additionally accepts equivalent native corner-stair
+// shapes while retaining all states other than the two corner representations.
+bool projectionStatesMatch(
+    Block const& expected, Block const& actual, IConstBlockSource const& region, BlockPos const& position
+);
 
 [[nodiscard]] constexpr bool isVanillaSaplingType(std::string_view blockTypeName) {
     return blockTypeName.starts_with("minecraft:") && blockTypeName.ends_with("_sapling");

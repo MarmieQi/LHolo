@@ -449,7 +449,7 @@ LevelListener，即使首个投影尚未激活，世界销毁回调也先清空�
 
 - 实体模型走原版 `tessellateInWorld()`，并按原版 render layer 分桶。相邻实体方块只在 LHolo 生成网格的线程局部作用域内通过 `BlockSource::getBlock()` 暴露，供门等邻居相关模型正确生成；作用域外始终调用原版函数，不改变世界。
 - 网格化与纠错前统一经 `ProjectionRules::withNeighborConnections()` 按当前基岩版原生规则归一化邻域派生状态：网格化时 `BlockSource::getBlock()` 钩子让计算读到完整投影虚拟邻域（旋转/镜像后方向仍正确），纠错时读真实邻域，不直接把 Java 记录的邻域状态当作玩家可控朝向。
-- 1.26.51 起栅栏、玻璃板、铁栏杆的连接臂由原版从派生连接状态读取，结构调色板不存储这些状态，因此仍通过 `BlockType::connectionUpdate()` 重算。不能退化为手搓 `canConnect()` 或设置内建 `Connection*` 状态，后者不能覆盖玻璃板等数据驱动原型。
+- 邻接更新按原生能力选择：`Block::tryGetComponent<BlockConnectionComponent>()` 检查方块实际的连接组件，再由现有 `BlockType::connectionUpdate()` 调用游戏注册的回调。楼梯的 `minecraft:corner`、栅栏、玻璃板和铁栏杆等派生连接状态都走这条通路；禁止仅按楼梯/栅栏名称或类型白名单筛选。Java 映射只保留楼梯朝向与上下半部，拐角由基岩版回调依照当前邻域重算，不复制 Java 的拼接规则或忽略完整状态比较。组件查询使用游戏原生接口，不在模组内分配原生组件类型 ID。
 - 墙体由 `BlockType::isWallBlock()` 识别，使用 SDK 的 `WallBlock::_desiredConnectionState()` 计算四向 `WallConnectionType`，再使用 `WallBlock::_shouldBePost()` 对已完成连接的状态计算 `WallPostBit`；`Block::setState()` 只选择不可变调色板排列，不写入区域。Java 的 low/tall/up 状态和基岩版自然连接规则可能不同，因此墙体不走栅栏的扁平连接组件，也不直接忽略全部墙状态。禁止调用会写入世界和加入更新队列的 `tryFixWallStates()` 来做投影计算。该通路复用既有纠错预算与方块更新事件，不增加轮询或全图扫描；实机回归覆盖直墙、转角、交叉、上方覆盖、旋转/镜像和邻居增删。
 - `connectionUpdate()` 会把重算结果写进传入的区域，直接调用曾把可选中、有碰撞的幽灵栅栏写进真实世界（重进世界才消失）。因此调用必须包在 `ScopedRegionWriteSuppression` 内（`ProjectionVirtualWorld`），`ProjectionGameHooks` 里的两个 `BlockSource::setBlock` 钩子在抑制期间吞掉写入并返回成功，只取更新的返回值；不要在抑制作用域外做任何依赖写入生效的操作。
 - 所有投影方块实体创建完成后，使用 `BlockActor::isType()` 识别箱子，并在同一虚拟世界作用域内调用原版 `ChestBlockActor::_tryToPairWith()` 配对。必须先建立完整的虚拟方块和方块实体表，再执行配对；结构 NBT 中的 `pairx`/`pairz` 是原世界绝对坐标，不能直接作为投影配对坐标使用。
@@ -637,6 +637,8 @@ LHolo 不自制草方块、楼梯等材质模型。它使用：
 蓝图覆盖范围内的空气格不进入上述数组；真实世界主方块层存在非空气方块时，以局部坐标稀疏记录为 `Extra`（多余方块），使用品红色 `#FF4CE6`。计数覆盖完整结构，纠错网格只保存并绘制当前显示范围。真实世界只有液体层时默认忽略，与 Litematica 的默认语义一致。`.litematic` 保留各 Region 的覆盖盒，Region 之间的空隙不属于蓝图，禁止误报为多余方块。
 
 判定顺序：空气 → 类型名 → 完整 `Block` 相等 → 状态错误。这个顺序不能交换，否则空气可能被算成普通类型错误，方向错误也可能被吞掉。
+
+原版拐角楼梯有等价的放置方向：`BuiltInBlockStates::Corner()` 两边均为拐角且 `BlockProperty::Stair`/类型一致时，只有方向与拐角表示允许不同。先用不可变排列 setter 对齐这两个状态，完整相等以确保上下半部及其他所有状态未变化；再通过原生 `BlockType::addAABBs()` 取得原始两种排列的详细形状。`correction/StairShapeComparison` 按所有原生长方体边界划分空间并比较精确并集，兼容分解、重叠和顺序差异，不用外包围盒、采样或容差掩盖差异。空或无效形状不放行，直楼梯仍使用严格状态比较；液体副层继续独立校验。此语义只适用于原版拐角楼梯，不推广成所有方块的碰撞箱等价判断，也不增加稳定帧扫描。
 
 门与活板门的分半/放置状态比较分别由原生 `BlockProperty::Door` / `Trapdoor` 限定。门还需有 `UpperBlockBit`：下半比较方向与开关，上半比较门轴，忽略非本半部生效的重复字段；不能仅凭 `UpperBlockBit` 或 `OpenBit` 把双格植物、栅栏门等套入门的规则。门轴不一致仍属于状态错误。
 
