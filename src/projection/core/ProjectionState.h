@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "projection/correction/BannerCorrection.h"
+
 #include "projection/core/ProjectionInternalTypes.h"
 #include "projection/ProjectionTypes.h"
 #include "projection/core/ProjectionVisibilityRules.h"
@@ -175,6 +177,9 @@ struct ProjectionState {
         std::make_shared<ExpectedBlockActorMap>()
     };
     std::vector<ProjectedBlockActor>         projectedBlockActors;
+    // The structure owns the immutable NBT keys. Appearance does not depend
+    // on placement or visible layers and is released with this state.
+    std::unordered_map<CompoundTag const*, BannerAppearance> bannerAppearances;
     std::shared_ptr<ExpectedBlockIndexMap>   expectedWorldBlockIndices{
         std::make_shared<ExpectedBlockIndexMap>()
     };

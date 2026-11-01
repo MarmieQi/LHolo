@@ -7,6 +7,7 @@
 // (at your option) any later version.
 
 #include "projection/correction/ProjectionCorrectionTracker.h"
+#include "projection/correction/BannerCorrection.h"
 #include <utility>
 
 #include "block/BlockPlacementRules.h"
@@ -23,6 +24,8 @@
 
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/Block.h"
+#include "mc/world/level/block/BlockType.h"
+#include "mc/world/level/block/actor/BlockActorType.h"
 #include "mc/world/level/levelgen/structure/LegacyStructureSettings.h"
 
 namespace lholo::projection::detail {
@@ -146,10 +149,27 @@ CorrectionProgressChanges updateCorrectionTracker(
             && !actualLiquid.isAir() && actualLiquid.getTypeName() != expectedLiquid->getTypeName();
         auto const liquidCellOccupiedBySolid = !expected && expectedLiquid && !actual.isAir()
             && actual.getTypeName() != expectedLiquid->getTypeName();
+        auto bannerState = CorrectionState::Correct;
+        if (expected && entry.blockEntityNbt && !bodyMissing && !bodyTypeWrong
+            && expected->getBlockType().getBlockEntityType() == BlockActorType::Banner) {
+            auto appearance = state.bannerAppearances.find(entry.blockEntityNbt.get());
+            if (appearance == state.bannerAppearances.end()) {
+                auto snapshot = loadBannerAppearance(*expected, *entry.blockEntityNbt, *state.level);
+                if (snapshot) appearance = state.bannerAppearances.emplace(
+                    entry.blockEntityNbt.get(), std::move(*snapshot)).first;
+            }
+            auto const actualBanner = readBannerAppearance(region.getBlockEntity(position));
+            // A client may receive the block before its entity packet. Do not
+            // count it as complete until the native banner data is available.
+            bannerState = appearance != state.bannerAppearances.end() && actualBanner
+                ? compareBannerAppearance(appearance->second, *actualBanner)
+                : CorrectionState::WrongState;
+        }
         auto nextState = CorrectionState::Correct;
         if (bodyMissing || liquidMissing) {
             nextState = CorrectionState::Missing;
-        } else if (bodyTypeWrong || liquidTypeWrong || liquidCellOccupiedBySolid) {
+        } else if (bodyTypeWrong || liquidTypeWrong || liquidCellOccupiedBySolid
+            || bannerState == CorrectionState::WrongType) {
             nextState = CorrectionState::WrongType;
         } else if ((expected && !projectionStatesMatch(
                         // Real worlds maintain flattened fence connection
@@ -159,7 +179,8 @@ CorrectionProgressChanges updateCorrectionTracker(
                         withFlattenedConnections(*expected, region, position),
                         actual
                     ))
-            || (expectedLiquid && !projectionStatesMatch(*expectedLiquid, actualLiquid))) {
+            || (expectedLiquid && !projectionStatesMatch(*expectedLiquid, actualLiquid))
+            || bannerState == CorrectionState::WrongState) {
             nextState = CorrectionState::WrongState;
         }
         auto const nowCorrect = nextState == CorrectionState::Correct;

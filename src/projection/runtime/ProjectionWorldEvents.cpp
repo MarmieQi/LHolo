@@ -22,6 +22,7 @@
 #include "mc/world/level/Level.h"
 #include "mc/world/level/LevelListener.h"
 #include "mc/world/level/block/Block.h"
+#include "mc/world/level/block/actor/BlockActor.h"
 #include "mc/world/level/chunk/LevelChunk.h"
 
 #include "projection/mesh/ProjectionMeshWorker.h"
@@ -40,6 +41,15 @@ std::atomic_bool          gWorldExitPending{};
 
 class ProjectionBlockSourceListener final : public BlockSourceListener {
 public:
+    void onBlockEntityChanged(BlockSource& source, BlockActor& actor) override {
+        if (actor.getType() != BlockActorType::Banner) return;
+        std::lock_guard lock(gPendingEventsMutex);
+        if (&source != gAttachedBlockSource.load(std::memory_order_acquire)) return;
+        // Reuse the bounded correction queue. Entity-only updates are not
+        // player destruction and must not start placement suppression.
+        gIncomingBlockChanges.push_back({actor.mPosition.get(), 0});
+    }
+
     void onSourceDestroyed(BlockSource& source) override {
         auto* expected = &source;
         if (gAttachedBlockSource.compare_exchange_strong(
