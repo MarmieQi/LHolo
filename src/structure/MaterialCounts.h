@@ -78,7 +78,8 @@ RawMaterialCounts collectRawMaterials(
             auto const& source = blocks[owner];
             counts.body.add(source.block, source.blockEntityNbt);
         }
-        // Fluids belong to individual cells, never to the multi-block item.
+        // Preserve liquid state counts per cell, independent of the body unit.
+        // The game-thread resolver filters these through the native source test.
         counts.liquid.add(blocks[i].liquid);
     }
     return counts;
