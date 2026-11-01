@@ -27,6 +27,7 @@
 #include "mc/world/level/block/NeighborDirection.h"
 #include "mc/world/level/block/VanillaStates.h"
 #include "mc/world/level/block/WallBlock.h"
+#include "mc/world/level/block/actor/BlockActorType.h"
 #include "mc/world/level/block/components/BlockConnectionComponent.h"
 #include "mc/world/level/block/states/VanillaBlockStateTransformUtils.h"
 #include "mc/world/level/block/states/BuiltInBlockStates.h"
@@ -143,6 +144,14 @@ bool projectionStatesMatch(Block const& expected, Block const& actual) {
     if (expected == actual) return true;
     auto const& typeName = expected.getTypeName();
     if (typeName != actual.getTypeName()) return false;
+    // The native detector tick owns its environmental output strength. Keep
+    // normal/inverted identity (checked above) and every other state strict.
+    if (expected.getBlockType().getBlockEntityType() == BlockActorType::DaylightDetector) {
+        auto const signal = actual.getState<int>(VanillaStates::RedstoneSignal());
+        if (!signal) return false;
+        auto const normalized = expected.setState(VanillaStates::RedstoneSignal(), *signal);
+        return normalized && *normalized == actual;
+    }
     // Litematic's Java `stage` maps to Bedrock's dynamic `age_bit`, which is
     // reset when a player places a sapling. Ignore only that growth bit; any
     // other present or future sapling state remains part of correction.
