@@ -34,17 +34,16 @@ Block const* transformExpectedBlock(
     bool                           identityTransform
 );
 
-// Flattened connection blocks (fences, glass panes, iron bars, ...) keep
-// their arm directions in derived states that real worlds maintain on
-// neighbor updates while structure palettes never store them. Returns the
-// block with its connections recomputed by the vanilla connection update
-// for the neighborhood the caller sees at `position` (the projected virtual
+// Recomputes neighbor-owned geometry using native rules: WallBlock helpers
+// for wall arms/posts, and connectionUpdate for fences, panes and iron bars.
+// Returns the immutable palette block normalized for the neighborhood
+// the caller sees at `position` (the projected virtual
 // world while a tessellation scope is active, the real world otherwise), or
 // `block` itself when it is not a connection block. The vanilla update also
 // applies its result to the region, so the call runs with region writes
 // suppressed (see ScopedRegionWriteSuppression) and only its return value
 // is used.
-Block const& withFlattenedConnections(
+Block const& withNeighborConnections(
     Block const&    block,
     BlockSource&    region,
     BlockPos const& position

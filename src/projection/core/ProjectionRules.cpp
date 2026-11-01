@@ -8,8 +8,10 @@
 
 #include "projection/core/ProjectionRules.h"
 
+#include <array>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/deps/nbt/IntTag.h"
@@ -22,6 +24,7 @@
 #include "mc/world/level/block/BlockType.h"
 #include "mc/world/level/block/NeighborDirection.h"
 #include "mc/world/level/block/VanillaStates.h"
+#include "mc/world/level/block/WallBlock.h"
 #include "mc/world/level/block/states/VanillaBlockStateTransformUtils.h"
 #include "mc/world/level/levelgen/structure/LegacyStructureSettings.h"
 
@@ -61,6 +64,31 @@ bool serializedStatesMatchExcept(
     return comparedExpected == comparedActual;
 }
 
+Block const& withWallConnections(Block const& block, BlockSource& region, BlockPos const& position) {
+    auto const& wall = static_cast<WallBlock const&>(block.getBlockType());
+    std::array const connections{
+        std::pair{&VanillaStates::WallConnectionTypeNorth(), Facing::Name::North},
+        std::pair{&VanillaStates::WallConnectionTypeSouth(), Facing::Name::South},
+        std::pair{&VanillaStates::WallConnectionTypeWest(), Facing::Name::West},
+        std::pair{&VanillaStates::WallConnectionTypeEast(), Facing::Name::East}
+    };
+    auto const* connected = &block;
+    for (auto const& [state, face] : connections) {
+        auto const desired = wall._desiredConnectionState(region, position, static_cast<uchar>(face));
+        // The SDK's altered-state setter takes an integer, including enum states.
+        auto const next = connected->setState(*state, static_cast<int>(desired));
+        if (!next) return block;
+        connected = next.as_ptr();
+    }
+    // Wall post visibility depends on the completed four-arm state. Select
+    // immutable palette permutations only; never invoke tryFixWallStates,
+    // which applies its result to the region and schedules world updates.
+    auto const result = connected->setState(
+        VanillaStates::WallPostBit(), WallBlock::_shouldBePost(region, position, *connected)
+    );
+    return result ? *result : block;
+}
+
 } // namespace
 
 Block const* transformExpectedBlock(
@@ -79,22 +107,25 @@ Block const* transformExpectedBlock(
     );
 }
 
-Block const& withFlattenedConnections(
+Block const& withNeighborConnections(
     Block const&    block,
     BlockSource&    region,
     BlockPos const& position
 ) {
     auto const& blockType = block.getBlockType();
-    if (!blockType.isFenceBlock() && !blockType.isThinFenceBlock()) return block;
-    // The vanilla connection update knows every family's connection rules,
-    // including the data-driven ones (glass panes, iron bars) whose arms are
-    // not stored in the builtin Connection states, so deriving states by hand
-    // cannot cover them. It also APPLIES the recomputed block to the region
+    auto const wall = blockType.isWallBlock();
+    if (!wall && !blockType.isFenceBlock() && !blockType.isThinFenceBlock()) return block;
+    // The flattened connection update handles data-driven families (panes,
+    // iron bars) whose arms are not in builtin Connection states. It also
+    // APPLIES the recomputed block to the region
     // it is given — that filled the real world with ghost blocks — so run it
     // with region writes suppressed and use only its return value. Neighbor
     // reads still answer with the projected blocks while a tessellation scope
     // is active, and with the real world during correction.
     ScopedRegionWriteSuppression suppression;
+    // Walls store their arms/post in serialized states and use a separate
+    // native update path, rather than the flattened-connection component.
+    if (wall) return withWallConnections(block, region, position);
     NeighborBlockDirections      directions{};
     auto&                        directionSet = directions.mDirections.get();
     for (int direction = 0; direction < static_cast<int>(NeighborDirection::Count); ++direction) {
@@ -112,6 +143,21 @@ bool projectionStatesMatch(Block const& expected, Block const& actual) {
     // other present or future sapling state remains part of correction.
     if (isVanillaSaplingType(typeName)) {
         return serializedStatesMatchExcept(expected, actual, "age_bit");
+    }
+    // Natural/Java leaves and player-placed leaves can have different decay
+    // bookkeeping without a different build. Normalize only those two native
+    // flags, then retain the complete comparison for every other state.
+    if (typeName.starts_with("minecraft:") && expected.hasProperty(BlockProperty::Leaves)) {
+        std::array const decayStates{&VanillaStates::PersistentBit(), &VanillaStates::UpdateBit()};
+        auto const* normalized = &expected;
+        for (auto const* state : decayStates) {
+            auto const value = actual.getState<bool>(*state);
+            if (!value) continue;
+            auto const next = normalized->setState(*state, *value);
+            if (!next) return false;
+            normalized = next.as_ptr();
+        }
+        return *normalized == actual;
     }
     // Bamboo states (age_bit, bamboo_leaf_size, bamboo_stalk_thickness) are
     // dynamic botanical growth states computed by the game engine based on column

@@ -452,7 +452,9 @@ LevelListener，即使首个投影尚未激活，世界销毁回调也先清空�
 渲染与纠错约束：
 
 - 实体模型走原版 `tessellateInWorld()`，并按原版 render layer 分桶。相邻实体方块只在 LHolo 生成网格的线程局部作用域内通过 `BlockSource::getBlock()` 暴露，供门等邻居相关模型正确生成；作用域外始终调用原版函数，不改变世界。
-- 1.26.51 起栅栏、玻璃板、铁栏杆等连接方块的连接臂由原版从方块自身的派生连接状态读取，而结构调色板从不存储这些状态，直接网格化会全是光杆。网格化与纠错前经 `ProjectionRules::withFlattenedConnections()` 调用原版 `BlockType::connectionUpdate()` 重算连接：网格化时 `BlockSource::getBlock()` 钩子让重算读到投影虚拟邻域（旋转/镜像后方向因此仍正确），纠错时读真实邻域，使期望方块与真实方块的派生状态可比。不要退化回手搓 `canConnect()`/`setState()` 推导：那只能覆盖 `FenceBlock` 一族，玻璃板等数据驱动原型的连接不存储在内建 `Connection*` 状态里，只有原版更新认识其规则。
+- 网格化与纠错前统一经 `ProjectionRules::withNeighborConnections()` 按当前基岩版原生规则归一化邻域派生状态：网格化时 `BlockSource::getBlock()` 钩子让计算读到完整投影虚拟邻域（旋转/镜像后方向仍正确），纠错时读真实邻域，不直接把 Java 记录的邻域状态当作玩家可控朝向。
+- 1.26.51 起栅栏、玻璃板、铁栏杆的连接臂由原版从派生连接状态读取，结构调色板不存储这些状态，因此仍通过 `BlockType::connectionUpdate()` 重算。不能退化为手搓 `canConnect()` 或设置内建 `Connection*` 状态，后者不能覆盖玻璃板等数据驱动原型。
+- 墙体由 `BlockType::isWallBlock()` 识别，使用 SDK 的 `WallBlock::_desiredConnectionState()` 计算四向 `WallConnectionType`，再使用 `WallBlock::_shouldBePost()` 对已完成连接的状态计算 `WallPostBit`；`Block::setState()` 只选择不可变调色板排列，不写入区域。Java 的 low/tall/up 状态和基岩版自然连接规则可能不同，因此墙体不走栅栏的扁平连接组件，也不直接忽略全部墙状态。禁止调用会写入世界和加入更新队列的 `tryFixWallStates()` 来做投影计算。该通路复用既有纠错预算与方块更新事件，不增加轮询或全图扫描；实机回归覆盖直墙、转角、交叉、上方覆盖、旋转/镜像和邻居增删。
 - `connectionUpdate()` 会把重算结果写进传入的区域，直接调用曾把可选中、有碰撞的幽灵栅栏写进真实世界（重进世界才消失）。因此调用必须包在 `ScopedRegionWriteSuppression` 内（`ProjectionVirtualWorld`），`ProjectionGameHooks` 里的两个 `BlockSource::setBlock` 钩子在抑制期间吞掉写入并返回成功，只取更新的返回值；不要在抑制作用域外做任何依赖写入生效的操作。
 - 所有投影方块实体创建完成后，使用 `BlockActor::isType()` 识别箱子，并在同一虚拟世界作用域内调用原版 `ChestBlockActor::_tryToPairWith()` 配对。必须先建立完整的虚拟方块和方块实体表，再执行配对；结构 NBT 中的 `pairx`/`pairz` 是原世界绝对坐标，不能直接作为投影配对坐标使用。
 - 水和岩浆使用贴图 proxy 单元壳，完全由 LHolo 自绘，不与原版世界或区块管线交互：仅 Missing（未放置）状态的液体格绘制半透明截顶外壳，最上层液体格顶面固定为原版源液体高度 8/9（`getHeightFromDepth()` 在 1.26 上对源液体的返回值不可靠，不再使用；逐格流动深度不参与视觉，只参与纠错比较），上方有同液体时侧壁满格；相邻同种液体剔除共享面；UV 取自 `BlockGraphics::getForBlock(liquid)->getTexture(0, 0)` 的 terrain atlas 水/岩浆贴图；水顶点色为原版蓝 #3F76E4（atlas 水贴图无色），岩浆顶点色为熔岩橙 #FF8010（0x001080FF，与原版岩浆色谱一致，避免侧面流动贴图及无色材质渲染发白）；alpha 固定为水 0.65、岩浆 0.85，保留移除整体透明度设置前的默认效果；经 `liquidProxySectionMeshes` 独立网格在 alpha pass 用 `mMatBlendBlock` + terrain atlas 提交（与玻璃同路径），按 section 距离排序。静态贴图无波浪动画是已知限制。纯液体格的 Missing 不再叠加蓝色纠错面/描边（proxy 本身即提示），WrongType/WrongState 仍保留红/黄纠错面。`.litematic` 加载时液体路由到 `RenderBlock::liquid` 字段，与 `.mcstructure` 语义一致。
@@ -625,6 +627,8 @@ LHolo 不自制草方块、楼梯等材质模型。它使用：
 `stage` 会映射为该状态，而玩家放置树苗时游戏会重置它；这不是可由玩家控制的朝向或放置错误。
 `minecraft:bamboo`（竹子）的所有状态（`age_bit`、`bamboo_leaf_size`、`bamboo_stalk_thickness`）均为游戏引擎根据高度与随机 Tick 模拟的动态植物学生长状态，不存在任何由玩家朝向或操作控制的摆放姿态，类型相同即判定为匹配与正确。
 树苗的其他状态、自定义命名空间方块及其他方块状态仍按下述规则严格比较。
+
+原版命名空间中具有原生 `BlockProperty::Leaves` 属性的树叶，只归一化 `VanillaStates::PersistentBit()` / `UpdateBit()` 两个衰减标记：从实际方块读取标记值，通过 `Block::setState()` 选择期望方块的不可变调色板排列，再继续完整 `Block` 比较。Java/自然树叶的持久性、待衰减更新与玩家放置后的值可能不同，这些不是朝向；不通过树叶名称后缀放宽全部状态，也不重写 Java 映射或世界方块。树种、其它现有/未来状态及独立含水层仍严格判断，纠错结果继续驱动既有进度和材料 HUD。回归需确认同种树叶不因这两个标记变黄、不同树种仍报错、缺失水层仍未完成。
 
 每个结构非空气方块保存一个字节状态：
 

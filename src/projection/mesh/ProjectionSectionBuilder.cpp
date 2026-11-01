@@ -343,15 +343,12 @@ void buildProjectionSection(
                     nullptr
                 ));
             }
-            // Flattened connection blocks (fences, glass panes, iron bars,
-            // ...) draw their arms from derived states the structure palette
-            // never stores, so a raw palette permutation tessellates as a
-            // bare post no matter which neighbors are visible. Recompute the
-            // connections with the vanilla update against the virtual
-            // neighborhood; inside this scope the hooked BlockSource::getBlock
-            // answers with the projected blocks, and the update's own region
-            // write is suppressed so the real world stays untouched.
-            Block const& renderBlock = withFlattenedConnections(
+            // Normalize native wall arms/posts and flattened fence/pane arms
+            // against the projected neighborhood. Java wall states may differ
+            // from Bedrock, and palettes omit flattened connection states.
+            // This scope supplies projected blocks to native reads; region
+            // writes attempted by the update are suppressed.
+            Block const& renderBlock = withNeighborConnections(
                 *layered.block, region, layered.position
             );
             auto const firstPosition = tessellator.mMeshData->mPositions.get().size();

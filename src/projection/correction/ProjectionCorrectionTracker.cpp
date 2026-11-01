@@ -172,11 +172,11 @@ CorrectionProgressChanges updateCorrectionTracker(
             || bannerState == CorrectionState::WrongType) {
             nextState = CorrectionState::WrongType;
         } else if ((expected && !projectionStatesMatch(
-                        // Real worlds maintain flattened fence connection
-                        // booleans on block updates while structure palettes
-                        // never store them, so a correctly built fence only
-                        // matches its block recomputed for this neighborhood.
-                        withFlattenedConnections(*expected, region, position),
+                        // Native wall/fence/pane connections are derived from
+                        // the neighborhood, rather than player orientation.
+                        // Normalize Java or unflattened palette states before
+                        // comparing with the real world's current permutation.
+                        withNeighborConnections(*expected, region, position),
                         actual
                     ))
             || (expectedLiquid && !projectionStatesMatch(*expectedLiquid, actualLiquid))
