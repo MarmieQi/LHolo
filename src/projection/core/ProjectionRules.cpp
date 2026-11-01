@@ -152,6 +152,15 @@ bool projectionStatesMatch(Block const& expected, Block const& actual) {
         auto const normalized = expected.setState(VanillaStates::RedstoneSignal(), *signal);
         return normalized && *normalized == actual;
     }
+    // Chunker maps Java's bottom flag to Bedrock's stability-check marker.
+    // That marker records a native support check, not placement orientation.
+    // Keep the support distance and every other state in the full comparison.
+    if (typeName == "minecraft:scaffolding") {
+        auto const checked = actual.getState<bool>(VanillaStates::StabilityCheckBit());
+        if (!checked) return false;
+        auto const normalized = expected.setState(VanillaStates::StabilityCheckBit(), *checked);
+        return normalized && *normalized == actual;
+    }
     // Litematic's Java `stage` maps to Bedrock's dynamic `age_bit`, which is
     // reset when a player places a sapling. Ignore only that growth bit; any
     // other present or future sapling state remains part of correction.

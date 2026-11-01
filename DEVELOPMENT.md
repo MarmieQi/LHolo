@@ -638,6 +638,8 @@ LHolo 不自制草方块、楼梯等材质模型。它使用：
 
 判定顺序：空气 → 类型名 → 完整 `Block` 相等 → 状态错误。这个顺序不能交换，否则空气可能被算成普通类型错误，方向错误也可能被吞掉。
 
+脚手架纠错精确限定 `minecraft:scaffolding`。现有 Chunker 映射将 Java 的 `bottom` 转为 Bedrock 的 `stability_check`，但后者表示原生稳定性检查标记，不能直接作为放置朝向比较。只用 `VanillaStates::StabilityCheckBit()` 读取真实标记，通过不可变 `Block::setState()` 对齐后比较完整排列；`stability` 支撑距离及其他状态仍严格比较，液体层继续独立校验。该规则由 `.mcstructure` 和 `.litematic` 共用，不修改原始状态、转换表、渲染或材料统计，也不调用会写世界的 `ScaffoldingBlock::_updateBlockStability()`。字段含义见 [官方内建状态说明](https://github.com/MicrosoftDocs/minecraft-creator/blob/main/creator/Reference/Content/BlockReference/Examples/IntrinsicBlockStatesList.md)。
+
 阳光传感器由原生 `BlockActorType::DaylightDetector` 限定，只通过 `VanillaStates::RedstoneSignal()` 读取真实信号，并用不可变排列 setter 对齐蓝图的该状态后比较完整排列。输出强度由原生方块实体 tick 随光照环境更新，不属于放置错误；普通/反向模式仍由前置类型比较严格区分，其他状态及液体副层照常检查。纠错不调用 `updateSignalStrength()`，不修改世界或红石网络，也不把信号归一化扩展到其他红石方块。
 
 原版拐角楼梯有等价的放置方向：`BuiltInBlockStates::Corner()` 两边均为拐角且 `BlockProperty::Stair`/类型一致时，只有方向与拐角表示允许不同。先用不可变排列 setter 对齐这两个状态，完整相等以确保上下半部及其他所有状态未变化；再通过原生 `BlockType::addAABBs()` 取得原始两种排列的详细形状。`correction/StairShapeComparison` 按所有原生长方体边界划分空间并比较精确并集，兼容分解、重叠和顺序差异，不用外包围盒、采样或容差掩盖差异。空或无效形状不放行，直楼梯仍使用严格状态比较；液体副层继续独立校验。此语义只适用于原版拐角楼梯，不推广成所有方块的碰撞箱等价判断，也不增加稳定帧扫描。
