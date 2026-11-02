@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { HudSettingsControls } from '../application/useHudSettings';
 import type { MenuLabels } from '../platform/bridge';
 import { LHoloButton, LHoloCheckbox, LHoloTextField } from '../components/LHoloControls';
@@ -7,6 +7,33 @@ type HudTab = 'projection' | 'materials' | 'write';
 
 export function HudPage({ labels, hud, worldAvailable }: { labels: MenuLabels; hud: HudSettingsControls; worldAvailable: boolean }) {
   const [tab, setTab] = useState<HudTab>('projection');
+  const tabsRoot = useRef<HTMLDivElement>(null);
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+  useEffect(() => {
+    const root = tabsRoot.current;
+    if (!root) return;
+    const update = () => {
+      const selected = root.querySelector('.lholo-hud-tab.is-selected');
+      if (!selected) return;
+      const bounds = root.getBoundingClientRect(), target = selected.getBoundingClientRect();
+      if (target.width <= 0) return;
+      const next = { left: target.left - bounds.left, width: target.width };
+      setIndicator(previous => previous?.left === next.left && previous.width === next.width ? previous : next);
+    };
+    update();
+    // Gameface can complete layout after the React commit. Keep this a single
+    // layout refresh, with size notifications rather than a permanent frame loop.
+    const frame = window.requestAnimationFrame(update);
+    window.addEventListener('resize', update);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    observer?.observe(root);
+    root.querySelectorAll('.lholo-hud-tab').forEach(item => observer?.observe(item));
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', update);
+      observer?.disconnect();
+    };
+  }, [tab, labels]);
   const infoItems = [
     ['checkbox.hudFileName', hud.hudShowFileName, hud.setHudShowFileName],
     ['checkbox.hudLayer', hud.hudShowLayer, hud.setHudShowLayer],
@@ -33,13 +60,15 @@ export function HudPage({ labels, hud, worldAvailable }: { labels: MenuLabels; h
       <div className="lholo-hud-title">{labels['section.hud']}</div>
       <LHoloButton label={labels['hud.layout.edit']} onClick={hud.editLayout} disabled={!hud.ready || !worldAvailable} />
     </div>
-    <div className="lholo-hud-tabs">
+    <div className="lholo-hud-tabs" ref={tabsRoot}>
       <LHoloButton label={labels['hud.tabProjection']} onClick={() => setTab('projection')}
         className={'lholo-hud-tab' + (tab === 'projection' ? ' is-selected' : '')} />
       <LHoloButton label={labels['hud.tabMaterials']} onClick={() => setTab('materials')}
         className={'lholo-hud-tab' + (tab === 'materials' ? ' is-selected' : '')} />
       <LHoloButton label={labels['hud.tabWrite']} onClick={() => setTab('write')}
         className={'lholo-hud-tab' + (tab === 'write' ? ' is-selected' : '')} />
+      {indicator && <div className="lholo-hud-tab-indicator" aria-hidden="true"
+        style={{ transform: 'translateX(' + indicator.left + 'px)', width: indicator.width + 'px' }} />}
     </div>
     {tab === 'projection' ? <div className="lholo-hud-tab-content">
       <div className="lholo-hud-master">
