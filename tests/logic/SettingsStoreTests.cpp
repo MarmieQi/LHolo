@@ -146,15 +146,6 @@ int runSettingsStoreTests() {
         try { saveSettingsFile(path, defaults); } catch (std::exception const&) { rejected = true; }
         check(rejected && contents(path) == text, "later saves cannot overwrite unreadable or future preferences");
     }
-    auto const example = std::filesystem::path{"docs/config.example.json"};
-    if (std::filesystem::exists(example)) {
-        check(loadSettingsFile(example, loaded) && loaded == defaults, "documented example matches native defaults");
-        cleanup();
-        saveSettingsFile(path, defaults);
-        auto exampleText = contents(example);
-        std::erase(exampleText, '\r');
-        check(contents(path) == exampleText, "documented example has canonical layout and default values");
-    }
     cleanup();
     std::printf("SettingsStoreTests: %d checks, %d failures\n", checks, failures);
     return failures;

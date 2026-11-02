@@ -1,7 +1,7 @@
 # 配置文件
 
 配置路径：`mods/LHolo/config/config.json`，当前格式版本为 **13**。
-完整默认配置见 [config.example.json](config.example.json)。字段顺序固定，缩进为 4 个空格。
+默认配置由模组首次运行时生成。字段顺序固定，缩进为 4 个空格。
 
 | 分组 | 内容 |
 | --- | --- |

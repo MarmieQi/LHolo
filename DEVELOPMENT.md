@@ -1001,7 +1001,7 @@ PreLoader/LeviLamina 的约定处理：`0` 表示成功，任何非 `0` 值都�
 mods/LHolo/config/config.json
 ```
 
-当前配置版本：`13`。完整字段、默认示例、快捷键写法及迁移规则见 [配置文件说明](docs/CONFIGURATION.md) 和 [默认配置](docs/config.example.json)。
+当前配置版本：`13`。字段、快捷键写法及迁移规则见 [配置文件说明](docs/CONFIGURATION.md)，默认配置由模组首次运行时生成。
 
 配置只保存界面、渲染、HUD、输入、辅助放置偏好，按 `interface`、`rendering`、`hud`、`input`、`placement` 分组。HUD 内容、位置、缩放与背景不透明度归入各自面板；快捷键以 `Alt+M` 等组合字符串或 `null` 保存；百分比与秒明确标注单位，固定分组顺序、4 空格缩进和末尾换行。
 
