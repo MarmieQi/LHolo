@@ -8,8 +8,27 @@
 #include "projection/core/ProjectionRules.h"
 #include "projection/core/ProjectionVisibilityRules.h"
 #include "structure/StructureTransform.h"
+#include <algorithm>
 
 namespace lholo::projection::detail {
+
+ProjectionWorldBounds projectionSectionCellWorldBounds(SubChunkKey const& key,
+    structure::LoadedStructure const& loaded, std::array<long long, 3> const& origin,
+    int mirror, int rotation, int halo) {
+    auto [x, y, z] = key;
+    std::array<int, 3> section{x, y, z}, size{loaded.sizeX, loaded.sizeY, loaded.sizeZ}, lo{}, hi{};
+    for (int axis = 0; axis < 3; ++axis) {
+        auto start = static_cast<long long>(section[axis]) * 16;
+        lo[axis] = static_cast<int>(std::clamp(start - halo, 0LL, static_cast<long long>(size[axis])));
+        hi[axis] = static_cast<int>(std::clamp(start + 16 + halo, 0LL, static_cast<long long>(size[axis])));
+        if (lo[axis] >= hi[axis]) return {};
+    }
+    auto a = transformStructurePosition(BlockPos{lo[0], lo[1], lo[2]}, loaded, mirror, rotation);
+    auto b = transformStructurePosition(BlockPos{hi[0] - 1, hi[1] - 1, hi[2] - 1}, loaded, mirror, rotation);
+    return {{origin[0] + std::min(a.x, b.x), origin[1] + std::min(a.y, b.y), origin[2] + std::min(a.z, b.z)},
+            {origin[0] + std::max(a.x, b.x) + 1, origin[1] + std::max(a.y, b.y) + 1,
+             origin[2] + std::max(a.z, b.z) + 1}};
+}
 
 ProjectionBounds projectionSectionBounds(
     SubChunkKey const& key, structure::LoadedStructure const& loaded, int mirror, int rotation

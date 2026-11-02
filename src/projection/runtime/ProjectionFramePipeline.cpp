@@ -5,15 +5,17 @@
 
 #include "projection/correction/ProjectionCorrectionTracker.h"
 #include "projection/mesh/ProjectionMeshScheduler.h"
+#include "projection/mesh/ProjectionMeshWorker.h"
 #include "projection/mesh/ProjectionMeshUpload.h"
 #include "projection/runtime/ProjectionProgress.h"
 #include "projection/runtime/ProjectionVisibility.h"
 #include "projection/runtime/IndependentFileProjection.h"
 #include "projection/runtime/IndependentFileFrame.h"
 #include "projection/correction/CorrectionFrameBudget.h"
-#include "projection/world/ProjectionWorldBounds.h"
+#include "projection/core/ProjectionWorldBounds.h"
 #include "plugin/LHolo.h"
 #include "ll/api/mod/NativeMod.h"
+#include "ll/api/io/Logger.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
 #include "mc/client/gui/screens/ScreenContext.h"
 #include "mc/client/game/IClientInstance.h"
@@ -92,13 +94,16 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
     auto started = CorrectionFrameBudget::Clock::now();
     // Intake is bounded too. Leave most of the shared slice for actual
     // comparisons when world notifications arrive continuously.
-    for (int batch = 0; batch < 8 && budget.available(); ++batch) {
-        if (batch && CorrectionFrameBudget::Clock::now() - started >= CorrectionFrameBudget::DefaultDuration / 4)
+    for (int batch = 0; batch < CorrectionFrameBudget::MaximumIntakeBatches && budget.available(); ++batch) {
+        if (batch && CorrectionFrameBudget::Clock::now() - started >= CorrectionFrameBudget::IntakeDuration)
             break;
-        auto events = takePendingBlockChanges(32);
-        auto chunks = takePendingLoadedSubChunks(2);
+        auto events = takePendingBlockChangeSections(CorrectionFrameBudget::EventSectionsPerBatch);
+        auto chunks = batch < CorrectionFrameBudget::LoadedIntakeBatches
+            ? takePendingLoadedSubChunks(CorrectionFrameBudget::LoadedSectionsPerBatch) : std::vector<SubChunkKey>{};
         if (events.empty() && chunks.empty())
             break;
+        root.correctionReceivedSections += events.size();
+        for (auto const& event : events) root.correctionReceivedCells += event.size();
         if (root.structure->independentFiles) {
             distributeIndependentFileEvents(root, events, chunks);
         } else {
@@ -111,12 +116,8 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
                                          {origin[0] + (rotated ? root.structure->sizeZ : root.structure->sizeX),
                                           origin[1] + root.structure->sizeY,
                                           origin[2] + (rotated ? root.structure->sizeX : root.structure->sizeZ)}};
-            for (auto const& event : events) {
-                std::array<long long, 3> position{event.position.x, event.position.y, event.position.z};
-                if (bounds.intersects(position, position))
-                    root.correctionEvents.push({event.position.x, event.position.y, event.position.z},
-                                               event.destroyedAt);
-            }
+            for (auto& event : events)
+                root.correctionEvents.push(std::move(event).clipped(bounds.minimum, bounds.maximum));
             for (auto const& chunk : chunks) {
                 auto [x, y, z] = chunk;
                 std::array<long long, 3> lo{static_cast<long long>(x) * 16, static_cast<long long>(y) * 16,
@@ -178,10 +179,12 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
         auto const& target = targets[selected->file];
         auto& state = *target.state;
         auto const& settings = target.build;
+        auto workBefore = budget.work();
         auto changes =
             updateCorrectionTracker(state, region, *target.transform, settings.mirrorMode, settings.rotationTurns,
                                     settings.offsetX, settings.offsetY, settings.offsetZ, target.layerDisplayMode,
                                     target.displayLayer, target.layerAxis, cameraPosition, selected->kind, budget);
+        root.correctionWorkByKind[static_cast<std::size_t>(selected->kind)] += budget.work() - workBefore;
         if (changes.overall)
             publishPlacedProgress(state.progressCorrectCount);
         if (changes.visible)
@@ -197,15 +200,41 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
     root.correctionPeakMicros = std::max(root.correctionPeakMicros, micros);
     if (root.correctionFrames % 120 == 0) {
         std::uint64_t emptyCells{}, probes{};
+        std::size_t pendingCells{}, pendingSections{}, pendingLoaded{}, blocked{}, dirty{};
+        std::uint64_t discarded{};
+        auto& logger = LHolo::getInstance().getSelf().getLogger();
+        bool const report = logger.shouldLog(ll::io::LogLevel::Debug);
         for (auto const& target : targets) {
             emptyCells += target.state->correctionEmptyFastCells;
             probes += target.state->correctionEmptyProbes;
             target.state->correctionEmptyFastCells = target.state->correctionEmptyProbes = 0;
+            // Disabled diagnostics must not scan every section or acquire the
+            // incoming world-event mutex just to discard the formatted result.
+            if (!report) continue;
+            pendingCells += target.state->correctionEvents.size();
+            pendingSections += target.state->correctionEvents.sections();
+            pendingLoaded += target.state->correctionSubChunks.size();
+            discarded += target.state->meshWorkerDiscardedBuilds;
+            for (std::size_t index = 0; index < target.state->sections.size(); ++index) {
+                if (!target.state->sections[index].dirty) continue;
+                ++dirty;
+                blocked += projectionSectionHasPendingCorrection(*target.state, index, target.build);
+            }
         }
-        LHolo::getInstance().getSelf().getLogger().debug(
-            "Projection correction: {} files, average/peak {} / {} us, average {} work units, shared target {} us; empty fast-path {} cells / {} probes",
-            targets.size(), root.correctionMicros / root.correctionFrames, root.correctionPeakMicros,
-            root.correctionWork / root.correctionFrames, CorrectionFrameBudget::DefaultDuration.count(), emptyCells, probes);
+        if (report) {
+            auto incoming = pendingProjectionEventCounts();
+            logger.debug(
+                "Projection correction queues: incoming {} cells / {} tiles / {} loaded; files {} cells / {} tiles / {} loaded; intake {} cells / {} tiles; work event/loaded/initial/extra {}/{}/{}/{}; dirty {} (coalescing {}); discarded total {}",
+                incoming.cells, incoming.sections, incoming.loadedSections, pendingCells, pendingSections, pendingLoaded,
+                root.correctionReceivedCells, root.correctionReceivedSections, root.correctionWorkByKind[0],
+                root.correctionWorkByKind[1], root.correctionWorkByKind[2], root.correctionWorkByKind[3], dirty, blocked, discarded);
+            logger.debug(
+                "Projection correction: {} files, average/peak {} / {} us, average {} work units, shared target {} us; empty fast-path {} cells / {} probes",
+                targets.size(), root.correctionMicros / root.correctionFrames, root.correctionPeakMicros,
+                root.correctionWork / root.correctionFrames, CorrectionFrameBudget::DefaultDuration.count(), emptyCells, probes);
+        }
+        root.correctionReceivedCells = root.correctionReceivedSections = 0;
+        root.correctionWorkByKind = {};
         root.correctionFrames = root.correctionMicros = root.correctionPeakMicros = root.correctionWork = 0;
     }
 
@@ -249,8 +278,11 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
             if (fair && selectedFile)
                 return;
             auto const& target = targets[file];
-            for (auto const& section : target.state->sections) {
+            for (std::size_t index = 0; index < target.state->sections.size(); ++index) {
+                auto const& section = target.state->sections[index];
                 if (!section.dirty || section.buildInFlight)
+                    continue;
+                if (projectionSectionHasPendingCorrection(*target.state, index, target.build))
                     continue;
                 int rank = section.interactiveDirty ? -1
                                                     : projectionBuildRank(section.buildVisible, section.prefetchVisible,

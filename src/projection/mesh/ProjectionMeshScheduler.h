@@ -18,6 +18,9 @@ namespace lholo::projection::detail {
 
 struct ProjectionState;
 
+bool projectionSectionHasPendingCorrection(ProjectionState const& state, std::size_t section,
+                                           ProjectionSectionBuildSettings const& settings);
+
 void scheduleProjectionMeshBuild(
     ProjectionState&                      state,
     Tessellator&                          tessellator,

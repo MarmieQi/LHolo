@@ -11,10 +11,8 @@
 #include <span>
 #include <memory>
 
-class BlockSource;
 class BaseActorRenderContext;
 class LegacyStructureSettings;
-class Tessellator;
 class Vec3;
 
 namespace lholo::projection::detail {

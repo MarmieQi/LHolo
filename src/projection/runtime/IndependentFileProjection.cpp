@@ -3,12 +3,11 @@
 #include "projection/runtime/ProjectionLifecycle.h"
 #include "structure/IndependentTaskFiles.h"
 #include "structure/StructureGeneration.h"
-#include "projection/world/ProjectionWorldBounds.h"
+#include "projection/core/ProjectionWorldBounds.h"
 
 namespace lholo::projection::detail {
 namespace {
-bool intersectsFile(ProjectionState const& file, std::array<long long, 3> const& lo,
-                    std::array<long long, 3> const& hi) {
+ProjectionWorldBounds fileBounds(ProjectionState const& file) {
     auto const& t = *file.fileTransform;
     std::array<long long, 3> origin{static_cast<long long>(file.anchor.x) + t.offsetX,
                                     static_cast<long long>(file.anchor.y) + t.offsetY,
@@ -16,8 +15,7 @@ bool intersectsFile(ProjectionState const& file, std::array<long long, 3> const&
     bool rotated = (t.rotation & 1) != 0;
     std::array<int, 3> size{rotated ? file.structure->sizeZ : file.structure->sizeX, file.structure->sizeY,
                             rotated ? file.structure->sizeX : file.structure->sizeZ};
-    return ProjectionWorldBounds{origin, {origin[0] + size[0], origin[1] + size[1], origin[2] + size[2]}}
-        .intersects(lo, hi);
+    return {origin, {origin[0] + size[0], origin[1] + size[1], origin[2] + size[2]}};
 }
 } // namespace
 bool updateIndependentFiles(ProjectionState& root, BaseActorRenderContext& context,
@@ -57,21 +55,19 @@ bool updateIndependentFiles(ProjectionState& root, BaseActorRenderContext& conte
     return true;
 }
 void distributeIndependentFileEvents(ProjectionState& root,
-    std::span<PendingBlockChange const> changes, std::span<SubChunkKey const> chunks) {
+    std::span<CorrectionEventBatch const> changes, std::span<SubChunkKey const> chunks) {
     for (auto& file : root.files) {
         // Route only relevant facts; don't scan unrelated world subchunks in
         // every file's original correction tracker.
-        for (auto const& change : changes) {
-            std::array<long long, 3> p{change.position.x, change.position.y, change.position.z};
-            if (intersectsFile(*file, p, p))
-                file->correctionEvents.push({change.position.x, change.position.y, change.position.z}, change.destroyedAt);
-        }
+        auto bounds = fileBounds(*file);
+        for (auto const& change : changes)
+            file->correctionEvents.push(change.clipped(bounds.minimum, bounds.maximum));
         for (auto const& chunk : chunks) {
             auto [x, y, z] = chunk;
             std::array<long long, 3> lo{static_cast<long long>(x) * 16, static_cast<long long>(y) * 16,
                                         static_cast<long long>(z) * 16};
             std::array<long long, 3> hi{lo[0] + 15, lo[1] + 15, lo[2] + 15};
-            if (intersectsFile(*file, lo, hi))
+            if (bounds.intersects(lo, hi))
                 file->correctionSubChunks.push({x, y, z});
         }
     }

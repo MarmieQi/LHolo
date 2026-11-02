@@ -57,7 +57,9 @@ std::optional<std::size_t> selectNextDirtySection(
             auto const dx = section.center.x + static_cast<float>(state.anchor.x + settings.offsetX) - cameraPosition.x;
             auto const dy = section.center.y + static_cast<float>(state.anchor.y + settings.offsetY) - cameraPosition.y;
             auto const dz = section.center.z + static_cast<float>(state.anchor.z + settings.offsetZ) - cameraPosition.z;
-            return ProjectionBuildCandidate{section.dirty, section.buildInFlight,
+            bool ready = section.dirty && !section.buildInFlight
+                && !projectionSectionHasPendingCorrection(state, index, settings);
+            return ProjectionBuildCandidate{ready, section.buildInFlight,
                 section.buildVisible, section.prefetchVisible, section.incrementalDirty, dx*dx+dy*dy+dz*dz,
                 section.interactiveDirty};
         });
@@ -107,6 +109,16 @@ bool validateMeshData(
 }
 
 } // namespace
+
+bool projectionSectionHasPendingCorrection(ProjectionState const& state, std::size_t section,
+                                           ProjectionSectionBuildSettings const& settings) {
+    if (state.correctionEvents.empty()) return false;
+    auto bounds = projectionSectionCellWorldBounds(state.localSectionKeys[section], *state.structure,
+        {static_cast<long long>(state.anchor.x) + settings.offsetX,
+         static_cast<long long>(state.anchor.y) + settings.offsetY,
+         static_cast<long long>(state.anchor.z) + settings.offsetZ}, settings.mirrorMode, settings.rotationTurns, 1);
+    return state.correctionEvents.intersects(bounds.minimum, bounds.maximum);
+}
 
 void scheduleProjectionMeshBuild(ProjectionState& state, Tessellator& tessellator, BlockSource& region,
                                  Vec3 const& cameraPosition, ProjectionSectionBuildSettings const& buildSettings) {

@@ -2,7 +2,7 @@
 // Copyright (C) 2026  MarmieQi
 //
 // Projection runtime state and resource ownership. Lifecycle operations remain
-// in Projection.cpp; this type only makes the ownership boundary explicit.
+// in runtime/ProjectionLifecycle; this type makes the ownership boundary explicit.
 
 #pragma once
 
@@ -19,15 +19,13 @@
 #include "projection/core/ProjectionVisibilityRules.h"
 #include "projection/core/ProjectionDrawCache.h"
 #include "projection/core/ProjectionBiomeRefresh.h"
-#include "projection/runtime/ProjectionWorldEvents.h"
-#include "projection/mesh/ProjectionMeshWorker.h"
 #include "structure/StructureSession.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <map>
+#include <unordered_map>
 #include <optional>
 #include <set>
 #include <variant>
@@ -82,6 +80,8 @@ struct ProjectionState {
     CorrectionWorkCursor correctionWorkCursor;
     std::uint64_t correctionFrames{}, correctionMicros{}, correctionPeakMicros{}, correctionWork{};
     std::uint64_t correctionEmptyFastCells{}, correctionEmptyProbes{};
+    std::uint64_t correctionReceivedCells{}, correctionReceivedSections{};
+    std::array<std::uint64_t, 4> correctionWorkByKind{};
     std::size_t fileFrameCursor{};
     std::uint64_t progressVisibleTotal{};
     bool                            enabled{};

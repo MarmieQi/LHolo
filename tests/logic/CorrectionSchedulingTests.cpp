@@ -2,7 +2,7 @@
 #include "projection/correction/CorrectionFrameBudget.h"
 #include "projection/correction/CorrectionScanScheduler.h"
 #include "projection/correction/CorrectionWorkQueues.h"
-#include "projection/world/ProjectionWorldBounds.h"
+#include "projection/core/ProjectionWorldBounds.h"
 
 #include <array>
 #include <chrono>

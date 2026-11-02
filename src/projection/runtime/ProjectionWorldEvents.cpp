@@ -20,6 +20,7 @@
 #include <Windows.h>
 
 #include "mc/world/level/BlockSource.h"
+#include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSourceListener.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/LevelListener.h"
@@ -194,16 +195,21 @@ bool consumeWorldExitRequest() {
     return gWorldExitPending.load(std::memory_order_acquire);
 }
 
-std::vector<PendingBlockChange> takePendingBlockChanges(std::size_t limit) {
-    std::vector<PendingBlockChange> changes;
+std::vector<CorrectionEventBatch> takePendingBlockChangeSections(std::size_t limit) {
+    std::vector<CorrectionEventBatch> changes;
+    changes.reserve(limit);
     std::lock_guard lock(gPendingEventsMutex);
     for (std::size_t index = 0; index < limit; ++index) {
-        auto event = gIncomingBlockChanges.front();
+        auto event = gIncomingBlockChanges.takeSection();
         if (!event) break;
-        changes.push_back({BlockPos{event->position[0], event->position[1], event->position[2]}, event->destroyedAt});
-        gIncomingBlockChanges.pop();
+        changes.push_back(std::move(*event));
     }
     return changes;
+}
+
+ProjectionPendingEventCounts pendingProjectionEventCounts() {
+    std::lock_guard lock(gPendingEventsMutex);
+    return {gIncomingBlockChanges.size(), gIncomingBlockChanges.sections(), gIncomingLoadedSubChunks.size()};
 }
 
 void discardPendingProjectionEvents() {

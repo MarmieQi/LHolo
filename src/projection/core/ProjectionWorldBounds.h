@@ -4,7 +4,7 @@
 
 namespace lholo::projection::detail {
 
-// Inclusive minimum/exclusive maximum, in world cells. Wide coordinates keep
+// Pure integer bounds: inclusive minimum/exclusive maximum in world cells. Wide coordinates keep
 // event routing safe at negative positions and near the integer world limits.
 struct ProjectionWorldBounds {
     std::array<long long, 3> minimum{}, maximum{};
