@@ -36,6 +36,7 @@ struct ProjectionSectionBuildSettings {
     float    correctionFillOpacity{};
     float    correctionOutlineOpacity{};
     bool     identityTransform{};
+    bool     correctionOnly{};
 };
 
 void buildProjectionSection(
@@ -47,5 +48,9 @@ void buildProjectionSection(
     Tessellator::UploadMode               uploadMode,
     ProjectionSectionBuildSettings const& settings
 );
+
+// Geometry-only overlay update: no world/chunk source or BlockTessellator.
+void buildProjectionCorrectionSection(ProjectionState& state, Tessellator& tessellator, std::size_t section,
+    Tessellator::UploadMode uploadMode, ProjectionSectionBuildSettings const& settings);
 
 } // namespace lholo::projection::detail

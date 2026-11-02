@@ -30,10 +30,12 @@ struct AsyncSectionBuildResult {
     std::uint64_t snapshotDataMicros{};
     std::uint64_t chunkViewMicros{};
     std::uint64_t workerBuildMicros{};
+    std::size_t   correctionSnapshotBytes{};
     std::size_t   section{};
     ProjectionBounds meshBounds;
     ProjectionBiomeRefresh biomeRefresh;
     bool          success{};
+    bool          correctionOnly{};
     std::string   failureReason;
     std::uint64_t expectedVertexCount{};
     std::uint64_t actualVertexCount{};

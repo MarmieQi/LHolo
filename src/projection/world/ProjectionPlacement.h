@@ -26,6 +26,7 @@ struct ProjectionPlacementSettings {
     int  displayLayer{};
     structure::LayerAxis layerAxis{structure::LayerAxis::Y};
     bool identityTransform{};
+    bool resetCorrectionScan{};
 };
 
 void rebuildProjectionPlacement(

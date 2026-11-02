@@ -9,9 +9,12 @@
 #pragma once
 
 #include "structure/LayerDisplayTypes.h"
+#include "projection/correction/CorrectionFrameBudget.h"
+#include "projection/correction/CorrectionScanScheduler.h"
 
 class BlockSource;
 class LegacyStructureSettings;
+class Vec3;
 
 namespace lholo::projection::detail {
 
@@ -34,7 +37,10 @@ CorrectionProgressChanges updateCorrectionTracker(
     int                             offsetZ,
     structure::LayerDisplayMode     layerDisplayMode,
     int                             displayLayer,
-    structure::LayerAxis            layerAxis
+    structure::LayerAxis            layerAxis,
+    Vec3 const&                    cameraPosition,
+    CorrectionWorkKind             work,
+    CorrectionFrameBudget&         budget
 );
 
 } // namespace lholo::projection::detail

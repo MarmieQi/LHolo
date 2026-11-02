@@ -177,6 +177,27 @@ void buildBlockEntityPlaceholderSectionMesh(
     std::span<std::size_t const>
 );
 
+void buildProjectionCorrectionSection(ProjectionState& state, Tessellator& tessellator, std::size_t section,
+    Tessellator::UploadMode uploadMode, ProjectionSectionBuildSettings const& settings) {
+    detail::buildCorrectionSectionMeshes(state, tessellator, section, uploadMode, settings);
+    // Retain the previous complete bounds and only expand them. This is
+    // conservative when an old marker disappears and never clips kept models.
+    auto& bounds = state.sections[section].meshBounds;
+    ProjectionBounds update;
+    bool complete = true;
+    auto include = [&](std::unique_ptr<mce::Mesh> const& mesh) {
+        if (!mesh) return;
+        auto const& positions = mesh->mMeshData.get().mPositions.get();
+        if (positions.empty() && mesh->mVertexCount.get().value_or(0u) > 0) complete = false;
+        for (auto const& vertex : positions) update.include({vertex.x, vertex.y, vertex.z});
+    };
+    include(state.warningFillSectionMeshes[section]);
+    include(state.correctionOutlineSectionMeshes[section]);
+    include(state.wrongFillSectionMeshes[section]);
+    include(state.wrongOutlineSectionMeshes[section]);
+    bounds = mergeCorrectionBounds(bounds, update, complete);
+}
+
 void buildProjectionSection(
     ProjectionState&                      state,
     Tessellator&                          tessellator,
@@ -186,6 +207,10 @@ void buildProjectionSection(
     Tessellator::UploadMode               uploadMode,
     ProjectionSectionBuildSettings const& sectionBuildSettings
 ) {
+    if (sectionBuildSettings.correctionOnly) {
+        buildProjectionCorrectionSection(state, tessellator, section, uploadMode, sectionBuildSettings);
+        return;
+    }
     state.sections[section].meshBounds = {};
     auto const mirror                   = sectionBuildSettings.mirror;
     auto const rotation                 = sectionBuildSettings.rotation;
@@ -216,7 +241,7 @@ void buildProjectionSection(
     std::array<std::size_t, static_cast<std::size_t>(RenderBucket::Count)> bucketCounts{};
     layeredBlocks.reserve(state.sectionBlockIndices[section].size());
     for (auto const index : state.sectionBlockIndices[section]) {
-        auto const correctionState = (*state.correctionStates)[index];
+        auto const correctionState = state.renderCorrectionState(index);
         // Never draw a projected block model on top of an existing
         // world block. Correct blocks disappear; wrong type/state use
         // only their red/yellow outline below. This removes the
@@ -478,7 +503,7 @@ void buildLiquidProxySectionMesh(
     std::vector<std::size_t> liquidProxyIndices;
     for (auto const index : state.sectionBlockIndices[section]) {
         if (state.structure->renderBlocks[index].liquid == nullptr) continue;
-        if ((*state.correctionStates)[index] != CorrectionState::Missing) continue;
+        if (state.renderCorrectionState(index) != CorrectionState::Missing) continue;
         liquidProxyIndices.push_back(index);
     }
     if (!liquidProxyIndices.empty()) {
@@ -686,7 +711,7 @@ void buildBlockEntityPlaceholderSectionMesh(
     // that render normally (hoppers, beds, ...) are left untouched.
     std::vector<std::size_t> blockEntityIndices;
     for (auto const index : failedTessellationIndices) {
-        if ((*state.correctionStates)[index] != CorrectionState::Missing) continue;
+        if (state.renderCorrectionState(index) != CorrectionState::Missing) continue;
         if ((*state.blockActorRendererAvailable)[index]) continue;
         blockEntityIndices.push_back(index);
     }
@@ -790,7 +815,7 @@ void buildCorrectionSectionMeshes(
         };
         auto const expected = state.expectedWorldBlockIndices->find(std::tuple{world.x, world.y, world.z});
         auto priority = expected == state.expectedWorldBlockIndices->end()
-            ? 0 : correctionPriority((*state.correctionStates)[expected->second]);
+            ? 0 : correctionPriority(state.renderCorrectionState(expected->second));
         auto const local = inverseTransformStructurePosition(
             BlockPos{p.x + dx, p.y + dy, p.z + dz}, *state.structure, settings.mirrorMode, settings.rotationTurns
         );
@@ -807,7 +832,7 @@ void buildCorrectionSectionMeshes(
         if (faces) shells[bucket].push_back({p, color, faces});
     };
     for (auto const index : state.sectionBlockIndices[section]) {
-        auto const correction = (*state.correctionStates)[index];
+        auto const correction = state.renderCorrectionState(index);
         auto const priority = correctionPriority(correction);
         if (!priority) continue;
         auto const& entry = state.structure->renderBlocks[index];

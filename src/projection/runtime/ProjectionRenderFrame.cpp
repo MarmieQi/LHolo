@@ -22,7 +22,6 @@
 #include "projection/runtime/ProjectionProgress.h"
 #include "projection/runtime/ProjectionWorldEvents.h"
 #include "projection/runtime/IndependentFileProjection.h"
-#include "projection/runtime/IndependentFileFrame.h"
 #include "structure/IndependentTaskFiles.h"
 #include "projection/world/ProjectionPlacement.h"
 
@@ -153,110 +152,101 @@ void suspendProjectionDimension(ProjectionState& state) {
     }
 }
 
-void renderProjection(
-    ProjectionState&          state,
-    BaseActorRenderContext&   renderContext,
-    bool                      renderAlphaLayer
+std::optional<ProjectionFrameTarget> prepareProjectionOpaqueFrame(
+    ProjectionState& state, BaseActorRenderContext& renderContext
 ) {
-    auto& client = renderContext.mClientInstance;
-    auto* player  = client.getLocalPlayer();
-
-    auto& tessellator = renderContext.mScreenContext.tessellator;
-    Vec3 const camera = renderCameraPosition(renderContext);
-
-    if (!state.blockTessellator) return;
-    if (!renderAlphaLayer) {
-        auto const transform = state.fileTransform ? *state.fileTransform
-            : state.structure->composed ? structure::detail::StructureTransformSnapshot{}
-            : structure::detail::StructureSession::getInstance().transform();
-        auto const mirrorMode = transform.mirror;
-        auto const rotationTurns = transform.rotation;
-        auto const mirror = getProjectionMirror(mirrorMode);
-        auto const rotation = getProjectionRotation(rotationTurns);
-        LegacyStructureSettings transformSettings{
-            mirror,
-            rotation,
-            nullptr,
-            BoundingBox{}
-        };
-        bool const identityTransform = mirrorMode == 0 && rotationTurns == 0;
-        auto const offsetX = transform.offsetX;
-        auto const offsetY = transform.offsetY;
-        auto const offsetZ = transform.offsetZ;
-        auto const layerDisplayMode = transform.layerDisplayMode;
-        auto const layerAxis = transform.layerAxis;
-        auto const maxLayer = layerAxis == structure::LayerAxis::Material
-            ? std::max(0, static_cast<int>(state.structure->materialCount) - 1)
-            : std::max(
-                0,
-                (layerAxis == structure::LayerAxis::X
-                    ? state.structure->sizeX : state.structure->sizeY) - 1
-            );
-        auto const displayLayer = std::clamp(
-            transform.displayLayer, 0, maxLayer
+    auto* player = renderContext.mClientInstance.getLocalPlayer();
+    if (!player || !state.blockTessellator) return std::nullopt;
+    auto const transform = state.fileTransform ? *state.fileTransform
+        : state.structure->composed ? structure::detail::StructureTransformSnapshot{}
+        : structure::detail::StructureSession::getInstance().transform();
+    auto const mirrorMode = transform.mirror;
+    auto const rotationTurns = transform.rotation;
+    auto const mirror = getProjectionMirror(mirrorMode);
+    auto const rotation = getProjectionRotation(rotationTurns);
+    auto transformSettings = std::make_unique<LegacyStructureSettings>(
+        mirror,
+        rotation,
+        nullptr,
+        BoundingBox{}
+    );
+    bool const identityTransform = mirrorMode == 0 && rotationTurns == 0;
+    auto const offsetX = transform.offsetX;
+    auto const offsetY = transform.offsetY;
+    auto const offsetZ = transform.offsetZ;
+    auto const layerDisplayMode = transform.layerDisplayMode;
+    auto const layerAxis = transform.layerAxis;
+    auto const maxLayer = layerAxis == structure::LayerAxis::Material
+        ? std::max(0, static_cast<int>(state.structure->materialCount) - 1)
+        : std::max(
+            0,
+            (layerAxis == structure::LayerAxis::X
+                ? state.structure->sizeX : state.structure->sizeY) - 1
         );
-        auto& session = ProjectionSession::getInstance();
-        auto const correctionFillOpacity = session.correctionFillOpacity();
-        auto const correctionOutlineOpacity = session.correctionOutlineOpacity();
-        auto const invalidation = reconcileProjectionInvalidation(
-            state,
-            ProjectionInvalidationSettings{
-                .mirrorMode               = mirrorMode,
-                .rotationTurns            = rotationTurns,
-                .offsetX                  = offsetX,
-                .offsetY                  = offsetY,
-                .offsetZ                  = offsetZ,
-                .layerDisplayMode         = layerDisplayMode,
-                .displayLayer             = displayLayer,
-                .layerAxis                = layerAxis,
-                .correctionFillOpacity    = correctionFillOpacity,
-                .correctionOutlineOpacity = correctionOutlineOpacity
-            }
-        );
-        if (invalidation.placementViewChanged()) {
-            rebuildProjectionPlacement(
-                state,
-                player->getDimensionBlockSource(),
-                renderContext.mBlockEntityRenderDispatcher,
-                transformSettings,
-                ProjectionPlacementSettings{
-                    .mirrorMode        = mirrorMode,
-                    .rotationTurns     = rotationTurns,
-                    .offsetX           = offsetX,
-                    .offsetY           = offsetY,
-                    .offsetZ           = offsetZ,
-                    .layerDisplayMode  = layerDisplayMode,
-                    .displayLayer      = displayLayer,
-                    .layerAxis         = layerAxis,
-                    .identityTransform = identityTransform
-                }
-            );
-        }
-        ProjectionSectionBuildSettings const sectionBuildSettings{
-            .mirror                   = mirror,
-            .rotation                 = rotation,
+    auto const displayLayer = std::clamp(
+        transform.displayLayer, 0, maxLayer
+    );
+    auto& session = ProjectionSession::getInstance();
+    auto const correctionFillOpacity = session.correctionFillOpacity();
+    auto const correctionOutlineOpacity = session.correctionOutlineOpacity();
+    auto const invalidation = reconcileProjectionInvalidation(
+        state,
+        ProjectionInvalidationSettings{
             .mirrorMode               = mirrorMode,
             .rotationTurns            = rotationTurns,
             .offsetX                  = offsetX,
             .offsetY                  = offsetY,
             .offsetZ                  = offsetZ,
+            .layerDisplayMode         = layerDisplayMode,
+            .displayLayer             = displayLayer,
+            .layerAxis                = layerAxis,
             .correctionFillOpacity    = correctionFillOpacity,
-            .correctionOutlineOpacity = correctionOutlineOpacity,
-            .identityTransform        = identityTransform
-        };
-        processProjectionOpaqueFrame(
+            .correctionOutlineOpacity = correctionOutlineOpacity
+        }
+    );
+    if (invalidation.placementViewChanged()) {
+        rebuildProjectionPlacement(
             state,
-            renderContext,
-            tessellator,
             player->getDimensionBlockSource(),
-            camera,
-            transformSettings,
-            sectionBuildSettings,
-            layerDisplayMode,
-            displayLayer,
-            layerAxis
+            renderContext.mBlockEntityRenderDispatcher,
+            *transformSettings,
+            ProjectionPlacementSettings{
+                .mirrorMode        = mirrorMode,
+                .rotationTurns     = rotationTurns,
+                .offsetX           = offsetX,
+                .offsetY           = offsetY,
+                .offsetZ           = offsetZ,
+                .layerDisplayMode  = layerDisplayMode,
+                .displayLayer      = displayLayer,
+                .layerAxis         = layerAxis,
+                .identityTransform = identityTransform,
+                .resetCorrectionScan = invalidation.geometryTransformChanged || invalidation.placementMoved
+            }
         );
     }
+    ProjectionSectionBuildSettings const sectionBuildSettings{
+        .mirror                   = mirror,
+        .rotation                 = rotation,
+        .mirrorMode               = mirrorMode,
+        .rotationTurns            = rotationTurns,
+        .offsetX                  = offsetX,
+        .offsetY                  = offsetY,
+        .offsetZ                  = offsetZ,
+        .correctionFillOpacity    = correctionFillOpacity,
+        .correctionOutlineOpacity = correctionOutlineOpacity,
+        .identityTransform        = identityTransform
+    };
+    return ProjectionFrameTarget{&state, sectionBuildSettings, layerDisplayMode, displayLayer, layerAxis,
+        std::move(transformSettings)};
+}
+
+void renderProjection(
+    ProjectionState& state, BaseActorRenderContext& renderContext, bool renderAlphaLayer
+) {
+    auto& client = renderContext.mClientInstance;
+    auto* player = client.getLocalPlayer();
+    if (!player || !state.blockTessellator) return;
+    Vec3 const camera = renderCameraPosition(renderContext);
 
     // Keep vanilla world queries at their real BlockPos, but do not upload large
     // absolute coordinates to the GPU. Render vertices relative to the projection
@@ -328,7 +318,7 @@ bool shouldSuppressProjectionHitSelect(BlockPos const& pos) {
                     std::tuple{pos.x, pos.y, pos.z}
                 );
                 if (found != state.expectedWorldBlockIndices->end()) {
-                    auto const correctionState = (*state.correctionStates)[found->second];
+                    auto const correctionState = state.renderCorrectionState(found->second);
                     if (correctionState == CorrectionState::WrongType
                         || correctionState == CorrectionState::WrongState) {
                         // LHolo already renders a complete red/yellow hull and
@@ -499,12 +489,14 @@ void renderProjectionFrame(BaseActorRenderContext& renderContext, bool renderAlp
                                     selected->fileTransform=live;
                             }
                         }
-                        distributeIndependentFileEvents(state);
-                        uploadCompletedProjectionMeshes(state, renderContext.mScreenContext.tessellator);
                     }
                     if (!renderAlphaLayer) {
-                        forEachIndependentProjectionFile(state.files.size(), state.fileFrameCursor,
-                            [&](std::size_t index) { renderProjection(*state.files[index], renderContext, false); });
+                        std::vector<ProjectionFrameTarget> targets;
+                        targets.reserve(state.files.size());
+                        for (auto const& file : state.files)
+                            if (auto target = prepareProjectionOpaqueFrame(*file, renderContext)) targets.push_back(std::move(*target));
+                        processProjectionOpaqueFrames(state, targets, renderContext, renderCameraPosition(renderContext));
+                        for (auto const& target : targets) renderProjection(*target.state, renderContext, false);
                     } else {
                         for (auto& file : state.files) renderProjection(*file, renderContext, true);
                     }
@@ -515,7 +507,14 @@ void renderProjectionFrame(BaseActorRenderContext& renderContext, bool renderAlp
                     logger().error("Independent projection failed");
                     resetProjectionState(state);
                 }
-            } else renderProjection(state, renderContext, renderAlphaLayer);
+            } else {
+                if (!renderAlphaLayer) {
+                    if (auto target = prepareProjectionOpaqueFrame(state, renderContext))
+                        processProjectionOpaqueFrames(state, std::span<ProjectionFrameTarget const>{&*target, 1},
+                            renderContext, renderCameraPosition(renderContext));
+                }
+                renderProjection(state, renderContext, renderAlphaLayer);
+            }
         }
     );
     if (worldExitPending) {

@@ -8,6 +8,8 @@
 
 #include "projection/correction/ProjectionCorrectionTracker.h"
 #include "projection/correction/BannerCorrection.h"
+#include "projection/world/CorrectionWorldReader.h"
+#include "projection/correction/CorrectionMeshRules.h"
 #include <utility>
 
 #include "block/BlockPlacementRules.h"
@@ -19,6 +21,9 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
+#include <array>
+#include <cassert>
 #include <string_view>
 #include <tuple>
 
@@ -31,20 +36,8 @@
 namespace lholo::projection::detail {
 namespace {
 
-void markSectionDirty(ProjectionState& state, std::size_t section) {
-    if (section >= state.sections.size()) return;
-    auto& sectionState = state.sections[section];
-    sectionState.dirty = true;
-    sectionState.incrementalDirty = true;
-    sectionState.biomeRefresh = {}; // actual correction/neighbor change starts a fresh budget
-    ++sectionState.requestedRevision;
-}
-
 SubChunkKey localSectionKey(BlockPos const& position) {
-    auto const floorDiv16 = [](int value) {
-        return value >= 0 ? value / 16 : -1 - ((-1 - value) / 16);
-    };
-    return {floorDiv16(position.x), floorDiv16(position.y), floorDiv16(position.z)};
+    return correctionSectionKey(position.x, position.y, position.z);
 }
 
 std::size_t ensureCorrectionSection(
@@ -93,197 +86,202 @@ std::size_t ensureCorrectionSection(
 
 } // namespace
 
-CorrectionProgressChanges updateCorrectionTracker(
-    ProjectionState&                state,
-    BlockSource&                    region,
-    LegacyStructureSettings const& transformSettings,
-    int                             mirrorMode,
-    int                             rotationTurns,
-    int                             offsetX,
-    int                             offsetY,
-    int                             offsetZ,
-    structure::LayerDisplayMode     layerDisplayMode,
-    int                             displayLayer,
-    structure::LayerAxis            layerAxis
-) {
+CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockSource& region,
+                                                  LegacyStructureSettings const& transformSettings, int mirrorMode,
+                                                  int rotationTurns, int offsetX, int offsetY, int offsetZ,
+                                                  structure::LayerDisplayMode layerDisplayMode, int displayLayer,
+                                                  structure::LayerAxis layerAxis, Vec3 const& cameraPosition,
+                                                  CorrectionWorkKind work, CorrectionFrameBudget& budget) {
     CorrectionProgressChanges changes;
-    auto const totalBlocks = state.structure->renderBlocks.size();
-    // Share one fixed world-read budget between initial cache population and
-    // incremental block notifications.
-    constexpr std::size_t kCorrectionChecksPerFrame = 4096;
-    constexpr std::size_t kSubChunkEventsPerFrame    = 64;
+    struct DirtySection {
+        std::size_t section;
+        bool models;
+    };
+    std::array<DirtySection, CorrectionQuantum * 7> dirtySections;
+    std::size_t dirtyCount{};
+    auto const markDirty = [&](std::size_t section, bool models = false) {
+        assert(dirtyCount < dirtySections.size());
+        dirtySections[dirtyCount++] = {section, models};
+    };
     bool const identityTransform = mirrorMode == 0 && rotationTurns == 0;
+    CorrectionWorldReader worldReader{region};
+    auto const findCell = [&](int x, int y, int z) {
+        return findIndexedCorrectionCell(state.localSectionIndices, state.correctionIndex, state.sectionBlockIndices, x,
+                                         y, z);
+    };
 
     auto const updateCorrection = [&](std::size_t index) {
         auto const& entry = state.structure->renderBlocks[index];
-        auto const visible = isLayerVisible(
-            layerAxis == structure::LayerAxis::X ? entry.x : entry.y,
-            layerDisplayMode, displayLayer,
-            entry.materialIndex, entry.liquidMaterialIndex, layerAxis
-        );
-        auto const transformed = transformStructurePosition(
-            entry, *state.structure, mirrorMode, rotationTurns
-        );
-        BlockPos const position{
-            state.anchor.x + offsetX + transformed.x,
-            state.anchor.y + offsetY + transformed.y,
-            state.anchor.z + offsetZ + transformed.z
-        };
-        auto const* expected = transformExpectedBlock(entry.block, transformSettings, identityTransform);
-        auto const* expectedLiquid = transformExpectedBlock(
-            entry.liquid, transformSettings, identityTransform
-        );
-        auto const& actual = region.getBlock(position);
-        auto const isBubbleColumn = (expected && expected->getTypeName() == "minecraft:bubble_column")
-            || (actual.getTypeName() == "minecraft:bubble_column");
-        auto const& actualLiquid = isBubbleColumn
-            ? region.getExtraBlock(position)
-            : region.getLiquidBlock(position);
-        auto const bodyMissing = expected && actual.isAir();
-        auto const liquidMissing = expectedLiquid && actualLiquid.isAir();
-        auto const bodyTypeWrong = expected
-            && !actual.isAir()
-            && block::placeableBaseName(actual.getTypeName())
-                != block::placeableBaseName(expected->getTypeName());
-        auto const liquidTypeWrong = expectedLiquid
-            && !actualLiquid.isAir() && actualLiquid.getTypeName() != expectedLiquid->getTypeName();
-        auto const liquidCellOccupiedBySolid = !expected && expectedLiquid && !actual.isAir()
-            && actual.getTypeName() != expectedLiquid->getTypeName();
-        auto bannerState = CorrectionState::Correct;
-        if (expected && entry.blockEntityNbt && !bodyMissing && !bodyTypeWrong
-            && expected->getBlockType().getBlockEntityType() == BlockActorType::Banner) {
-            auto appearance = state.bannerAppearances.find(entry.blockEntityNbt.get());
-            if (appearance == state.bannerAppearances.end()) {
-                auto snapshot = loadBannerAppearance(*expected, *entry.blockEntityNbt, *state.level);
-                if (snapshot) appearance = state.bannerAppearances.emplace(
-                    entry.blockEntityNbt.get(), std::move(*snapshot)).first;
+        auto const visible = isLayerVisible(layerAxis == structure::LayerAxis::X ? entry.x : entry.y, layerDisplayMode,
+                                            displayLayer, entry.materialIndex, entry.liquidMaterialIndex, layerAxis);
+        auto const transformed = transformStructurePosition(entry, *state.structure, mirrorMode, rotationTurns);
+        BlockPos const position{state.anchor.x + offsetX + transformed.x, state.anchor.y + offsetY + transformed.y,
+                                state.anchor.z + offsetZ + transformed.z};
+        auto classify = [&]() {
+            if (worldReader.empty(position)) {
+                ++state.correctionEmptyFastCells;
+                return CorrectionState::Missing;
             }
-            auto const actualBanner = readBannerAppearance(region.getBlockEntity(position));
-            // A client may receive the block before its entity packet. Do not
-            // count it as complete until the native banner data is available.
-            bannerState = appearance != state.bannerAppearances.end() && actualBanner
-                ? compareBannerAppearance(appearance->second, *actualBanner)
-                : CorrectionState::WrongState;
-        }
-        auto nextState = CorrectionState::Correct;
-        if (bodyMissing || liquidMissing) {
-            nextState = CorrectionState::Missing;
-        } else if (bodyTypeWrong || liquidTypeWrong || liquidCellOccupiedBySolid
-            || bannerState == CorrectionState::WrongType) {
-            nextState = CorrectionState::WrongType;
-        } else if ((expected && !projectionStatesMatch(
-                        // Native component/wall connections are derived from
-                        // the neighborhood, rather than player orientation.
-                        // Normalize Java or unflattened palette states before
-                        // comparing with the real world's current permutation.
-                        withNeighborConnections(*expected, region, position),
-                        actual, region, position
-                    ))
-            || (expectedLiquid && !projectionStatesMatch(*expectedLiquid, actualLiquid))
-            || bannerState == CorrectionState::WrongState) {
-            nextState = CorrectionState::WrongState;
-        }
+            auto const* expected = transformExpectedBlock(entry.block, transformSettings, identityTransform);
+            auto const* expectedLiquid = transformExpectedBlock(entry.liquid, transformSettings, identityTransform);
+            auto const& actual = region.getBlock(position);
+            auto const isBubbleColumn = (expected && expected->getTypeName() == "minecraft:bubble_column") ||
+                                        (actual.getTypeName() == "minecraft:bubble_column");
+            auto const& actualLiquid =
+                isBubbleColumn ? region.getExtraBlock(position) : region.getLiquidBlock(position);
+            auto const bodyMissing = expected && actual.isAir();
+            auto const liquidMissing = expectedLiquid && actualLiquid.isAir();
+            auto const bodyTypeWrong =
+                expected && !actual.isAir() &&
+                block::placeableBaseName(actual.getTypeName()) != block::placeableBaseName(expected->getTypeName());
+            auto const liquidTypeWrong =
+                expectedLiquid && !actualLiquid.isAir() && actualLiquid.getTypeName() != expectedLiquid->getTypeName();
+            auto const liquidCellOccupiedBySolid =
+                !expected && expectedLiquid && !actual.isAir() && actual.getTypeName() != expectedLiquid->getTypeName();
+            auto bannerState = CorrectionState::Correct;
+            if (expected && entry.blockEntityNbt && !bodyMissing && !bodyTypeWrong &&
+                expected->getBlockType().getBlockEntityType() == BlockActorType::Banner) {
+                auto appearance = state.bannerAppearances.find(entry.blockEntityNbt.get());
+                if (appearance == state.bannerAppearances.end()) {
+                    auto snapshot = loadBannerAppearance(*expected, *entry.blockEntityNbt, *state.level);
+                    if (snapshot)
+                        appearance =
+                            state.bannerAppearances.emplace(entry.blockEntityNbt.get(), std::move(*snapshot)).first;
+                }
+                auto const actualBanner = readBannerAppearance(region.getBlockEntity(position));
+                // A client may receive the block before its entity packet. Do not
+                // count it as complete until the native banner data is available.
+                bannerState = appearance != state.bannerAppearances.end() && actualBanner
+                                  ? compareBannerAppearance(appearance->second, *actualBanner)
+                                  : CorrectionState::WrongState;
+            }
+            auto nextState = CorrectionState::Correct;
+            if (bodyMissing || liquidMissing) {
+                nextState = CorrectionState::Missing;
+            } else if (bodyTypeWrong || liquidTypeWrong || liquidCellOccupiedBySolid ||
+                       bannerState == CorrectionState::WrongType) {
+                nextState = CorrectionState::WrongType;
+            } else if ((expected &&
+                        !projectionStatesMatch(
+                            // Native component/wall connections are derived from
+                            // the neighborhood, rather than player orientation.
+                            // Normalize Java or unflattened palette states before
+                            // comparing with the real world's current permutation.
+                            withNeighborConnections(*expected, region, position), actual, region, position)) ||
+                       (expectedLiquid && !projectionStatesMatch(*expectedLiquid, actualLiquid)) ||
+                       bannerState == CorrectionState::WrongState) {
+                nextState = CorrectionState::WrongState;
+            }
+            return nextState;
+        };
+        auto nextState = classify();
         auto const nowCorrect = nextState == CorrectionState::Correct;
-        auto const wasCorrect = state.progressCorrect[index] != 0;
+        auto const previousState = state.correctionStates.get(index);
+        auto const wasCorrect = previousState == CorrectionState::Correct;
         if (nowCorrect != wasCorrect) {
-            if (entry.sourceIndex>=0) {
-                auto& progress=state.sourceProgress[entry.sourceIndex];
-                if (nowCorrect) { ++progress.placed; ++progress.visiblePlaced; }
-                else { --progress.placed; --progress.visiblePlaced; }
+            if (entry.sourceIndex >= 0) {
+                auto& progress = state.sourceProgress[entry.sourceIndex];
+                if (nowCorrect) {
+                    ++progress.placed;
+                    if (visible)
+                        ++progress.visiblePlaced;
+                } else {
+                    --progress.placed;
+                    if (visible)
+                        --progress.visiblePlaced;
+                }
             }
             state.progressCorrect[index] = nowCorrect ? 1 : 0;
             ++state.progressRevision;
-            if (nowCorrect) ++state.progressCorrectCount;
-            else --state.progressCorrectCount;
+            if (nowCorrect)
+                ++state.progressCorrectCount;
+            else
+                --state.progressCorrectCount;
             changes.overall = true;
             if (visible) {
-                if (nowCorrect) ++state.progressVisibleCorrectCount;
-                else --state.progressVisibleCorrectCount;
+                if (nowCorrect)
+                    ++state.progressVisibleCorrectCount;
+                else
+                    --state.progressVisibleCorrectCount;
                 changes.visible = true;
             }
         }
-        auto const nextErrorKind = nextState == CorrectionState::WrongType ? uchar{1}
-            : nextState == CorrectionState::WrongState ? uchar{2}
-            : uchar{0};
+        auto const nextErrorKind = nextState == CorrectionState::WrongType    ? uchar{1}
+                                   : nextState == CorrectionState::WrongState ? uchar{2}
+                                                                              : uchar{0};
         auto const previousErrorKind = state.progressErrorKind[index];
         if (nextErrorKind != previousErrorKind) {
-            if (entry.sourceIndex>=0) {
-                auto& progress=state.sourceProgress[entry.sourceIndex];
-                if (previousErrorKind==1) --progress.wrongType;
-                if (previousErrorKind==2) --progress.wrongState;
-                if (nextErrorKind==1) ++progress.wrongType;
-                if (nextErrorKind==2) ++progress.wrongState;
+            if (entry.sourceIndex >= 0) {
+                auto& progress = state.sourceProgress[entry.sourceIndex];
+                if (previousErrorKind == 1)
+                    --progress.wrongType;
+                if (previousErrorKind == 2)
+                    --progress.wrongState;
+                if (nextErrorKind == 1)
+                    ++progress.wrongType;
+                if (nextErrorKind == 2)
+                    ++progress.wrongState;
             }
-            if (previousErrorKind == 1) --state.progressWrongTypeCount;
-            else if (previousErrorKind == 2) --state.progressWrongStateCount;
-            if (nextErrorKind == 1) ++state.progressWrongTypeCount;
-            else if (nextErrorKind == 2) ++state.progressWrongStateCount;
+            if (previousErrorKind == 1)
+                --state.progressWrongTypeCount;
+            else if (previousErrorKind == 2)
+                --state.progressWrongStateCount;
+            if (nextErrorKind == 1)
+                ++state.progressWrongTypeCount;
+            else if (nextErrorKind == 2)
+                ++state.progressWrongStateCount;
             state.progressErrorKind[index] = nextErrorKind;
             changes.errors = true;
         }
-        // Progress always describes the whole structure. Hidden layers are
-        // still checked above, but their correction/model meshes remain
-        // suppressed by the layer renderer.
-        if (!visible) return;
-        if ((*state.correctionStates)[index] != nextState) {
-            if (state.correctionStates.use_count() > 1) {
-                state.correctionStates = std::make_shared<std::vector<CorrectionState>>(*state.correctionStates);
-            }
-            (*state.correctionStates)[index] = nextState;
-            markSectionDirty(state, state.blockToSection[index]);
+        state.initialCorrectionScan.record(index);
+        // Store truth even in hidden layers; visibility only affects mesh
+        // consumption. Their world events must still maintain total progress.
+        auto const stateChanged = state.correctionStates.set(index, nextState);
+        if (!visible)
+            return;
+        if (stateChanged) {
+            bool models = correctionNeedsModelUpdate(previousState, nextState);
+            markDirty(state.correctionStates.section(index), models);
             // A missing-cell shell omits faces shared with adjacent missing
             // cells. If either side changes, both section meshes may need an
             // exposed face added or removed (including across 16^3 borders).
-            constexpr int neighbors[6][3] = {
-                {-1, 0, 0}, {1, 0, 0}, {0, -1, 0},
-                {0, 1, 0}, {0, 0, -1}, {0, 0, 1}
-            };
+            constexpr int neighbors[6][3] = {{-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}};
             for (auto const& delta : neighbors) {
-                auto const neighbor = state.expectedWorldBlockIndices->find(std::tuple{
-                    position.x + delta[0], position.y + delta[1], position.z + delta[2]
-                });
+                auto const neighbor = state.expectedWorldBlockIndices->find(
+                    std::tuple{position.x + delta[0], position.y + delta[1], position.z + delta[2]});
                 if (neighbor != state.expectedWorldBlockIndices->end()) {
-                    markSectionDirty(state, state.blockToSection[neighbor->second]);
+                    markDirty(state.correctionStates.section(neighbor->second), models);
                 }
             }
         }
     };
 
-    auto const hasExpectedLocalCell = [&](BlockPos const& localPosition) {
-        auto const found = std::lower_bound(
-            state.structure->renderBlocks.begin(),
-            state.structure->renderBlocks.end(),
-            localPosition,
-            [](structure::LoadedStructure::RenderBlock const& entry, BlockPos const& position) {
-                return std::tie(entry.x, entry.y, entry.z)
-                    < std::tie(position.x, position.y, position.z);
-            }
-        );
-        return found != state.structure->renderBlocks.end()
-            && found->x == localPosition.x
-            && found->y == localPosition.y
-            && found->z == localPosition.z;
-    };
-
-    auto const updateExtra = [&](
-        BlockPos const& localPosition,
-        BlockPos const& worldPosition,
-        bool            visible
-    ) {
+    auto const updateExtra = [&](BlockPos const& localPosition, BlockPos const& worldPosition, bool visible) {
         auto const key = SubChunkKey{localPosition.x, localPosition.y, localPosition.z};
-        bool const isExtra = !region.getBlock(worldPosition).isAir();
+        bool empty = worldReader.empty(worldPosition);
+        if (empty)
+            ++state.correctionEmptyFastCells;
+        bool const isExtra = !empty && !region.getBlock(worldPosition).isAir();
         auto const detected = state.detectedExtraBlockPositions.find(key);
         if (isExtra != (detected != state.detectedExtraBlockPositions.end())) {
-            auto source=structure::coveringSource(*state.structure,localPosition.x,localPosition.y,localPosition.z);
-            if (source>=0) {
-                auto& progress=state.sourceProgress[source];
-                if (isExtra) ++progress.extra; else --progress.extra;
+            auto source =
+                structure::coveringSource(*state.structure, localPosition.x, localPosition.y, localPosition.z);
+            if (source >= 0) {
+                auto& progress = state.sourceProgress[source];
+                if (isExtra)
+                    ++progress.extra;
+                else
+                    --progress.extra;
             }
             if (isExtra) {
                 state.detectedExtraBlockPositions.insert(key);
+                ++state.detectedExtraSectionCounts[localSectionKey(localPosition)];
                 ++state.progressExtraCount;
             } else {
                 state.detectedExtraBlockPositions.erase(detected);
+                auto count = state.detectedExtraSectionCounts.find(localSectionKey(localPosition));
+                if (--count->second == 0)
+                    state.detectedExtraSectionCounts.erase(count);
                 --state.progressExtraCount;
             }
             changes.errors = true;
@@ -291,28 +289,28 @@ CorrectionProgressChanges updateCorrectionTracker(
 
         bool const shouldRender = isExtra && visible;
         auto const rendered = state.extraBlockPositions.find(key);
-        if (shouldRender == (rendered != state.extraBlockPositions.end())) return;
+        if (shouldRender == (rendered != state.extraBlockPositions.end()))
+            return;
 
         std::size_t section{};
         if (shouldRender) {
-            auto const transformedPosition = transformStructurePosition(
-                localPosition, *state.structure, mirrorMode, rotationTurns
-            );
+            auto const transformedPosition =
+                transformStructurePosition(localPosition, *state.structure, mirrorMode, rotationTurns);
             section = ensureCorrectionSection(state, localPosition, transformedPosition);
             state.extraBlockPositions.insert(key);
             state.sectionExtraBlockPositions[section].insert(key);
         } else {
             auto const sectionFound = state.localSectionIndices.find(localSectionKey(localPosition));
-            if (sectionFound == state.localSectionIndices.end()) return;
+            if (sectionFound == state.localSectionIndices.end())
+                return;
             section = sectionFound->second;
             state.extraBlockPositions.erase(rendered);
             state.sectionExtraBlockPositions[section].erase(key);
         }
-        markSectionDirty(state, section);
-        constexpr int neighbors[6][3] = {
-            {-1, 0, 0}, {1, 0, 0}, {0, -1, 0},
-            {0, 1, 0}, {0, 0, -1}, {0, 0, 1}
-        };
+        // This cell is absent from the projected-world map. Native connection
+        // tessellators can therefore read its real block through the fallback.
+        markDirty(section, true);
+        constexpr int neighbors[6][3] = {{-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}};
         for (auto const& delta : neighbors) {
             BlockPos const neighbor{
                 localPosition.x + delta[0],
@@ -320,158 +318,153 @@ CorrectionProgressChanges updateCorrectionTracker(
                 localPosition.z + delta[2],
             };
             auto const found = state.localSectionIndices.find(localSectionKey(neighbor));
-            if (found != state.localSectionIndices.end()) markSectionDirty(state, found->second);
+            if (found != state.localSectionIndices.end())
+                markDirty(found->second, true);
         }
     };
 
-    // The cache is populated once after a structure/transform change. Once
-    // that pass completes, a stable world performs no correction reads.
-    // Official BlockSource notifications update only changed cells.
-    auto const changedPositions = state.fileTransform ? std::exchange(state.fileBlockChanges,{})
-        : takePendingBlockChanges(kCorrectionChecksPerFrame);
-    std::size_t correctionChecks{};
-    for (auto const& change : changedPositions) {
-        auto const& changedPosition = change.position;
-        auto const found = state.expectedWorldBlockIndices->find(std::tuple{
-            changedPosition.x, changedPosition.y, changedPosition.z
-        });
-        if (found != state.expectedWorldBlockIndices->end()) {
-            if (change.destroyedAt != 0) {
-                state.pendingBrokenCells.push_back(BrokenProjectionCell{
-                    changedPosition.x,
-                    changedPosition.y,
-                    changedPosition.z,
-                    change.destroyedAt,
-                });
+    auto const localFromWorld = [&](BlockPos const& world) -> std::optional<BlockPos> {
+        auto x = static_cast<long long>(world.x) - state.anchor.x - offsetX;
+        auto y = static_cast<long long>(world.y) - state.anchor.y - offsetY;
+        auto z = static_cast<long long>(world.z) - state.anchor.z - offsetZ;
+        bool rotated = (rotationTurns & 1) != 0;
+        if (x < 0 || x >= (rotated ? state.structure->sizeZ : state.structure->sizeX) || y < 0 ||
+            y >= state.structure->sizeY || z < 0 || z >= (rotated ? state.structure->sizeX : state.structure->sizeZ))
+            return std::nullopt;
+        return inverseTransformStructurePosition(
+            BlockPos{static_cast<int>(x), static_cast<int>(y), static_cast<int>(z)}, *state.structure, mirrorMode,
+            rotationTurns);
+    };
+    auto const checkWorld = [&](BlockPos const& world, std::uint64_t destroyedAt) {
+        auto localResult = localFromWorld(world);
+        if (!localResult)
+            return;
+        auto const& local = *localResult;
+        auto found = findCell(local.x, local.y, local.z);
+        if (found) {
+            if (destroyedAt)
+                state.pendingBrokenCells.push_back({world.x, world.y, world.z, destroyedAt});
+            updateCorrection(*found);
+        } else if (isStructureCellCovered(*state.structure, local)) {
+            bool visible = isLayerVisible(layerAxis == structure::LayerAxis::X ? local.x : local.y, layerDisplayMode,
+                                          displayLayer, -1, -1, layerAxis);
+            updateExtra(local, world, visible);
+        }
+    };
+
+    if (work == CorrectionWorkKind::Event) {
+        for (std::size_t i = 0; i < CorrectionQuantum && !state.correctionEvents.empty(); ++i) {
+            if (!budget.tryConsume())
+                break;
+            auto event = *state.correctionEvents.front();
+            state.correctionEvents.pop();
+            checkWorld(BlockPos{event.position[0], event.position[1], event.position[2]}, event.destroyedAt);
+        }
+    } else if (work == CorrectionWorkKind::Loaded) {
+        if (auto refresh = state.correctionSubChunks.front()) {
+            auto limit = std::min(CorrectionQuantum, 4096 - refresh->cell);
+            std::size_t processed{};
+            while (processed < limit && budget.tryConsume()) {
+                auto cell = refresh->cell + processed++;
+                checkWorld(BlockPos{refresh->position[0] * 16 + static_cast<int>(cell >> 8),
+                                    refresh->position[1] * 16 + static_cast<int>((cell >> 4) & 15),
+                                    refresh->position[2] * 16 + static_cast<int>(cell & 15)},
+                           0);
             }
-            updateCorrection(found->second);
-            ++correctionChecks;
-            continue;
+            if (processed)
+                state.correctionSubChunks.advance(processed);
         }
-        BlockPos const transformed{
-            changedPosition.x - state.anchor.x - offsetX,
-            changedPosition.y - state.anchor.y - offsetY,
-            changedPosition.z - state.anchor.z - offsetZ,
+    } else if (work == CorrectionWorkKind::Initial) {
+        bool rotated = (rotationTurns & 1) != 0;
+        auto relative = [](float camera, int anchor, int offset, int size) {
+            return static_cast<int>(std::clamp(std::floor(static_cast<double>(camera) - anchor - offset), 0.0,
+                                               static_cast<double>(std::max(0, size - 1))));
         };
-        auto const local = inverseTransformStructurePosition(
-            transformed, *state.structure, mirrorMode, rotationTurns
-        );
-        if (isStructureCellCovered(*state.structure, local)
-            && !hasExpectedLocalCell(local)) {
-            auto const visible = isLayerVisible(
-                layerAxis == structure::LayerAxis::X ? local.x : local.y,
-                layerDisplayMode,
-                displayLayer,
-                -1,
-                -1,
-                layerAxis
-            );
-            updateExtra(local, changedPosition, visible);
-            ++correctionChecks;
+        auto localCamera = inverseTransformStructurePosition(
+            BlockPos{relative(cameraPosition.x, state.anchor.x, offsetX,
+                              rotated ? state.structure->sizeZ : state.structure->sizeX),
+                     relative(cameraPosition.y, state.anchor.y, offsetY, state.structure->sizeY),
+                     relative(cameraPosition.z, state.anchor.z, offsetZ,
+                              rotated ? state.structure->sizeX : state.structure->sizeZ)},
+            *state.structure, mirrorMode, rotationTurns);
+        std::optional<std::size_t> nearby;
+        if (auto found = state.localSectionIndices.find(localSectionKey(localCamera));
+            found != state.localSectionIndices.end())
+            nearby = found->second;
+        auto selected = state.correctionScan.select(
+            [&](std::size_t section) {
+                auto const& target = state.sections[section];
+                auto dx = target.center.x + static_cast<float>(state.anchor.x + offsetX) - cameraPosition.x;
+                auto dy = target.center.y + static_cast<float>(state.anchor.y + offsetY) - cameraPosition.y;
+                auto dz = target.center.z + static_cast<float>(state.anchor.z + offsetZ) - cameraPosition.z;
+                float distance = dx * dx + dy * dy + dz * dz;
+                bool visible = state.correctionStates.sectionVisible(section);
+                return CorrectionPriority{!visible              ? 3
+                                          : distance <= 32 * 32 ? 0
+                                          : target.buildVisible ? 1
+                                                                : 2,
+                                          distance};
+            },
+            nearby);
+        if (selected) {
+            auto const& indices = state.sectionBlockIndices[*selected];
+            auto offset = state.correctionScan.offset(*selected);
+            auto limit = std::min(CorrectionQuantum, indices.size() - offset);
+            std::size_t processed{};
+            while (processed < limit && budget.tryConsume())
+                updateCorrection(indices[offset + processed++]);
+            if (processed)
+                state.correctionScan.advance(*selected, processed, indices.size());
+        }
+    } else {
+        for (std::size_t processed = 0; processed < CorrectionQuantum && !state.extraScan.complete(); ++processed) {
+            if (!budget.tryConsume())
+                break;
+            auto cell = state.extraScan.step(state.structure->regions, [&](std::array<int, 3> const& section) {
+                auto found = state.localSectionIndices.find(std::tuple{section[0], section[1], section[2]});
+                return found != state.localSectionIndices.end() && found->second < state.correctionIndex.size()
+                           ? state.correctionIndex[found->second].mask()
+                           : CorrectionCellMask{};
+            });
+            if (!cell)
+                continue;
+            BlockPos local{(*cell)[0], (*cell)[1], (*cell)[2]};
+            auto transformed = transformStructurePosition(local, *state.structure, mirrorMode, rotationTurns);
+            BlockPos world{state.anchor.x + offsetX + transformed.x, state.anchor.y + offsetY + transformed.y,
+                           state.anchor.z + offsetZ + transformed.z};
+            bool visible = isLayerVisible(layerAxis == structure::LayerAxis::X ? local.x : local.y, layerDisplayMode,
+                                          displayLayer, -1, -1, layerAxis);
+            updateExtra(local, world, visible);
+            // A tile with previously detected extras must visit those cells to
+            // remove their counts/meshes. Fresh empty tiles may skip in bulk.
+            if (!worldReader.empty(world) || state.detectedExtraSectionCounts.contains(localSectionKey(local)))
+                continue;
+            auto origin = BlockPos{state.anchor.x + offsetX, state.anchor.y + offsetY, state.anchor.z + offsetZ};
+            if (auto box = projectionSectionLocalIntersection(worldReader.emptySection(), *state.structure, origin,
+                                                              mirrorMode, rotationTurns))
+                state.correctionEmptyFastCells += state.extraScan.eraseBox(box->minimum, box->maximum);
         }
     }
-
-    auto const loadedSubChunks = state.fileTransform ? std::vector<SubChunkKey>{}
-        : takePendingLoadedSubChunks(kSubChunkEventsPerFrame);
-    state.pendingLoadedSubChunks.insert(loadedSubChunks.begin(), loadedSubChunks.end());
-
-    auto const scanRemaining = totalBlocks - state.correctionScanCursor;
-    auto const checks = std::min(scanRemaining, kCorrectionChecksPerFrame - correctionChecks);
-    for (std::size_t checked = 0; checked < checks; ++checked) {
-        updateCorrection(state.correctionScanCursor++);
+    // One revision per affected section per quantum, including shared faces.
+    // This also preserves the interactivity priority until a matching upload.
+    auto dirtyEnd = dirtySections.begin() + dirtyCount;
+    std::sort(dirtySections.begin(), dirtyEnd, [](auto const& a, auto const& b) { return a.section < b.section; });
+    for (auto it = dirtySections.begin(); it != dirtyEnd;) {
+        auto section = it->section;
+        bool models{};
+        do {
+            models = models || it->models;
+            ++it;
+        } while (it != dirtyEnd && it->section == section);
+        auto& target = state.sections[section];
+        target.dirty = target.incrementalDirty = true;
+        target.interactiveDirty = target.interactiveDirty || work == CorrectionWorkKind::Event;
+        target.modelDirty = target.modelDirty || models;
+        if (models)
+            target.biomeRefresh = {};
+        ++target.requestedRevision;
     }
-    correctionChecks += checks;
-
-    // Air cells have no render-block index, so discover extras with a separate
-    // cursor while sharing the same fixed per-frame correction budget. Region
-    // boxes preserve litematic gaps and avoid scanning their merged bounds.
-    while (correctionChecks < kCorrectionChecksPerFrame
-        && state.extraScanRegion < state.structure->regions.size()) {
-        auto const& box = state.structure->regions[state.extraScanRegion];
-        auto const regionVolume = static_cast<std::uint64_t>(box.sizeX)
-            * static_cast<std::uint64_t>(box.sizeY) * static_cast<std::uint64_t>(box.sizeZ);
-        if (state.extraScanCell >= regionVolume) {
-            ++state.extraScanRegion;
-            state.extraScanCell = 0;
-            continue;
-        }
-        auto const yz = static_cast<std::uint64_t>(box.sizeY) * box.sizeZ;
-        auto const x = state.extraScanCell / yz;
-        auto const remainder = state.extraScanCell % yz;
-        auto const y = remainder / static_cast<std::uint64_t>(box.sizeZ);
-        auto const z = remainder % static_cast<std::uint64_t>(box.sizeZ);
-        ++state.extraScanCell;
-        ++correctionChecks;
-        BlockPos const local{
-            box.x + static_cast<int>(x),
-            box.y + static_cast<int>(y),
-            box.z + static_cast<int>(z),
-        };
-        auto const visible = isLayerVisible(
-            layerAxis == structure::LayerAxis::X ? local.x : local.y,
-            layerDisplayMode,
-            displayLayer,
-            -1,
-            -1,
-            layerAxis
-        );
-        if (hasExpectedLocalCell(local)) continue;
-        auto const transformed = transformStructurePosition(
-            local, *state.structure, mirrorMode, rotationTurns
-        );
-        BlockPos const world{
-            state.anchor.x + offsetX + transformed.x,
-            state.anchor.y + offsetY + transformed.y,
-            state.anchor.z + offsetZ + transformed.z,
-        };
-        updateExtra(local, world, visible);
-    }
-
-    // A newly received client subchunk may not emit one block notification per
-    // cell. Refresh only its projected cells, capped to one 16^3 region/frame.
-    if (state.correctionScanCursor == totalBlocks
-        && state.extraScanRegion == state.structure->regions.size()
-        && correctionChecks == 0
-        && !state.pendingLoadedSubChunks.empty()) {
-        auto loaded = state.pendingLoadedSubChunks.begin();
-        auto const [subChunkX, subChunkY, subChunkZ] = *loaded;
-        state.pendingLoadedSubChunks.erase(loaded);
-        auto const minX = subChunkX * 16;
-        auto const minY = subChunkY * 16;
-        auto const minZ = subChunkZ * 16;
-        for (int x = minX; x < minX + 16; ++x) {
-            for (int y = minY; y < minY + 16; ++y) {
-                for (int z = minZ; z < minZ + 16; ++z) {
-                    auto const found = state.expectedWorldBlockIndices->find(std::tuple{x, y, z});
-                    if (found != state.expectedWorldBlockIndices->end()) {
-                        updateCorrection(found->second);
-                        continue;
-                    }
-                    BlockPos const transformed{
-                        x - state.anchor.x - offsetX,
-                        y - state.anchor.y - offsetY,
-                        z - state.anchor.z - offsetZ,
-                    };
-                    auto const local = inverseTransformStructurePosition(
-                        transformed, *state.structure, mirrorMode, rotationTurns
-                    );
-                    if (!isStructureCellCovered(*state.structure, local)
-                        || hasExpectedLocalCell(local)) {
-                        continue;
-                    }
-                    auto const visible = isLayerVisible(
-                        layerAxis == structure::LayerAxis::X ? local.x : local.y,
-                        layerDisplayMode,
-                        displayLayer,
-                        -1,
-                        -1,
-                        layerAxis
-                    );
-                    updateExtra(local, BlockPos{x, y, z}, visible);
-                }
-            }
-        }
-    }
+    state.correctionEmptyProbes += worldReader.probes();
     return changes;
 }
 

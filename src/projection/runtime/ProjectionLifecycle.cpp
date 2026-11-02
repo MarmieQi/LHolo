@@ -84,9 +84,7 @@ bool prepareProjectionState(
     state.blockTessellator = std::make_unique<BlockTessellator>(
         &player->getDimensionBlockSource()
     );
-    state.correctionStates = std::make_shared<std::vector<CorrectionState>>(
-        state.structure->renderBlocks.size(), CorrectionState::Missing
-    );
+    state.initialCorrectionScan.reset(state.structure->renderBlocks.size());
     state.progressCorrect.resize(state.structure->renderBlocks.size(), 0);
     state.progressErrorKind.resize(state.structure->renderBlocks.size(), 0);
     state.sourceProgress.resize(state.structure->sourceFiles.size());
@@ -101,7 +99,6 @@ bool prepareProjectionState(
     state.cachedMirror = -1;
 
     std::vector<Vec3> centers;
-    state.blockToSection.resize(state.structure->renderBlocks.size());
     for (std::size_t index = 0; index < state.structure->renderBlocks.size(); ++index) {
         auto const& entry = state.structure->renderBlocks[index];
         auto const key = std::tuple{entry.x / 16, entry.y / 16, entry.z / 16};
@@ -118,9 +115,20 @@ bool prepareProjectionState(
                 static_cast<float>(sz * 16 + 8)
             );
         }
-        state.blockToSection[index] = found->second;
         state.sectionBlockIndices[found->second].push_back(index);
     }
+    state.correctionStates.initialize(state.sectionBlockIndices, state.structure->renderBlocks.size());
+    state.correctionIndex.resize(state.sectionBlockIndices.size());
+    for (std::size_t section = 0; section < state.sectionBlockIndices.size(); ++section) {
+        std::vector<std::uint16_t> slots;
+        slots.reserve(state.sectionBlockIndices[section].size());
+        for (auto index : state.sectionBlockIndices[section]) {
+            auto const& cell = state.structure->renderBlocks[index];
+            slots.push_back(correctionCellSlot(cell.x, cell.y, cell.z));
+        }
+        state.correctionIndex[section].initialize(std::move(slots));
+    }
+    state.correctionScan.reset(state.sectionBlockIndices);
     initializeSectionStates(state.sections, centers);
     state.warningFillSectionMeshes.resize(state.sectionBlockIndices.size());
     state.correctionOutlineSectionMeshes.resize(state.sectionBlockIndices.size());

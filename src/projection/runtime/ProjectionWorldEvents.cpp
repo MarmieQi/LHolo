@@ -7,11 +7,13 @@
 // (at your option) any later version.
 
 #include "projection/runtime/ProjectionWorldEvents.h"
+#include "projection/correction/CorrectionWorkQueues.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <deque>
+#include <set>
 #include <mutex>
 #include <tuple>
 
@@ -32,12 +34,19 @@ namespace {
 
 std::mutex                gPendingEventsMutex;
 std::mutex                gWorldLifecycleMutex;
-std::deque<PendingBlockChange> gIncomingBlockChanges;
+CorrectionEventQueue gIncomingBlockChanges;
 std::deque<SubChunkKey>   gIncomingLoadedSubChunks;
+std::set<SubChunkKey>     gQueuedLoadedSubChunks;
 std::atomic<BlockSource*> gAttachedBlockSource{};
 std::atomic<ChunkSource*> gAttachedChunkSource{};
 std::atomic<Level*>       gAttachedLevel{};
 std::atomic_bool          gWorldExitPending{};
+
+void clearPendingEventsUnlocked() {
+    gIncomingBlockChanges.clear();
+    gIncomingLoadedSubChunks.clear();
+    gQueuedLoadedSubChunks.clear();
+}
 
 class ProjectionBlockSourceListener final : public BlockSourceListener {
 public:
@@ -47,7 +56,8 @@ public:
         if (&source != gAttachedBlockSource.load(std::memory_order_acquire)) return;
         // Reuse the bounded correction queue. Entity-only updates are not
         // player destruction and must not start placement suppression.
-        gIncomingBlockChanges.push_back({actor.mPosition.get(), 0});
+        auto const& position = actor.mPosition.get();
+        gIncomingBlockChanges.push({position.x, position.y, position.z}, 0);
     }
 
     void onSourceDestroyed(BlockSource& source) override {
@@ -81,10 +91,7 @@ public:
         // callback that started just before world teardown must not append an
         // old-world event after onLevelDestruction() has cleared the queue.
         if (&source != gAttachedBlockSource.load(std::memory_order_acquire)) return;
-        gIncomingBlockChanges.push_back(PendingBlockChange{
-            pos,
-            destroyed ? GetTickCount64() : 0,
-        });
+        gIncomingBlockChanges.push({pos.x, pos.y, pos.z}, destroyed ? GetTickCount64() : 0);
     }
 };
 
@@ -103,11 +110,12 @@ public:
         // See onBlockChanged(): source validation and queue insertion must be
         // ordered with teardown's queue clear.
         if (&source != gAttachedChunkSource.load(std::memory_order_acquire)) return;
-        gIncomingLoadedSubChunks.emplace_back(
+        SubChunkKey key{
             chunkPosition.x,
             static_cast<int>(absoluteSubChunkIndex),
             chunkPosition.z
-        );
+        };
+        if (gQueuedLoadedSubChunks.insert(key).second) gIncomingLoadedSubChunks.push_back(key);
     }
 
     void onLevelDestruction(std::string const&) override {
@@ -126,8 +134,7 @@ public:
         gAttachedChunkSource.store(nullptr, std::memory_order_release);
         {
             std::lock_guard lock(gPendingEventsMutex);
-            gIncomingBlockChanges.clear();
-            gIncomingLoadedSubChunks.clear();
+            clearPendingEventsUnlocked();
         }
         // Projection shutdown waits for workers and belongs on the next normal
         // overlay/render frame, outside engine teardown.
@@ -163,8 +170,7 @@ void detachProjectionDimensionEvents() {
         blockSource->removeListener(gProjectionBlockSourceListener);
     }
     std::lock_guard lock(gPendingEventsMutex);
-    gIncomingBlockChanges.clear();
-    gIncomingLoadedSubChunks.clear();
+    clearPendingEventsUnlocked();
 }
 
 void detachProjectionWorldEvents() {
@@ -190,34 +196,19 @@ bool consumeWorldExitRequest() {
 
 std::vector<PendingBlockChange> takePendingBlockChanges(std::size_t limit) {
     std::vector<PendingBlockChange> changes;
-    {
-        std::lock_guard lock(gPendingEventsMutex);
-        auto const count = std::min(limit, gIncomingBlockChanges.size());
-        changes.reserve(count);
-        for (std::size_t index = 0; index < count; ++index) {
-            changes.push_back(gIncomingBlockChanges.front());
-            gIncomingBlockChanges.pop_front();
-        }
+    std::lock_guard lock(gPendingEventsMutex);
+    for (std::size_t index = 0; index < limit; ++index) {
+        auto event = gIncomingBlockChanges.front();
+        if (!event) break;
+        changes.push_back({BlockPos{event->position[0], event->position[1], event->position[2]}, event->destroyedAt});
+        gIncomingBlockChanges.pop();
     }
-    std::sort(changes.begin(), changes.end(), [](auto const& lhs, auto const& rhs) {
-        return std::tie(lhs.position.x, lhs.position.y, lhs.position.z)
-            < std::tie(rhs.position.x, rhs.position.y, rhs.position.z);
-    });
-    std::vector<PendingBlockChange> merged;
-    merged.reserve(changes.size());
-    for (auto const& change : changes) {
-        if (!merged.empty()
-            && merged.back().position.x == change.position.x
-            && merged.back().position.y == change.position.y
-            && merged.back().position.z == change.position.z) {
-            // Preserve the latest destruction if one position changed more
-            // than once before this batch was consumed.
-            merged.back().destroyedAt = std::max(merged.back().destroyedAt, change.destroyedAt);
-            continue;
-        }
-        merged.push_back(change);
-    }
-    return merged;
+    return changes;
+}
+
+void discardPendingProjectionEvents() {
+    std::lock_guard lock(gPendingEventsMutex);
+    clearPendingEventsUnlocked();
 }
 
 std::vector<SubChunkKey> takePendingLoadedSubChunks(std::size_t limit) {
@@ -228,6 +219,7 @@ std::vector<SubChunkKey> takePendingLoadedSubChunks(std::size_t limit) {
         loaded.reserve(count);
         for (std::size_t index = 0; index < count; ++index) {
             loaded.push_back(gIncomingLoadedSubChunks.front());
+            gQueuedLoadedSubChunks.erase(gIncomingLoadedSubChunks.front());
             gIncomingLoadedSubChunks.pop_front();
         }
     }

@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "projection/correction/CorrectionState.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -36,7 +38,6 @@ struct SubChunkKeyHash {
     }
 };
 
-enum class CorrectionState : std::uint8_t { Unknown, Missing, Correct, WrongType, WrongState };
 enum class RenderBucket : std::uint8_t { Opaque, Alpha, AlphaOneSided, Blend, Count };
 
 struct ProjectedBlockActor {

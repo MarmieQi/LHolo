@@ -121,7 +121,7 @@ void submitProjectedBlockActorPass(
         *state.expectedWorldBlockActors
     );
     for (auto const& projected : state.projectedBlockActors) {
-        auto const correctionState = (*state.correctionStates)[projected.structureIndex];
+        auto const correctionState = state.renderCorrectionState(projected.structureIndex);
         auto* renderComponent = projected.actor->_getRenderComponent();
         if (correctionState == CorrectionState::Correct
             || correctionState == CorrectionState::WrongType

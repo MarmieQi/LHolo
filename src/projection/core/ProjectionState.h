@@ -7,6 +7,12 @@
 #pragma once
 
 #include "projection/correction/BannerCorrection.h"
+#include "projection/correction/CorrectionScanProgress.h"
+#include "projection/correction/CorrectionStateStore.h"
+#include "projection/correction/CorrectionScanScheduler.h"
+#include "projection/correction/CorrectionWorkQueues.h"
+#include "projection/correction/CorrectionCellMask.h"
+#include "projection/correction/CorrectionAirScan.h"
 
 #include "projection/core/ProjectionInternalTypes.h"
 #include "projection/ProjectionTypes.h"
@@ -56,7 +62,9 @@ struct SectionState {
     bool buildVisible{true};
     bool prefetchVisible{true};
     bool    dirty{};
+    bool    modelDirty{true};
     bool    incrementalDirty{};
+    bool    interactiveDirty{};
     bool    buildInFlight{};
     std::uint64_t requestedRevision{};
     std::uint64_t uploadedRevision{};
@@ -69,7 +77,11 @@ struct ProjectionState {
     std::string fileId;
     std::optional<structure::detail::StructureTransformSnapshot> fileTransform;
     std::vector<std::shared_ptr<ProjectionState>> files;
-    std::vector<PendingBlockChange> fileBlockChanges;
+    CorrectionEventQueue correctionEvents;
+    CorrectionSubChunkQueue correctionSubChunks;
+    CorrectionWorkCursor correctionWorkCursor;
+    std::uint64_t correctionFrames{}, correctionMicros{}, correctionPeakMicros{}, correctionWork{};
+    std::uint64_t correctionEmptyFastCells{}, correctionEmptyProbes{};
     std::size_t fileFrameCursor{};
     std::uint64_t progressVisibleTotal{};
     bool                            enabled{};
@@ -84,9 +96,13 @@ struct ProjectionState {
     std::uint64_t                   structureGeneration{};
     std::uint64_t                   activationGeneration{};
     std::unique_ptr<BlockTessellator> blockTessellator;
-    std::shared_ptr<std::vector<CorrectionState>> correctionStates{
-        std::make_shared<std::vector<CorrectionState>>()
-    };
+    CorrectionStateStore correctionStates;
+    std::optional<CorrectionStateStore::Snapshot> correctionSnapshot;
+    // Both builders share this read boundary. Only the active state is mutable;
+    // a worker retains a bounded, immutable neighborhood instead of all cells.
+    CorrectionState renderCorrectionState(std::size_t index) const {
+        return correctionSnapshot ? correctionSnapshot->renderState(index) : correctionStates.renderState(index);
+    }
     // One byte per structure block. This is updated by the existing bounded
     // correction scan, so the HUD never performs its own world-block queries.
     std::vector<uchar>              progressCorrect;
@@ -106,10 +122,10 @@ struct ProjectionState {
     std::uint64_t                   progressWrongStateCount{};
     std::uint64_t                   progressExtraCount{};
     std::vector<BuildProgress>       sourceProgress;
-    std::size_t                     correctionScanCursor{};
-    std::size_t                     extraScanRegion{};
-    std::uint64_t                   extraScanCell{};
-    std::set<SubChunkKey>           pendingLoadedSubChunks;
+    CorrectionScanScheduler         correctionScan;
+    CorrectionScanProgress          initialCorrectionScan;
+    CorrectionAirScan               extraScan;
+    std::vector<CorrectionSectionIndex> correctionIndex;
     std::vector<BrokenProjectionCell> pendingBrokenCells;
     int                             cachedRotation{-1};
     int                             cachedMirror{-1};
@@ -128,6 +144,7 @@ struct ProjectionState {
     std::unordered_map<SubChunkKey, std::size_t, SubChunkKeyHash> localSectionIndices;
     std::vector<SubChunkKey>              localSectionKeys;
     std::set<SubChunkKey>                 detectedExtraBlockPositions;
+    std::unordered_map<SubChunkKey, std::size_t, SubChunkKeyHash> detectedExtraSectionCounts;
     std::set<SubChunkKey>                 extraBlockPositions;
     std::vector<std::set<SubChunkKey>>    sectionExtraBlockPositions;
     // Correction meshes are split by category so the see-through (X-ray) option
@@ -142,7 +159,6 @@ struct ProjectionState {
     std::vector<std::unique_ptr<mce::Mesh>> blockEntityPlaceholderSectionMeshes;
     std::unique_ptr<mce::Mesh>              structureBoundsMesh;
     std::vector<SectionState>               sections;
-    std::vector<std::size_t>                blockToSection;
     std::size_t                             dirtySectionCursor{};
     std::size_t                             biomeRefreshCursor{};
     std::size_t                             biomeRefreshVisibleCursor{};
@@ -161,6 +177,7 @@ struct ProjectionState {
     int                                     consecutiveMeshWorkerFailures{};
     bool                                    asyncMeshBuildingEnabled{true};
     std::uint64_t                           meshWorkerUploadedSections{};
+    std::uint64_t                           meshWorkerCorrectionOnlySections{};
     std::uint64_t                           meshWorkerDiscardedBuilds{};
     std::uint64_t                           meshWorkerSnapshotMicros{};
     std::uint64_t                           meshWorkerSnapshotDataMicros{};

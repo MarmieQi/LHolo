@@ -3,6 +3,7 @@
 #include "projection/runtime/ProjectionLifecycle.h"
 #include "structure/IndependentTaskFiles.h"
 #include "structure/StructureGeneration.h"
+#include "projection/world/ProjectionWorldBounds.h"
 
 namespace lholo::projection::detail {
 namespace {
@@ -15,10 +16,8 @@ bool intersectsFile(ProjectionState const& file, std::array<long long, 3> const&
     bool rotated = (t.rotation & 1) != 0;
     std::array<int, 3> size{rotated ? file.structure->sizeZ : file.structure->sizeX, file.structure->sizeY,
                             rotated ? file.structure->sizeX : file.structure->sizeZ};
-    for (int axis = 0; axis < 3; ++axis)
-        if (hi[axis] < origin[axis] || lo[axis] >= origin[axis] + size[axis])
-            return false;
-    return true;
+    return ProjectionWorldBounds{origin, {origin[0] + size[0], origin[1] + size[1], origin[2] + size[2]}}
+        .intersects(lo, hi);
 }
 } // namespace
 bool updateIndependentFiles(ProjectionState& root, BaseActorRenderContext& context,
@@ -57,16 +56,15 @@ bool updateIndependentFiles(ProjectionState& root, BaseActorRenderContext& conte
     root.structureGeneration = loaded->generation;
     return true;
 }
-void distributeIndependentFileEvents(ProjectionState& root) {
-    auto changes = takePendingBlockChanges(4096);
-    auto chunks = takePendingLoadedSubChunks(64);
+void distributeIndependentFileEvents(ProjectionState& root,
+    std::span<PendingBlockChange const> changes, std::span<SubChunkKey const> chunks) {
     for (auto& file : root.files) {
         // Route only relevant facts; don't scan unrelated world subchunks in
         // every file's original correction tracker.
         for (auto const& change : changes) {
             std::array<long long, 3> p{change.position.x, change.position.y, change.position.z};
             if (intersectsFile(*file, p, p))
-                file->fileBlockChanges.push_back(change);
+                file->correctionEvents.push({change.position.x, change.position.y, change.position.z}, change.destroyedAt);
         }
         for (auto const& chunk : chunks) {
             auto [x, y, z] = chunk;
@@ -74,15 +72,7 @@ void distributeIndependentFileEvents(ProjectionState& root) {
                                         static_cast<long long>(z) * 16};
             std::array<long long, 3> hi{lo[0] + 15, lo[1] + 15, lo[2] + 15};
             if (intersectsFile(*file, lo, hi))
-                file->pendingLoadedSubChunks.insert(chunk);
-        }
-        if (meshWorkerIsDisabledForSession() && file->asyncMeshBuildingEnabled) {
-            file->asyncMeshBuildingEnabled = false;
-            for (auto& section : file->sections)
-                if (section.buildInFlight) {
-                    section.buildInFlight = false;
-                    section.dirty = true;
-                }
+                file->correctionSubChunks.push({x, y, z});
         }
     }
 }

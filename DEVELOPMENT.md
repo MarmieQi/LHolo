@@ -717,14 +717,14 @@ dirty 分区的 `BlockTessellator` 和全部 CPU 几何生成不在 `$renderBloc
 
 - 一个分区最多一个 in-flight Task；连续变化只递增 revision，旧结果不会覆盖新状态。
 - 增量方块变化优先于初次加载，二者内部都按分区中心到相机距离由近到远选择。
-- 主线程用 `ChunkViewSource::move(..., DontGenerateOnlyGet, ...)` 固定分区加两格 halo 的局部视图。投影虚拟方块/方块实体/世界坐标索引表按 placement generation 发布为共享不可变版本：移动、旋转、镜像或切层时新建一组 Map，in-flight Task 通过 `shared_ptr` 保活旧版本，禁止原地清空或修改已发布版本。Task 只复制会增量变化的纠错字节、方块实体渲染可用性、本 section 索引，以及当前/六邻居 section 的稀疏多余方块坐标；不复制完整多余方块集合，不再扫描/拷贝 halo Map，也不再为每个 Task 构造紧凑 `LoadedStructure`。
+- 主线程用 `ChunkViewSource::move(..., DontGenerateOnlyGet, ...)` 固定分区加两格 halo 的局部视图。投影虚拟方块/方块实体/世界坐标索引表按 placement generation 发布为共享不可变版本：移动、旋转、镜像或切层时新建一组 Map，in-flight Task 通过 `shared_ptr` 保活旧版本，禁止原地清空或修改已发布版本。纠错状态由 `correction/CorrectionStateStore` 按本地 16³ 分区保存；Task 只保活当前及六邻居分区的只读状态页，活动页被修改时仅局部复制，不复制整图状态或分区指针表。索引到分区/槽位的布局不可变共享，替代原 blockToSection 数组；显示范围作为页内位图，与真实纠错结果分开。Task 继续共享不可变的方块实体渲染可用性，复制本 section 索引及当前/六邻居 section 的稀疏多余方块坐标，不复制完整多余集合、halo Map 或 `LoadedStructure`。
 - Worker 独占 `BlockSource`、`BlockTessellator` 和 `Tessellator`，不读取 `gState`、`renderContext` 或渲染线程的活动 Tessellator。
 - Worker 必须用 `Tessellator::end(UploadMode::Never, ...)` 生成 CPU `mce::MeshData`；禁止在 Worker 使用 `Buffered` 或触碰 GPU。
 - `UploadMode::Never` 返回的 CPU-only `mce::Mesh` 尚未设置上传态 vertex count，因此 Worker 不能用 `Mesh::getMeshVertexCount()` 校验结果（该值在 1.26.20.04 实测为 0）。CPU 阶段以 `MeshData::mPositions.size()` 为权威顶点数，并检查所有非空顶点属性数组与它一致。
 - opaque pass 每帧最多接收两个完成结果，并以 1 ms 为提交预算。提交前同时检查 Worker generation、结构 generation 和 section revision，再用当前 `BufferResourceService` 的官方 `mce::Mesh(service, MeshData&&, false, name)` 构造 GPU Mesh。
 - transparent pass 只提交已完成 Mesh，不调度任务、不消费完成队列、不上传资源。
 - 普通 dirty 更新保留旧 Mesh 直到替换完成；旋转/镜像会立即清除旧方向的几何。
-- 每成功上传 64 个 section，以 DEBUG 日志聚合输出主线程快照准备（进一步拆分为动态字节/索引复制和 `ChunkViewSource`）、Worker 构建和主线程上传的平均/峰值微秒数；不得为性能统计逐方块写日志。
+- 每成功上传 64 个 section，以 DEBUG 日志聚合输出主线程快照准备（进一步拆分为动态字节/索引复制和 `ChunkViewSource`）、Worker 构建和主线程上传的平均/峰值微秒数，以及本次纠错快照持有字节与状态局部复制累计字节；不得为性能统计逐方块写日志。
 
 Worker 初始化失败，或构建/上传连续失败三次后，本次游戏会话禁用异步路径，恢复每帧同步重建一个 dirty 分区。该回退继续复用同一份几何生成函数，避免两条路径产生视觉差异。
 
@@ -732,9 +732,9 @@ Worker 初始化失败，或构建/上传连续失败三次后，本次游戏会
 
 ### 8.3 有界纠错扫描
 
-`kCorrectionChecksPerFrame = 4096`。非空气方块纠错和蓝图空气格的多余方块发现共享同一预算；后者只扫描源格式实际覆盖的 Region。无论结构多大，每个渲染帧处理上限固定，避免全结构每帧扫描。
+`CorrectionFrameBudget` 在根投影的不透明更新中创建一次，全部活动文件共享目标 1200 μs、最多 16384 个工作单元；每 16 单元检查一次时钟，每个纠错调度量子最多 32 单元。事件消费、路由及纠错调度包含在这段计时内；单次原生调用与批次收尾不可抢占，因此这是协作式时间目标，不是硬实时上限。布局准备、可见性分类、网格构建/上传和绘制有各自的生命周期及预算，不包含在纠错目标中。
 
-注意：该常量控制“纠错响应速度 vs 单帧 CPU 成本”。适配新版本时必须实测后调整，不要根据理论 FPS 盲目增大。建议记录：
+预算参数集中在 `correction/CorrectionFrameBudget.h`，必须实测后调整，不按理论 FPS 盲目增大。每 120 个不透明更新输出该窗口内纠错平均/峰值耗时及工作量，并重置窗口统计。建议记录：
 
 - 1 万、10 万、50 万方块结构的帧时间。
 - 放置/拆除方块后提示更新延迟。
@@ -742,10 +742,24 @@ Worker 初始化失败，或构建/上传连续失败三次后，本次游戏会
 
 初次扫描完成后，稳定世界依靠 `BlockSourceListener` 的方块变化通知更新相关坐标；新加载 subchunk 刷新其中的投影方块和蓝图覆盖空气格。稳定帧不循环扫描完整结构。
 
+`CorrectionScanScheduler` 保存各分区的初扫断点，优先考虑相机附近及当前可见分区；每次最多探测 64 个活动候选，加一个附近分区提示，不按帧排序整张结构。完成分区从活动表移除，每第八次选择轮转服务后台。根级工作通路按事件/加载复核/初扫/空气扫描加权交替，各类每第八次服务使用独立文件公平游标；游标跨帧保留，预算耗尽不重头开始。多余方块发现仍只遍历源 Region，保留空气扫描断点，与初扫并行分摊预算。
+
+世界事件按坐标合并，保留最新破坏时间；根更新按 32 个方块事件和 2 个加载通知分批收取，最多 8 批，批次间限制收取阶段约占纠错目标的四分之一，避免持续通知挤占全部比较时间。单文件与独立文件均按实际变换后的世界包围范围过滤，无关通知不进入各文件的纠错队列；全部文件隐藏/移除时清理无消费者的事件并回收迟到网格结果，重新激活依靠新初扫。`CorrectionSubChunkQueue` 以 4096 格为一轮保存子区块内部游标，按量子轮转，不再等待初扫与空气扫描结束；复核中再次收到同区块通知时完成当前轮后再复核一轮，避免遗漏已经扫描过的位置。移动/旋转/镜像清理旧位置队列并重启初扫，普通切层保留真实状态和初扫断点。
+
+事件及子区块复核通过逆变换查询完整本地占用索引，包含隐藏层；可见虚拟世界索引仍仅用于绘制及放置。`CorrectionSectionIndex` 复用现有 sectionBlockIndices 的次序：最多 64 格的稀疏分区保存短局部坐标表，密集分区保存 512 B 位图和 128 B 前缀计数，通过位运算取秩定位全局索引，不再逐格对整张结构二分。隐藏层保留真实比较结果并更新总进度，渲染读取通过可见性位图屏蔽，不把隐藏写成真实 Correct。`CorrectionScanProgress` 以去重覆盖位图记录本轮初始化是否完成，材料门面不依赖访问顺序。
+
+`CorrectionAirScan` 按源 Region 惰性生成当前 16³ tile 的覆盖位图，减去期望占用（含液体）后只枚举剩余空气格。每文件仅保留当前 tile 的 512 B 掩码和续扫游标，不展开整张空域或分配与区域体积成正比的覆盖表；一块覆盖掩码最多通过 256 个 Z 行建立，构建及空 tile 推进也计入纠错工作。保留多 Region 的间隙及原有重叠语义，重复观测由既有稀疏 Extra 集合去重计数。
+
+`world/CorrectionWorldReader` 在当前量子内缓存一个世界子区块的空块判断。实际接口核对 xmake 安装的 LeviLamina 26.51.0 client：`ChunkSource::getAvailableChunk` 返回已加载区块的 shared_ptr，不生成新区块；再次要求 Loaded 状态，通过 `getSubChunk(short absoluteIndex)` 取子区块，在 `mWriteLock` 内检查初始化、主层指针、有效客户端状态和非占位条件。锁用法沿用 LeviLamina 的 ClientNetworkHandler 子区块处理。只有主层与可选副层均为 SDK 定义的 Paletted0 单条目存储且条目为 Air 才确认全空；不对混合存储调用可能遍历的 isUniform，不解码私有 packed 数组。未加载、缺失、其它存储格式或状态不明确时沿用普通比较，不把它们当作已证实的全空气。原生指针不离开探测调用，不跨帧持有；本阶段不改变未加载格的既有比较语义。
+
+确认空世界子区块后，期望格直接得到 Missing；空气扫描仅删除它与当前局部 tile 的真实交集，不假设偏移/旋转后的两个网格对齐。`projectionSectionLocalIntersection` 先裁切世界范围，再逆变换回局部范围，负坐标与边界计算使用宽整数。若当前 tile 仍有历史检测到的 Extra（包括隐藏格），继续逐格访问以清理计数和网格，不能直接跳过这些旧结果。纠错窗口诊断同时输出空块快路径处理格数及探测次数；这些是操作计数，不等于实测帧率或唯一方块数。
+
 ### 8.4 增量失效
 
-- 方块状态实际变化：只标记所属分区和六个邻居所在分区 dirty。
-- 异步路径每次只构建一个 Task；同步回退每帧最多重建一个 dirty 分区。
+- 方块状态实际变化：只标记所属分区和六个邻居所在分区 dirty；同一纠错量子内使用有界栈数组合并分区，每分区只推进一次 revision。
+- 原生帧先完成所有文件的布局与可见性，再统一纠错、接收完成结果并调度构建，最后逐文件绘制。交互引起的脏分区优先级传到网格调度，匹配版本上传后清除；保留每第八次派发的公平选择。异步路径全局每次只构建一个 Task；同步回退也全局每帧最多重建一个 dirty 分区，不按文件叠加。
+- `modelDirty` 与纠错脏状态分开。已发布过完整几何且模型未失效时，Correct/WrongType/WrongState 之间的变化和纠错透明度调整只重建四类纠错面/线网格；异步任务不创建 ChunkViewSource、BlockSource 或 BlockTessellator，上传保留原模型、液体代理、方块实体占位及群系重试状态。Missing/Unknown 转换、布局和染色变化继续完整构建。多余方块仍完整更新相关分区，因为虚拟世界在这些位置会回退到真实方块，可能影响原生墙/栅栏等邻接模型。
+- 部分结果携带 correctionOnly 标记，仍经过 worker/structure generation 和 section revision 校验。局部更新包围盒保留原完整边界并向新纠错顶点扩张，移除标记不缩小旧模型边界；CPU 顶点不足时继续保守不裁剪。下一次完整构建重新取得精确边界。同步回退复用相同分支，不清空未重建的网格，也不重新启动群系补建计时。
 - 旋转/镜像：局部模型改变，全部分区失效。
 - 纠错样式改变：纠错顶点 alpha 改变，全部分区一次性失效，之后继续缓存。
 - X/Y/Z 整体移动：GPU 局部网格不重建，只更新 world lookup、纠错扫描位置和矩阵平移。

@@ -26,6 +26,9 @@
 int runProjectionCullingTests();
 int runProjectionDrawCacheTests();
 int runProjectionBiomeRefreshTests();
+int runCorrectionStateStoreTests();
+int runCorrectionSchedulingTests();
+int runCorrectionAirScanTests();
 int runStructureLoadOriginTests();
 int runOverlayRenderingTests();
 int runStructureFilePickerTests();
@@ -991,6 +994,9 @@ int main(int argc, char** argv) {
     LHOLO_CHECK(runProjectionCullingTests() == 0);
     LHOLO_CHECK(runProjectionDrawCacheTests() == 0);
     LHOLO_CHECK(runProjectionBiomeRefreshTests() == 0);
+    LHOLO_CHECK(runCorrectionStateStoreTests() == 0);
+    LHOLO_CHECK(runCorrectionSchedulingTests() == 0);
+    LHOLO_CHECK(runCorrectionAirScanTests() == 0);
     LHOLO_CHECK(runStructureLoadOriginTests() == 0);
     LHOLO_CHECK(runOverlayRenderingTests() == 0);
     LHOLO_CHECK(runStructureFilePickerTests() == 0);

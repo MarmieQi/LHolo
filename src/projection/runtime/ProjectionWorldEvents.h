@@ -36,5 +36,7 @@ bool consumeWorldExitRequest();
 
 std::vector<PendingBlockChange> takePendingBlockChanges(std::size_t limit);
 std::vector<SubChunkKey> takePendingLoadedSubChunks(std::size_t limit);
+// No visible runtime instances: future activations scan fresh world state.
+void discardPendingProjectionEvents();
 
 } // namespace lholo::projection::detail

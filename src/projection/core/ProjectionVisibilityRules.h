@@ -42,6 +42,14 @@ struct ProjectionBounds {
     }
 };
 
+// Partial overlay publication keeps existing model bounds. Empty new geometry
+// cannot shrink them; unknown CPU bounds remain conservatively unculled.
+inline ProjectionBounds mergeCorrectionBounds(ProjectionBounds existing, ProjectionBounds const& update, bool complete) {
+    if (!existing.valid || !complete) return {};
+    if (update.valid) { existing.include(update.minimum); existing.include(update.maximum); }
+    return existing;
+}
+
 // Transform cell origins, then add their unit extent; transforming boundary
 // coordinates directly introduces a one-cell error on reversed axes.
 ProjectionBounds projectionSectionBounds(std::tuple<int, int, int> const &key,
@@ -69,6 +77,7 @@ struct ProjectionBuildCandidate {
     bool prefetch{};
     bool incremental{};
     float distanceSquared{};
+    bool interactive{};
 };
 
 // One linear pass, no queue allocation or stale heap entries after camera moves.
@@ -87,7 +96,8 @@ std::optional<std::size_t> selectProjectionBuild(std::size_t count, std::uint64_
             continue;
         if (background)
             return index;
-        auto const rank = projectionBuildRank(candidate.visible, candidate.prefetch, candidate.incremental);
+        auto const rank = candidate.interactive ? -1
+            : projectionBuildRank(candidate.visible, candidate.prefetch, candidate.incremental);
         auto const distance = std::isfinite(candidate.distanceSquared) ? candidate.distanceSquared
                                                                        : std::numeric_limits<float>::max();
         if (!selected || rank < selectedRank || (rank == selectedRank && distance < selectedDistance)) {

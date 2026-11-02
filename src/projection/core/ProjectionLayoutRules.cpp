@@ -117,6 +117,28 @@ BlockPos inverseTransformStructurePosition(
     return BlockPos{x, position.y, z};
 }
 
+std::optional<ProjectionCellBox> projectionSectionLocalIntersection(
+    std::array<int, 3> const& section, structure::LoadedStructure const& loaded,
+    BlockPos const& origin, int mirror, int rotation
+) {
+    bool rotated = (rotation & 1) != 0;
+    std::array<int, 3> size{rotated ? loaded.sizeZ : loaded.sizeX, loaded.sizeY, rotated ? loaded.sizeX : loaded.sizeZ};
+    std::array<long long, 3> offset{origin.x, origin.y, origin.z};
+    std::array<int, 3> lo{}, hi{};
+    for (int axis = 0; axis < 3; ++axis) {
+        auto base = static_cast<long long>(section[axis]) * 16;
+        auto minimum = std::max(base, offset[axis]);
+        auto maximum = std::min(base + 15, offset[axis] + size[axis] - 1);
+        if (minimum > maximum) return std::nullopt;
+        lo[axis] = static_cast<int>(minimum - offset[axis]);
+        hi[axis] = static_cast<int>(maximum - offset[axis]);
+    }
+    auto a = inverseTransformStructurePosition(BlockPos{lo[0], lo[1], lo[2]}, loaded, mirror, rotation);
+    auto b = inverseTransformStructurePosition(BlockPos{hi[0], hi[1], hi[2]}, loaded, mirror, rotation);
+    return ProjectionCellBox{{std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z)},
+        {std::max(a.x, b.x) + 1, std::max(a.y, b.y) + 1, std::max(a.z, b.z) + 1}};
+}
+
 bool isStructureCellCovered(
     structure::LoadedStructure const& loaded,
     BlockPos const&                    position

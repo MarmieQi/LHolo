@@ -38,6 +38,7 @@ void markSectionDirty(ProjectionState& state, std::size_t section, bool incremen
     if (section >= state.sections.size()) return;
     auto& sectionState = state.sections[section];
     sectionState.dirty = true;
+    sectionState.modelDirty = true;
     sectionState.incrementalDirty = sectionState.incrementalDirty || incremental;
     ++sectionState.requestedRevision;
 }
@@ -110,60 +111,62 @@ void uploadCompletedProjectionMeshes(ProjectionState& root, Tessellator& tessell
                 return std::make_unique<mce::Mesh>(bufferService, std::move(data), false, name);
             };
             try {
-                constexpr std::array<std::string_view, static_cast<std::size_t>(RenderBucket::Count)>
-                    bucketNames{"LHoloOpaque", "LHoloAlphaTest", "LHoloBlend", "LHoloBlendToOpaque"};
-                std::array<std::unique_ptr<mce::Mesh>, static_cast<std::size_t>(RenderBucket::Count)>
-                    uploadedMeshes;
-                for (std::size_t bucket = 0; bucket < uploadedMeshes.size(); ++bucket) {
-                    uploadedMeshes[bucket] = uploadCpuMesh(std::move(result.sectionMeshes[bucket]), bucketNames[bucket]);
+                constexpr std::array<std::string_view, static_cast<std::size_t>(RenderBucket::Count)> bucketNames{
+                    "LHoloOpaque", "LHoloAlphaTest", "LHoloBlend", "LHoloBlendToOpaque"};
+                std::array<std::unique_ptr<mce::Mesh>, static_cast<std::size_t>(RenderBucket::Count)> uploadedMeshes;
+                if (!result.correctionOnly) {
+                    for (std::size_t bucket = 0; bucket < uploadedMeshes.size(); ++bucket)
+                        uploadedMeshes[bucket] =
+                            uploadCpuMesh(std::move(result.sectionMeshes[bucket]), bucketNames[bucket]);
                 }
                 auto warningFill = uploadCpuMesh(std::move(result.warningFillMesh), "LHoloWarningFill");
-                auto correctionOutline = uploadCpuMesh(
-                    std::move(result.correctionOutlineMesh), "LHoloCorrectionOutline"
-                );
+                auto correctionOutline =
+                    uploadCpuMesh(std::move(result.correctionOutlineMesh), "LHoloCorrectionOutline");
                 auto wrongFill = uploadCpuMesh(std::move(result.wrongFillMesh), "LHoloWrongFill");
-                auto wrongOutline = uploadCpuMesh(
-                    std::move(result.wrongOutlineMesh), "LHoloWrongOutline"
-                );
+                auto wrongOutline = uploadCpuMesh(std::move(result.wrongOutlineMesh), "LHoloWrongOutline");
                 auto liquidProxy = uploadCpuMesh(std::move(result.liquidProxyMesh), "LHoloLiquidProxy");
-                auto blockEntityPlaceholder = uploadCpuMesh(
-                    std::move(result.blockEntityPlaceholderMesh), "LHoloBlockEntityPlaceholder"
-                );
-    
-                for (std::size_t bucket = 0; bucket < uploadedMeshes.size(); ++bucket) {
-                    state.sections[section].meshes[bucket] = std::move(uploadedMeshes[bucket]);
+                auto blockEntityPlaceholder =
+                    uploadCpuMesh(std::move(result.blockEntityPlaceholderMesh), "LHoloBlockEntityPlaceholder");
+                if (!result.correctionOnly) {
+                    for (std::size_t bucket = 0; bucket < uploadedMeshes.size(); ++bucket)
+                        state.sections[section].meshes[bucket] = std::move(uploadedMeshes[bucket]);
+                    state.liquidProxySectionMeshes[section] = std::move(liquidProxy);
+                    state.blockEntityPlaceholderSectionMeshes[section] = std::move(blockEntityPlaceholder);
+                    state.sections[section].modelDirty = false;
                 }
                 state.warningFillSectionMeshes[section] = std::move(warningFill);
                 state.correctionOutlineSectionMeshes[section] = std::move(correctionOutline);
                 state.wrongFillSectionMeshes[section] = std::move(wrongFill);
                 state.wrongOutlineSectionMeshes[section] = std::move(wrongOutline);
-                state.liquidProxySectionMeshes[section] = std::move(liquidProxy);
-                state.blockEntityPlaceholderSectionMeshes[section] = std::move(blockEntityPlaceholder);
                 state.sections[section].uploadedRevision = result.revision;
                 state.sections[section].meshBounds = result.meshBounds;
-                state.sections[section].biomeRefresh = result.biomeRefresh;
-                auto const delay = armProjectionBiomeRefresh(
-                    state.sections[section].biomeRefresh, state.biomeRefreshFrame);
-                if (result.biomeRefresh.sampleFailed || result.biomeRefresh.blackGrassFace) {
-                    auto const retries = ++state.biomeSampleRetryCount;
-                    if ((retries & (retries - 1)) == 0) {
-                        logger().debug(
-                            "Projection tint diagnostics: {} affected builds; section {}, rejected sample {}, black face {}, auto refresh {}/{}, pending {}, delay {} frames",
-                            retries, section, result.biomeRefresh.sampleFailed, result.biomeRefresh.blackGrassFace,
-                            result.biomeRefresh.automaticRefreshes, kMaxProjectionBiomeAutoRefreshes,
-                            result.biomeRefresh.pending, delay);
+                if (!result.correctionOnly) {
+                    state.sections[section].biomeRefresh = result.biomeRefresh;
+                    auto const delay =
+                        armProjectionBiomeRefresh(state.sections[section].biomeRefresh, state.biomeRefreshFrame);
+                    if (result.biomeRefresh.sampleFailed || result.biomeRefresh.blackGrassFace) {
+                        auto const retries = ++state.biomeSampleRetryCount;
+                        if ((retries & (retries - 1)) == 0) {
+                            logger().debug("Projection tint diagnostics: {} affected builds; section {}, rejected "
+                                           "sample {}, black face {}, auto refresh {}/{}, pending {}, delay {} frames",
+                                           retries, section, result.biomeRefresh.sampleFailed,
+                                           result.biomeRefresh.blackGrassFace, result.biomeRefresh.automaticRefreshes,
+                                           kMaxProjectionBiomeAutoRefreshes, result.biomeRefresh.pending, delay);
+                        }
                     }
                 }
                 ++state.drawMeshRevision;
                 state.sections[section].incrementalDirty = false;
+                state.sections[section].interactiveDirty = false;
                 state.sections[section].dirty = false;
                 state.consecutiveMeshWorkerFailures = 0;
-                auto const uploadMicros = static_cast<std::uint64_t>(
-                    std::chrono::duration_cast<std::chrono::microseconds>(
-                        std::chrono::steady_clock::now() - sectionUploadStarted
-                    ).count()
-                );
+                auto const uploadMicros =
+                    static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                                   std::chrono::steady_clock::now() - sectionUploadStarted)
+                                                   .count());
                 ++state.meshWorkerUploadedSections;
+                if (result.correctionOnly)
+                    ++state.meshWorkerCorrectionOnlySections;
                 state.meshWorkerSnapshotMicros += result.snapshotPrepareMicros;
                 state.meshWorkerSnapshotDataMicros += result.snapshotDataMicros;
                 state.meshWorkerChunkViewMicros += result.chunkViewMicros;
@@ -187,7 +190,7 @@ void uploadCompletedProjectionMeshes(ProjectionState& root, Tessellator& tessell
                 if (state.meshWorkerUploadedSections % 64 == 0) {
                     auto const count = state.meshWorkerUploadedSections;
                     logger().debug(
-                        "Projection mesh worker: {} sections; snapshot {}/{} us (data {}/{}, chunkView {}/{}), build {}/{} us, upload {}/{} us; visible {}/{}, discarded {}",
+                        "Projection mesh worker: {} sections; snapshot {}/{} us (data {}/{}, chunkView {}/{}), build {}/{} us, upload {}/{} us; visible {}/{}, discarded {}; correction snapshot {} B, COW total {} B, overlay-only {}",
                         count,
                         state.meshWorkerSnapshotMicros / count,
                         state.meshWorkerPeakSnapshotMicros,
@@ -201,7 +204,9 @@ void uploadCompletedProjectionMeshes(ProjectionState& root, Tessellator& tessell
                         state.meshWorkerPeakUploadMicros,
                         state.visibleSectionCount,
                         state.sections.size(),
-                        state.meshWorkerDiscardedBuilds
+                        state.meshWorkerDiscardedBuilds,
+                        result.correctionSnapshotBytes,
+                        state.correctionStates.copiedBytes(), state.meshWorkerCorrectionOnlySections
                     );
                 }
             } catch (std::exception const& exception) {

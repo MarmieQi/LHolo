@@ -17,18 +17,19 @@
 namespace lholo::projection::detail {
 namespace {
 
-void markSectionDirty(ProjectionState& state, std::size_t section, bool incremental) {
+void markSectionDirty(ProjectionState& state, std::size_t section, bool incremental, bool models = true) {
     if (section >= state.sections.size()) return;
     auto& sectionState = state.sections[section];
-    sectionState.biomeRefresh = {}; // user settings/content invalidation, not a tint timer
+    if (models) sectionState.biomeRefresh = {};
+    sectionState.modelDirty = sectionState.modelDirty || models;
     sectionState.dirty = true;
     sectionState.incrementalDirty = sectionState.incrementalDirty || incremental;
     ++sectionState.requestedRevision;
 }
 
-void markAllSectionsDirty(ProjectionState& state, bool incremental) {
+void markAllSectionsDirty(ProjectionState& state, bool incremental, bool models = true) {
     for (std::size_t section = 0; section < state.sections.size(); ++section) {
-        markSectionDirty(state, section, incremental);
+        markSectionDirty(state, section, incremental, models);
     }
 }
 
@@ -56,7 +57,7 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
     }
 
     if (result.geometryTransformChanged || correctionStyleChanged) {
-        markAllSectionsDirty(state, false);
+        markAllSectionsDirty(state, false, result.geometryTransformChanged);
     }
     if (result.placementMoved && !result.geometryTransformChanged) {
         // Local geometry survives an XYZ move, but a task already sampling the
@@ -93,13 +94,8 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
             auto const& entry = state.structure->renderBlocks[index];
             auto const visible = layerIsVisible(entry);
             if (oldLayerVisible(entry) == visible) continue;
-            markSectionDirty(state, state.blockToSection[index], false);
-            if (state.correctionStates.use_count() > 1) {
-                state.correctionStates = std::make_shared<std::vector<CorrectionState>>(*state.correctionStates);
-            }
-            (*state.correctionStates)[index] = visible
-                ? CorrectionState::Missing
-                : CorrectionState::Correct;
+            markSectionDirty(state, state.correctionStates.section(index), false);
+            state.correctionStates.setVisible(index, visible);
         }
     }
 
@@ -116,12 +112,12 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
 
     if (result.placementViewChanged()) {
         state.detectedExtraBlockPositions.clear();
+        state.detectedExtraSectionCounts.clear();
         state.extraBlockPositions.clear();
         for (auto& positions : state.sectionExtraBlockPositions) positions.clear();
         state.progressExtraCount = 0;
         for (auto& p:state.sourceProgress) p.extra=0;
-        state.extraScanRegion = 0;
-        state.extraScanCell = 0;
+        state.extraScan.reset();
         markAllSectionsDirty(state, false);
         publishErrorProgress(
             state.progressWrongTypeCount,
@@ -134,18 +130,7 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
     // away every GPU mesh. XYZ movement stays represented by the world matrix.
     if (result.geometryTransformChanged) {
         ++state.drawMeshRevision;
-        if (state.correctionStates.use_count() > 1) {
-            state.correctionStates = std::make_shared<std::vector<CorrectionState>>(
-                state.structure ? state.structure->renderBlocks.size() : 0,
-                CorrectionState::Missing
-            );
-        } else {
-            std::fill(
-                state.correctionStates->begin(),
-                state.correctionStates->end(),
-                CorrectionState::Missing
-            );
-        }
+        state.correctionStates.fill(CorrectionState::Missing);
         for (auto& sectionState : state.sections) {
             for (auto& mesh : sectionState.meshes) mesh.reset();
         }
@@ -170,11 +155,20 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
 
     if (result.geometryTransformChanged || result.layerChanged) {
         state.progressVisibleCorrectCount = 0;
+        for (auto& progress : state.sourceProgress) {
+            progress.visibleTotal = 0;
+            progress.visiblePlaced = 0;
+        }
         std::uint64_t visibleTotal{};
         for (std::size_t index = 0; index < state.structure->renderBlocks.size(); ++index) {
             auto const& entry = state.structure->renderBlocks[index];
             if (!layerIsVisible(entry)) continue;
             ++visibleTotal;
+            if (entry.sourceIndex >= 0) {
+                auto& progress = state.sourceProgress[entry.sourceIndex];
+                ++progress.visibleTotal;
+                if (state.progressCorrect[index] != 0) ++progress.visiblePlaced;
+            }
             if (state.progressCorrect[index] != 0) {
                 ++state.progressVisibleCorrectCount;
             }

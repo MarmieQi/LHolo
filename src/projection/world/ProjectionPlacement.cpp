@@ -106,24 +106,16 @@ void rebuildProjectionPlacement(
 
     for (std::size_t index = 0; index < state.structure->renderBlocks.size(); ++index) {
         auto const& entry = state.structure->renderBlocks[index];
-        if (!isLayerVisible(
-                settings.layerAxis == structure::LayerAxis::X ? entry.x : entry.y,
-                settings.layerDisplayMode,
-                settings.displayLayer,
-                entry.materialIndex,
-                entry.liquidMaterialIndex,
-                settings.layerAxis
-            )) {
-            // Hidden layers behave like completed cells for mesh generation,
-            // but are excluded from the world lookup below.
-            if ((*state.correctionStates)[index] != CorrectionState::Correct) {
-                if (state.correctionStates.use_count() > 1) {
-                    state.correctionStates = std::make_shared<std::vector<CorrectionState>>(*state.correctionStates);
-                }
-                (*state.correctionStates)[index] = CorrectionState::Correct;
-            }
-            continue;
-        }
+        auto const visible = isLayerVisible(
+            settings.layerAxis == structure::LayerAxis::X ? entry.x : entry.y,
+            settings.layerDisplayMode,
+            settings.displayLayer,
+            entry.materialIndex,
+            entry.liquidMaterialIndex,
+            settings.layerAxis
+        );
+        state.correctionStates.setVisible(index, visible);
+        if (!visible) continue;
         auto const transformed = transformStructurePosition(
             entry, *state.structure, settings.mirrorMode, settings.rotationTurns
         );
@@ -172,7 +164,7 @@ void rebuildProjectionPlacement(
             }
         }
         state.expectedWorldBlockIndices->emplace(worldKey, index);
-        auto const section = state.blockToSection[index];
+        auto const section = state.correctionStates.section(index);
         centerSums[section] += Vec3{
             static_cast<float>(transformed.x) + 0.5f,
             static_cast<float>(transformed.y) + 0.5f,
@@ -201,7 +193,12 @@ void rebuildProjectionPlacement(
             return found == stateAddress->expectedWorldBlocks->end()
                 ? regionAddress->getBlock(position) : *found->second;
         };
-    state.correctionScanCursor = 0;
+    if (settings.resetCorrectionScan) {
+        state.correctionScan.reset(state.sectionBlockIndices);
+        state.correctionEvents.clear();
+        state.correctionSubChunks.clear();
+        state.initialCorrectionScan.reset(totalBlocks);
+    }
 }
 
 } // namespace lholo::projection::detail

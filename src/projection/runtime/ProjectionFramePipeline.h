@@ -8,6 +8,8 @@
 
 #include "projection/mesh/ProjectionSectionBuilder.h"
 #include "structure/LayerDisplayTypes.h"
+#include <span>
+#include <memory>
 
 class BlockSource;
 class BaseActorRenderContext;
@@ -19,17 +21,18 @@ namespace lholo::projection::detail {
 
 struct ProjectionState;
 
-void processProjectionOpaqueFrame(
-    ProjectionState&                      state,
-    BaseActorRenderContext&               renderContext,
-    Tessellator&                          tessellator,
-    BlockSource&                          region,
-    Vec3 const&                           cameraPosition,
-    LegacyStructureSettings const&        transformSettings,
-    ProjectionSectionBuildSettings const& buildSettings,
-    structure::LayerDisplayMode           layerDisplayMode,
-    int                                   displayLayer,
-    structure::LayerAxis                  layerAxis
-);
+struct ProjectionFrameTarget {
+    ProjectionState* state{};
+    ProjectionSectionBuildSettings build;
+    structure::LayerDisplayMode layerDisplayMode{};
+    int displayLayer{};
+    structure::LayerAxis layerAxis{};
+    std::unique_ptr<LegacyStructureSettings> transform;
+};
+
+// Targets have already reconciled placement. World events, correction work,
+// uploads and mesh dispatch are coordinated once across all active files.
+void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFrameTarget const> targets,
+    BaseActorRenderContext& renderContext, Vec3 const& cameraPosition);
 
 } // namespace lholo::projection::detail

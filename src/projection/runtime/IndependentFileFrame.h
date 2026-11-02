@@ -3,8 +3,8 @@
 #include <cstddef>
 
 namespace lholo::projection::detail {
-// Every file still runs on every opaque frame. Rotate only the first visitor
-// so a perpetually dirty file cannot monopolize the single mesh worker.
+// Visit mesh candidates in rotating file order. Priority selection can inspect
+// all files; the reserved fairness turn starts from a different file each time.
 template <class Render>
 void forEachIndependentProjectionFile(std::size_t count, std::size_t& cursor, Render&& render) {
     if (!count) { cursor = 0; return; }
