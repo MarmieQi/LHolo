@@ -7,6 +7,7 @@
 // (at your option) any later version.
 
 #include "projection/mesh/ProjectionSectionBuilder.h"
+#include "projection/mesh/ProjectionTransparency.h"
 
 #include "projection/core/ProjectionInternalTypes.h"
 #include "projection/core/ProjectionRules.h"
@@ -23,6 +24,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -41,7 +43,9 @@
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/VanillaBlockTypeIds.h"
+#include "mc/world/level/biome/Biome.h"
 #include "mc/world/level/biome/biome_color_sampling/BiomeColorSampling.h"
+#include "mc/world/level/biome/biome_color_sampling/MapPolicy.h"
 #include "mc/world/level/material/Material.h"
 #include "mc/world/level/levelgen/structure/LegacyStructureSettings.h"
 
@@ -54,9 +58,6 @@ constexpr std::uint32_t MissingColorAbgrRgb    = 0x00E6B333U; // #33B3E6
 constexpr std::uint32_t ExtraColorAbgrRgb      = 0x00E64CFFU; // #FF4CE6
 constexpr std::uint32_t WrongBlockColorAbgrRgb = 0x003333FFU; // #FF3333
 constexpr std::uint32_t WrongStateColorAbgrRgb = 0x001090FFU; // #FF9010
-
-constexpr std::uint32_t LiquidWaterTintAbgrRgb = 0x00E4763FU; // #3F76E4
-constexpr std::uint32_t LiquidLavaTintAbgrRgb  = 0x001080FFU; // #FF8010
 
 void setColorAbgr(Tessellator& tessellator, std::uint32_t colorAbgr) {
     tessellator.color(
@@ -149,7 +150,7 @@ bool projectionUsesBiomeTint(Block const& block) {
     auto const method = block.getBlockType().mTintMethod;
     return method == TintMethod::Grass || method == TintMethod::DefaultFoliage
         || method == TintMethod::BirchFoliage || method == TintMethod::EvergreenFoliage
-        || method == TintMethod::DryFoliage;
+        || method == TintMethod::DryFoliage || method == TintMethod::Water;
 }
 
 void buildCorrectionSectionMeshes(
@@ -160,12 +161,13 @@ void buildCorrectionSectionMeshes(
     ProjectionSectionBuildSettings const&
 );
 
-void buildLiquidProxySectionMesh(
+void buildLiquidGeometry(
     ProjectionState&,
     Tessellator&,
+    BlockSource&,
     std::size_t,
-    Tessellator::UploadMode,
-    ProjectionSectionBuildSettings const&
+    ProjectionSectionBuildSettings const&,
+    ProjectionTransparentGeometry&
 );
 
 void buildBlockEntityPlaceholderSectionMesh(
@@ -211,6 +213,9 @@ void buildProjectionSection(
         buildProjectionCorrectionSection(state, tessellator, section, uploadMode, sectionBuildSettings);
         return;
     }
+    auto transparent = std::make_shared<ProjectionTransparentSection>();
+    state.transparentSections.resize(state.sections.size());
+    state.transparentSections[section] = transparent;
     state.sections[section].meshBounds = {};
     auto const mirror                   = sectionBuildSettings.mirror;
     auto const rotation                 = sectionBuildSettings.rotation;
@@ -311,9 +316,8 @@ void buildProjectionSection(
     biomeRefresh = {};
     bool hasBiomeTint{};
     auto const biomePadding = projectionBiomeSamplingPadding();
-    for (auto const& layered : layeredBlocks) {
-        if (!projectionUsesBiomeTint(*layered.block)) continue;
-        std::array<int, 3> const position{layered.position.x, layered.position.y, layered.position.z};
+    auto includeBiomePosition = [&](BlockPos const& samplePosition) {
+        std::array<int, 3> const position{samplePosition.x, samplePosition.y, samplePosition.z};
         for (std::size_t axis = 0; axis < 3; ++axis) {
             biomeRefresh.minimum[axis] = hasBiomeTint
                 ? std::min(biomeRefresh.minimum[axis], position[axis] - biomePadding[axis])
@@ -323,6 +327,16 @@ void buildProjectionSection(
                 : position[axis] + biomePadding[axis];
         }
         hasBiomeTint = true;
+    };
+    for (auto const& layered : layeredBlocks) {
+        if (projectionUsesBiomeTint(*layered.block)) includeBiomePosition(layered.position);
+    }
+    for (auto index : state.sectionBlockIndices[section]) {
+        auto const& entry = state.structure->renderBlocks[index];
+        if (!entry.liquid || !projectionUsesBiomeTint(*entry.liquid)
+            || state.renderCorrectionState(index) != CorrectionState::Missing) continue;
+        auto const local = transformStructurePosition(entry, *state.structure, mirrorMode, rotationTurns);
+        includeBiomePosition(BlockPos{origin.x + local.x, origin.y + local.y, origin.z + local.z});
     }
     // Record readiness before sampling. A chunk view retains only the chunks
     // available when it was created; later arrivals need a fresh mesh task.
@@ -348,6 +362,12 @@ void buildProjectionSection(
         );
         bool bucketTessellated{};
         auto const bucket = static_cast<RenderBucket>(bucketIndex);
+        struct GlassRange {
+            std::size_t first{}, last{}, structureIndex{};
+            BlockPos position;
+            Block const* block{};
+        };
+        std::vector<GlassRange> glassRanges;
         for (auto const& layered : layeredBlocks) {
             if (layered.bucket != bucket) continue;
             blockTessellator.mRenderingLayer = static_cast<int>(layered.layer);
@@ -416,6 +436,13 @@ void buildProjectionSection(
             // A black face is a symptom, not proof of missing lighting/biomes.
             // Its independent diagnostic flag permits only one auto refresh.
             biomeRefresh.blackGrassFace = biomeRefresh.blackGrassFace || grassFaces.hasBlackFace();
+            if (bucket == RenderBucket::Blend
+                && renderBlock.getBlockType().mMaterial.mType == SharedTypes::v1_26_20::MaterialType::Glass) {
+                auto const* graphics = BlockGraphics::getForBlock(renderBlock);
+                if (graphics && graphics->mBlockShape == BlockShape::Block)
+                    glassRanges.push_back({firstPosition, tessellator.mMeshData->mPositions.get().size(),
+                        layered.structureIndex, layered.position, &renderBlock});
+            }
             bucketTessellated = true;
         }
         auto& destination = state.sections[section].meshes[bucketIndex];
@@ -433,15 +460,43 @@ void buildProjectionSection(
             vertex.y -= static_cast<float>(origin.y);
             vertex.z -= static_cast<float>(origin.z);
         }
-        destination = std::make_unique<mce::Mesh>(tessellator.end(
-            uploadMode,
+        bool const retained = bucket == RenderBucket::Blend
+            && captureProjectionTransparency(transparent->terrain, *tessellator.mMeshData);
+        if (retained) {
+            for (auto const& glass : glassRanges) {
+                std::array<float, 3> const cell{static_cast<float>(glass.position.x - origin.x),
+                    static_cast<float>(glass.position.y - origin.y), static_cast<float>(glass.position.z - origin.z)};
+                for (auto face = glass.first / 4; face < glass.last / 4; ++face) {
+                    auto& quad = transparent->terrain.quads[face];
+                    std::array<std::array<float, 3>, 4> vertices;
+                    for (std::size_t corner = 0; corner < 4; ++corner) vertices[corner] = quad.vertices[corner].position;
+                    auto const offset = projectionUnitFaceNeighbor(vertices, cell);
+                    if (!offset) continue;
+                    for (std::size_t axis = 0; axis < 3; ++axis)
+                        quad.facingNormal[axis] = static_cast<float>((*offset)[axis]);
+                    if (state.renderCorrectionState(glass.structureIndex) != CorrectionState::Missing) continue;
+                    auto const neighbor = std::tuple{glass.position.x + (*offset)[0],
+                        glass.position.y + (*offset)[1], glass.position.z + (*offset)[2]};
+                    auto const block = state.expectedWorldBlocks->find(neighbor);
+                    auto const index = state.expectedWorldBlockIndices->find(neighbor);
+                    // Exact block state includes glass color. Hidden layers,
+                    // different colors, real/wrong neighbors and partial faces stay visible.
+                    quad.hidden = block != state.expectedWorldBlocks->end() && block->second == glass.block
+                        && index != state.expectedWorldBlockIndices->end()
+                        && state.renderCorrectionState(index->second) == CorrectionState::Missing;
+                }
+            }
+        }
+        auto mesh = tessellator.end(
+            retained ? Tessellator::UploadMode::Never : uploadMode,
             meshNames[bucketIndex],
             SupplementaryFieldAutoGenerationMode{1}
-        ));
+        );
+        destination = retained ? nullptr : std::make_unique<mce::Mesh>(std::move(mesh));
     }
 
-    detail::buildLiquidProxySectionMesh(
-        state, tessellator, section, uploadMode, sectionBuildSettings
+    detail::buildLiquidGeometry(
+        state, tessellator, region, section, sectionBuildSettings, transparent->liquid
     );
     detail::buildBlockEntityPlaceholderSectionMesh(
         state,
@@ -469,19 +524,23 @@ void buildProjectionSection(
     includeMesh(state.correctionOutlineSectionMeshes[section]);
     includeMesh(state.wrongFillSectionMeshes[section]);
     includeMesh(state.wrongOutlineSectionMeshes[section]);
-    includeMesh(state.liquidProxySectionMeshes[section]);
     includeMesh(state.blockEntityPlaceholderSectionMeshes[section]);
+    for (auto const* geometry : {&transparent->terrain, &transparent->liquid})
+        for (auto const& quad : geometry->quads)
+            for (auto const& vertex : quad.vertices)
+                bounds.include({vertex.position[0], vertex.position[1], vertex.position[2]});
     if (!completeBounds) bounds.valid = false;
     biomeRefresh.sampleFailed = tessellationBlocksScope.biomeSampleFailed();
     finishProjectionBiomeRefresh(biomeRefresh, previousBiomeRefresh);
 }
 
-void buildLiquidProxySectionMesh(
+void buildLiquidGeometry(
     ProjectionState&                      state,
     Tessellator&                          tessellator,
+    BlockSource&                          region,
     std::size_t                           section,
-    Tessellator::UploadMode               uploadMode,
-    ProjectionSectionBuildSettings const& settings
+    ProjectionSectionBuildSettings const& settings,
+    ProjectionTransparentGeometry&        geometry
 ) {
     auto const mirrorMode        = settings.mirrorMode;
     auto const rotationTurns     = settings.rotationTurns;
@@ -498,33 +557,48 @@ void buildLiquidProxySectionMesh(
     // Textured liquid proxy hulls. LHolo never lies to the vanilla
     // world or chunk pipeline (that leaks into gameplay), so missing
     // liquids draw as translucent hulls here. The hulls reuse the
-    // vanilla terrain-atlas water/lava tiles and travel the exact
-    // material path used for glass, keeping them purely cosmetic.
-    std::vector<std::size_t> liquidProxyIndices;
+    // vanilla terrain-atlas water/lava tiles and the standalone textured
+    // transparent pass used for projection blend terrain.
+    std::vector<std::size_t> liquidIndices;
     for (auto const index : state.sectionBlockIndices[section]) {
         if (state.structure->renderBlocks[index].liquid == nullptr) continue;
         if (state.renderCorrectionState(index) != CorrectionState::Missing) continue;
-        liquidProxyIndices.push_back(index);
+        liquidIndices.push_back(index);
     }
-    if (!liquidProxyIndices.empty()) {
+    if (!liquidIndices.empty()) {
         tessellator.begin(
             Tessellator::DebugContextCallback{},
             mce::PrimitiveMode::QuadList,
-            static_cast<int>(liquidProxyIndices.size() * 24),
+            static_cast<int>(liquidIndices.size() * 24),
             false
         );
-        for (auto const index : liquidProxyIndices) {
+        for (auto const index : liquidIndices) {
             auto const& entry = state.structure->renderBlocks[index];
             auto const* expectedLiquid = transformExpectedBlock(entry.liquid, sectionTransformSettings, identityTransform);
             if (!expectedLiquid) continue;
 
+            auto const p = transformStructurePosition(entry, *state.structure, mirrorMode, rotationTurns);
+            BlockPos const worldPosition{
+                state.anchor.x + offsetX + p.x,
+                state.anchor.y + offsetY + p.y,
+                state.anchor.z + offsetZ + p.z
+            };
             bool const isLava = expectedLiquid->getTypeName().find("lava") != std::string::npos
                 || expectedLiquid->getBlockType().mMaterial.mSuperHot;
 
-            // Route B: Water uses standard blue (#3F76E4) to tint grayscale water tiles.
-            // Lava uses fiery molten orange (#FF8010), ensuring grayscale flowing lava tiles
-            // and fallback tiles display rich, warm molten color rather than rendering white.
-            auto const baseRgb = isLava ? LiquidLavaTintAbgrRgb : LiquidWaterTintAbgrRgb;
+            std::uint32_t baseRgb = 0x00FFFFFFU; // Lava keeps its texture colors.
+            if (!isLava) {
+                // Reuse the grass path's cache-free native sampler, validation
+                // and failure signal, selecting water at the projected position.
+                auto sample = BiomeColorSampling::getMapPolicy(TintMethod::Water).get(region, worldPosition);
+                if (!validProjectionBiomeTint({sample.r, sample.g, sample.b})) {
+                    markTessellationBiomeSampleFailed();
+                    auto const& fallback = Biome::DEFAULT_WATER_TINT();
+                    auto const rgb = projectionFallbackBiomeTint({fallback.r, fallback.g, fallback.b});
+                    sample = mce::Color{rgb[0], rgb[1], rgb[2], 1.0f};
+                }
+                baseRgb = toAbgr(sample) & 0x00FFFFFFU;
+            }
             // Preserve the liquid appearance used at full projection opacity.
             float const effectiveAlpha = isLava ? 0.85f : 0.65f;
             auto const alphaByte = static_cast<std::uint32_t>(std::lround(effectiveAlpha * 255.0f));
@@ -551,12 +625,6 @@ void buildLiquidProxySectionMesh(
             float const v1_f = uvSetFlow ? uvSetFlow->_v1 : v1_s;
             float const dv_f = v1_f - v0_f;
 
-            auto const p = transformStructurePosition(entry, *state.structure, mirrorMode, rotationTurns);
-            BlockPos const worldPosition{
-                state.anchor.x + offsetX + p.x,
-                state.anchor.y + offsetY + p.y,
-                state.anchor.z + offsetZ + p.z
-            };
             auto const neighborEntry = [&](int dx, int dy, int dz)
                 -> structure::LoadedStructure::RenderBlock const* {
                 auto const found = state.expectedWorldBlockIndices->find(std::tuple{
@@ -620,6 +688,24 @@ void buildLiquidProxySectionMesh(
             float const yc01 = y0 + cornerHeight(-1,  1);
             float const yc11 = y0 + cornerHeight( 1,  1);
 
+            std::array<glm::vec2, 4> topUv{{
+                {u0_s, v0_s}, {u0_s, v1_s}, {u1_s, v1_s}, {u1_s, v0_s}
+            }};
+            float const flowX = (yc00 + yc01 - yc11 - yc10) * 0.5f;
+            float const flowZ = (yc00 + yc10 - yc01 - yc11) * 0.5f;
+            float const flowLength = std::hypot(flowX, flowZ);
+            if (uvSetFlow && std::isfinite(flowLength) && flowLength > 0.00001f) {
+                float const x = flowX / flowLength, z = flowZ / flowLength;
+                constexpr float corners[4][2]{{-0.5f, -0.5f}, {-0.5f, 0.5f}, {0.5f, 0.5f}, {0.5f, -0.5f}};
+                for (std::size_t i = 0; i < topUv.size(); ++i) {
+                    // The native flow frame repeats 2x2 side-sized windows;
+                    // a flowing top rotates around (1,1) in those units.
+                    float const u = 1.0f + z * corners[i][0] - x * corners[i][1];
+                    float const v = 1.0f + x * corners[i][0] + z * corners[i][1];
+                    topUv[i] = {u0_f + (u1_f - u0_f) * u, v0_f + dv_f * v};
+                }
+            }
+
             auto addQuad = [&](
                 Vec3 const& p0, float uA, float vA,
                 Vec3 const& p1, float uB, float vB,
@@ -628,10 +714,25 @@ void buildLiquidProxySectionMesh(
                 std::uint32_t color
             ) {
                 setColorAbgr(tessellator, color);
-                tessellator.tex2({uA, vA}); tessellator.vertex(p0.x, p0.y, p0.z);
-                tessellator.tex2({uB, vB}); tessellator.vertex(p1.x, p1.y, p1.z);
-                tessellator.tex2({uC, vC}); tessellator.vertex(p2.x, p2.y, p2.z);
-                tessellator.tex2({uD, vD}); tessellator.vertex(p3.x, p3.y, p3.z);
+                // The stock transparent shader declares NORMAL as well as
+                // POSITION/COLOR/UV0. Supply the quad normal explicitly.
+                glm::vec3 const a{p1.x - p0.x, p1.y - p0.y, p1.z - p0.z};
+                glm::vec3 const b{p2.x - p0.x, p2.y - p0.y, p2.z - p0.z};
+                auto normal = glm::cross(a, b);
+                float const length = glm::length(normal);
+                if (length > 0.0f) normal /= length;
+                tessellator.mNextNormal.get() = glm::vec4{normal, 0.0f};
+                tessellator.mHasNormals = true;
+                auto vertex = [&](Vec3 const& position, float u, float v) {
+                    // tex2() writes UV2. The current material samples UV0
+                    // from the live atlas whose flipbook frames vanilla updates.
+                    tessellator.mNextUV[0].get() = glm::vec2{u, v};
+                    tessellator.vertex(position.x, position.y, position.z);
+                };
+                vertex(p0, uA, vA);
+                vertex(p1, uB, vB);
+                vertex(p2, uC, vC);
+                vertex(p3, uD, vD);
             };
 
             auto const* bottom = neighborEntry(0, -1, 0);
@@ -648,10 +749,10 @@ void buildLiquidProxySectionMesh(
             }
             if (!neighborIsSameLiquid(0, 1, 0)) {
                 addQuad(
-                    {x0, yc00, z0}, u0_s, v0_s,
-                    {x0, yc01, z1}, u0_s, v1_s,
-                    {x1, yc11, z1}, u1_s, v1_s,
-                    {x1, yc10, z0}, u1_s, v0_s,
+                    {x0, yc00, z0}, topUv[0].x, topUv[0].y,
+                    {x0, yc01, z1}, topUv[1].x, topUv[1].y,
+                    {x1, yc11, z1}, topUv[2].x, topUv[2].y,
+                    {x1, yc10, z0}, topUv[3].x, topUv[3].y,
                     topColor
                 );
             }
@@ -677,13 +778,16 @@ void buildLiquidProxySectionMesh(
             if (!neighborIsSameLiquid(-1, 0,  0)) addSideFace(x0, z1, yc01, x0, z0, yc00, ewColor);
             if (!neighborIsSameLiquid( 1, 0,  0)) addSideFace(x1, z0, yc10, x1, z1, yc11, ewColor);
         }
-        state.liquidProxySectionMeshes[section] = std::make_unique<mce::Mesh>(tessellator.end(
-            uploadMode,
-            "LHoloLiquidProxy",
+        bool const retained = captureProjectionTransparency(geometry, *tessellator.mMeshData);
+        tessellator.end(
+            Tessellator::UploadMode::Never,
+            "LHoloLiquidGeometry",
             SupplementaryFieldAutoGenerationMode{0}
-        ));
-    } else {
-        state.liquidProxySectionMeshes[section].reset();
+        );
+        // This builder only emits unindexed POSITION/COLOR/NORMAL/UV0 quads.
+        // Treat a broken invariant as a section build failure, never submit
+        // an unsorted second liquid pass that can reintroduce flickering.
+        if (!retained) throw std::runtime_error("Invalid projection liquid quad geometry");
     }
 
 }
@@ -836,8 +940,6 @@ void buildCorrectionSectionMeshes(
         auto const priority = correctionPriority(correction);
         if (!priority) continue;
         auto const& entry = state.structure->renderBlocks[index];
-        // Pure liquids already have a textured proxy hull.
-        if (correction == CorrectionState::Missing && !entry.block && entry.liquid) continue;
         auto const color = correction == CorrectionState::Missing ? MissingColorAbgrRgb
             : correction == CorrectionState::WrongState ? WrongStateColorAbgrRgb : WrongBlockColorAbgrRgb;
         appendShell(BlockPos{entry.x, entry.y, entry.z}, priority, color,

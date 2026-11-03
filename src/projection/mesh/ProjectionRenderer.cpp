@@ -3,16 +3,17 @@
 
 #include "projection/mesh/ProjectionRenderer.h"
 #include "projection/mesh/ProjectionDrawLists.h"
+#include "projection/mesh/ProjectionTransparency.h"
 
 #include "projection/core/ProjectionInternalTypes.h"
 #include "projection/core/ProjectionState.h"
 #include "projection/world/ProjectionVirtualWorld.h"
 
-#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "mc/client/game/IClientInstance.h"
@@ -20,6 +21,8 @@
 #include "mc/client/player/LocalPlayer.h"
 #include "mc/client/renderer/ActorShaderManager.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
+#include "mc/client/renderer/RenderMaterialGroup.h"
+#include "mc/deps/core/string/HashedString.h"
 #include "mc/client/renderer/blockactor/BlockActorRenderDispatcher.h"
 #include "mc/client/renderer/game/ItemInHandRenderer.h"
 #include "mc/common/Brightness.h"
@@ -28,9 +31,6 @@
 #include "mc/deps/core/renderer/RenderMaterialInfo.h"
 #include "mc/deps/minecraft_renderer/framebuilder/dragon/RenderMetadata.h"
 #include "mc/deps/minecraft_renderer/renderer/RenderMaterial.h"
-#include "mc/deps/minecraft_renderer/renderer/TexturePtr.h"
-#include "mc/deps/minecraft_renderer/resources/ClientTexture.h"
-#include "mc/deps/minecraft_renderer/resources/ServerTexture.h"
 #include "mc/deps/renderer/hal/interface/DepthStencilStateDescription.h"
 #include "mc/world/level/block/actor/BlockActor.h"
 #include "mc/world/level/block/actor/component/IVanillaRenderBlockActorComponent.h"
@@ -61,6 +61,13 @@ using render::materialExists;
 mce::RenderMaterial* tryRenderMaterial(mce::MaterialPtr const& material) {
     auto* info = material.mRenderMaterialInfoPtr.get();
     return info ? info->mPtr.get() : nullptr;
+}
+
+std::optional<mce::MaterialPtr> projectionTransparentMaterial() {
+    static HashedString const name{"beacon_beam_transparent"};
+    mce::MaterialPtr material{mce::RenderMaterialGroup::switchable(), name};
+    if (!tryRenderMaterial(material)) material = mce::MaterialPtr{mce::RenderMaterialGroup::common(), name};
+    return tryRenderMaterial(material) ? std::optional{std::move(material)} : std::nullopt;
 }
 
 OffscreenCaptureDescription const& emptyOffscreenCaptureDescription() {
@@ -158,6 +165,8 @@ void submitProjectionMeshPass(
     ProjectionDrawPassTimer drawTimer{state, renderAlphaLayer};
     auto& itemRenderer = renderContext.mItemInHandRenderer;
     auto const& blendMaterial = itemRenderer.mMatBlendBlock.get();
+    // All sorted faces share one material and do not write depth.
+    auto const transparentMaterial = renderAlphaLayer ? projectionTransparentMaterial() : std::nullopt;
 
     // The ItemInHand/Entity materials used for ghost blocks drive their
     // diffuse lighting from TileLightColor in constant buffer CB0. When
@@ -210,31 +219,23 @@ void submitProjectionMeshPass(
             materialExists(alphaMaterial) ? alphaMaterial : blendMaterial);
         renderSolidBucket(ProjectionDrawSlot::AlphaOneSided, materialExists(oneSidedMaterial)
             ? oneSidedMaterial : materialExists(alphaMaterial) ? alphaMaterial : blendMaterial);
-    } else {
-        // Only the vanilla blend bucket uses the cached back-to-front section order.
-        for (auto const& draw : cache.transparentTerrain) renderTerrainMesh(draw.section, draw.bucket, blendMaterial);
+    } else if (transparentMaterial) {
+        if (auto* mesh = prepareProjectionTransparency(state, renderContext)) {
+            if (mesh->isValid()) {
+                ++drawTimer.draws;
+                auto const count = static_cast<unsigned>(state.transparentCache.order.size() * 4);
+                mesh->renderMesh(renderContext.mScreenContext, *transparentMaterial, *state.terrainTextureVariant,
+                    0, count, emptyOffscreenCaptureDescription(), nullptr);
+            }
+        }
+        // Unindexed quad lists use the unified pass above. Keep unsupported
+        // native topology visible through its original mesh, without guessing
+        // how private index/vertex layouts should be decoded.
+        for (auto const& draw : cache.transparentTerrain)
+            renderTerrainMesh(draw.section, draw.bucket, *transparentMaterial);
     }
 
-    // Textured liquid hulls travel the proven glass path: blend-block material
-    // plus the terrain atlas, sorted back to front by section.
     if (renderAlphaLayer) {
-        for (auto const liquidSection : list(ProjectionDrawSlot::Liquid)) {
-            if (liquidSection >= state.liquidProxySectionMeshes.size()) continue;
-            auto const& candidate = state.liquidProxySectionMeshes[liquidSection];
-            if (!candidate || !candidate->isValid()) continue;
-            auto& mesh = *state.liquidProxySectionMeshes[liquidSection];
-            ++drawTimer.draws;
-            mesh.renderMesh(
-                renderContext.mScreenContext,
-                blendMaterial,
-                *state.terrainTextureVariant,
-                0,
-                mesh.mVertexCount.get().value_or(0u),
-                emptyOffscreenCaptureDescription(),
-                nullptr
-            );
-        }
-
         // Textured placeholder hulls for block-entity blocks.
         for (auto const section : list(ProjectionDrawSlot::Placeholder)) {
             if (section >= state.blockEntityPlaceholderSectionMeshes.size()) continue;

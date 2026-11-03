@@ -130,6 +130,8 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
     // away every GPU mesh. XYZ movement stays represented by the world matrix.
     if (result.geometryTransformChanged) {
         ++state.drawMeshRevision;
+        state.transparentSections.clear();
+        state.transparentCache = {};
         state.correctionStates.fill(CorrectionState::Missing);
         for (auto& sectionState : state.sections) {
             for (auto& mesh : sectionState.meshes) mesh.reset();
@@ -138,7 +140,6 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         for (auto& mesh : state.correctionOutlineSectionMeshes) mesh.reset();
         for (auto& mesh : state.wrongFillSectionMeshes) mesh.reset();
         for (auto& mesh : state.wrongOutlineSectionMeshes) mesh.reset();
-        for (auto& mesh : state.liquidProxySectionMeshes) mesh.reset();
         for (auto& mesh : state.blockEntityPlaceholderSectionMeshes) mesh.reset();
         state.structureBoundsMesh.reset();
         std::fill(state.progressCorrect.begin(), state.progressCorrect.end(), 0);

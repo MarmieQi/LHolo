@@ -158,12 +158,15 @@ LHolo/
 │  │  ├─ core/                  内部共享模型、资源所有权与纯规则
 │  │  │  ├─ ProjectionInternalTypes.h 内部键、状态枚举与无资源引用类型
 │  │  │  ├─ ProjectionRules.*   坐标、分层、状态匹配和渲染分类纯规则
+│  │  │  ├─ ProjectionTransparentGeometry.h 不可变透明面与提交缓存所有权
+│  │  │  ├─ ProjectionTransparentOrder.h 稳定面排序、背面过滤与单位共享面规则
 │  │  │  └─ ProjectionState.h   世界身份、CPU 状态、Worker 状态与 Mesh 所有权
 │  │  ├─ mesh/                  Mesh CPU 构建、Worker、上传与渲染提交
 │  │  │  ├─ ProjectionMeshScheduler.* 主线程 section 选择、局部快照与同步回退调度
 │  │  │  ├─ ProjectionMeshUpload.* 主线程完成队列校验、MeshData 上传与失败回退
 │  │  │  ├─ ProjectionMeshWorker.* 单线程 executor、generation 与完成队列
 │  │  │  ├─ ProjectionRenderer.* 已构建 Mesh/方块实体的 pass 分类与材质提交
+│  │  │  ├─ ProjectionTransparency.* 原生透明面捕获与可见面合并提交缓存
 │  │  │  └─ ProjectionSectionBuilder.* Worker/同步共用的 section CPU 几何构建
 │  │  ├─ section/               section 状态结构与初始化
 │  │  │  └─ ProjectionSectionStateStore.* 并行数组合并后的 SectionState 与初始化
@@ -453,15 +456,19 @@ LevelListener，即使首个投影尚未激活，世界销毁回调也先清空�
 - 墙体由 `BlockType::isWallBlock()` 识别，使用 SDK 的 `WallBlock::_desiredConnectionState()` 计算四向 `WallConnectionType`，再使用 `WallBlock::_shouldBePost()` 对已完成连接的状态计算 `WallPostBit`；`Block::setState()` 只选择不可变调色板排列，不写入区域。Java 的 low/tall/up 状态和基岩版自然连接规则可能不同，因此墙体不走栅栏的扁平连接组件，也不直接忽略全部墙状态。禁止调用会写入世界和加入更新队列的 `tryFixWallStates()` 来做投影计算。该通路复用既有纠错预算与方块更新事件，不增加轮询或全图扫描；实机回归覆盖直墙、转角、交叉、上方覆盖、旋转/镜像和邻居增删。
 - `connectionUpdate()` 会把重算结果写进传入的区域，直接调用曾把可选中、有碰撞的幽灵栅栏写进真实世界（重进世界才消失）。因此调用必须包在 `ScopedRegionWriteSuppression` 内（`ProjectionVirtualWorld`），`ProjectionGameHooks` 里的两个 `BlockSource::setBlock` 钩子在抑制期间吞掉写入并返回成功，只取更新的返回值；不要在抑制作用域外做任何依赖写入生效的操作。
 - 所有投影方块实体创建完成后，使用 `BlockActor::isType()` 识别箱子，并在同一虚拟世界作用域内调用原版 `ChestBlockActor::_tryToPairWith()` 配对。必须先建立完整的虚拟方块和方块实体表，再执行配对；结构 NBT 中的 `pairx`/`pairz` 是原世界绝对坐标，不能直接作为投影配对坐标使用。
-- 水和岩浆使用贴图 proxy 单元壳，完全由 LHolo 自绘，不与原版世界或区块管线交互：仅 Missing（未放置）状态的液体格绘制半透明截顶外壳，最上层液体格顶面固定为原版源液体高度 8/9（`getHeightFromDepth()` 在 1.26 上对源液体的返回值不可靠，不再使用；逐格流动深度不参与视觉，只参与纠错比较），上方有同液体时侧壁满格；相邻同种液体剔除共享面；UV 取自 `BlockGraphics::getForBlock(liquid)->getTexture(0, 0)` 的 terrain atlas 水/岩浆贴图；水顶点色为原版蓝 #3F76E4（atlas 水贴图无色），岩浆顶点色为熔岩橙 #FF8010（0x001080FF，与原版岩浆色谱一致，避免侧面流动贴图及无色材质渲染发白）；alpha 固定为水 0.65、岩浆 0.85，保留移除整体透明度设置前的默认效果；经 `liquidProxySectionMeshes` 独立网格在 alpha pass 用 `mMatBlendBlock` + terrain atlas 提交（与玻璃同路径），按 section 距离排序。静态贴图无波浪动画是已知限制。纯液体格的 Missing 不再叠加蓝色纠错面/描边（proxy 本身即提示），WrongType/WrongState 仍保留红/黄纠错面。`.litematic` 加载时液体路由到 `RenderBlock::liquid` 字段，与 `.mcstructure` 语义一致。
+- 水和岩浆沿用现有贴图 proxy 单元壳，只在 Missing 状态绘制；保留已有 liquid_depth / 四角液面高度、共享面剔除和透明度。Blend 与液体四边形在上传前保留 POSITION/COLOR/NORMAL/UV0，在同一投影实例的可见分区内统一按面排序、合为一个网格提交；不固定先提交全部玻璃、再提交全部液体。通过全局材质组按名解析 `beacon_beam_transparent`，保留深度测试、禁用深度写入、标准 alpha 混合与双面状态。不借用信标渲染器对象或修改共享材质字段；材质未就绪跳过该透明通道。实时 terrain atlas 的动画更新继续共享，不依赖额外光照贴图、区块数据或水面预处理缓冲，不增加世界/区块 Hook。
+- 玻璃外观通过几何可见性处理，不恢复会引入闪烁的深度写入和分材质提交。只对原生 Glass 材质且 Block 形状的完整单位方形面记录朝外法线；不猜测原生顶点绕序。相邻同状态且均 Missing 的投影玻璃剔除共享内部面，保留不同颜色、部分面和非 Missing 邻居。提交前按本地相机位置过滤这些玻璃面的背面；水保持双面，其他 Blend 模型不套用完整玻璃规则。用户已于 2026-11-03 确认玻璃包水场景测试通过。
+- 水贴图为原版灰度图块，顶点 RGB 复用草地已使用的 `BiomeColorSampling::getMapPolicy` 无缓存取色接口，选择 `TintMethod::Water`，按变换后的投影世界坐标读取群系水色。复用 `ProjectionTintRules` 的校验/回退和既有采样失败标记，只有采样无效时退到原版默认水色。水体纳入既有采样范围、Worker chunk padding 与 `ProjectionBiomeRefresh` 有界刷新，不新增染色模块、Hook 或刷新队列。岩浆使用白色 RGB 保留图集原色；原有 alpha 和六向明暗保持。
+- 液体贴图坐标写入 `Tessellator::mNextUV[0]`；当前客户端的 `tex2()` 写 UV2，不能提供主纹理采样坐标。静水图块用于平顶及底面，流水图块用于侧面和有坡度的顶面；顶面方向来自已有四角高度差，按原版 2×2 重复布局以侧面窗口单位的 (1,1) 为中心旋转，不重跑液体模拟。网格 UV 固定采样原版 atlas，逐帧纹理由游戏更新；不增加动画计时器、手动切帧或逐帧网格重建。此处实现纹理动画，不添加几何波浪。
+- 纯液体格的 Missing 与普通蓝图方块共用蓝色填充和描边，沿用现有透明度、描边强度、共享面剔除和遮挡设置；标记覆盖方块格范围，不贴合液面斜坡。底层液体纹理及群系水色仍保留，WrongType/WrongState 继续使用红/黄纠错标记。`.litematic` 与 `.mcstructure` 共用 `RenderBlock::liquid`。
 - 气泡柱必须保留独立的实体/液体语义：`RenderBlock::block` 是气泡柱本体，`liquid` 只保留原版加载器实际解析出的另一层液体。无水气泡柱不补造水；含水气泡柱保留气泡本体与独立水体绘制。不能仅凭原始文件的索引层数判断含水，格式升级由原版 StructureTemplate 负责；Java 映射仍依据其来源格式的映射规则处理水层。
-- 气泡柱保留通用 `tessellateInWorld` 的世界/缓存设置；若该入口未追加顶点，调用实际 SDK 提供的 `tessellateBubbleColumnInWorld` 一次。2026-10-19 无水与含水样本实测中，通用入口均追加 0 个顶点（graphics shape=-1），专用入口追加 32/36 个顶点；其返回值为 false 时也可能有 36 个顶点，因此仍以网格增量判断几何。无几何的气泡柱跳过通用方块实体占位壳，避免白色立方体。原版资源提供气泡柱动画 atlas，水体仍走独立液体网格。本修复不修改分层数据、纠错、世界或任务生命周期，不新增刷新/重试队列。
+- 气泡柱保留通用 `tessellateInWorld` 的世界/缓存设置；若该入口未追加顶点，调用实际 SDK 提供的 `tessellateBubbleColumnInWorld` 一次。2026-10-19 无水与含水样本实测中，通用入口均追加 0 个顶点（graphics shape=-1），专用入口追加 32/36 个顶点；其返回值为 false 时也可能有 36 个顶点，因此仍以网格增量判断几何。无几何的气泡柱跳过通用方块实体占位壳，避免白色立方体。原版资源提供气泡柱动画 atlas，实际存在的水副层独立生成几何后进入统一透明提交。本修复不修改分层数据、纠错、世界或任务生命周期，不新增刷新/重试队列。
 - 用户已确认无水样本 `D:/temp/气泡柱.mcstructure` 和含水样本均显示通过。临时诊断日志、原子计数、同步 flush 和仅供诊断的日志依赖已移除；保留实测有效调用顺序，不在本轮清理中推断专用入口可绕过通用前置设置。
 - 纠错分别比较 `BlockSource::getBlock()` 与 `getLiquidBlock()`；气泡柱使用 `getExtraBlock()` 取得实际副层，避免把气泡柱本体误认作副层水。只对结构实际要求的液体检查缺失、类型和状态，不因无水样本缺少副层水而误报。
 - 材料轴的完整视图仍显示没有材料索引的 Extra 世界方块；选择具体材料或材料范围时，Extra 因无法归属某项材料而隐藏。
 - 投影进度仍以结构坐标计数，而不是把同一坐标的实体层和液体层重复计数。
 
-不要重新引入 `tessellateLiquidInWorld()` 自行提交或把虚拟液体注入 `BlockSource`/区块管线的方案。前者已出现黑块、过曝和未知方块纹理，后者会让游戏逻辑读取到虚拟液体，污染客户端世界认知。当前唯一正式方案是上述 `liquidProxySectionMeshes` 贴图 proxy：它只进入 LHolo 自己的网格和渲染提交，不触发区块重建，也不修改世界。
+不要重新引入 `tessellateLiquidInWorld()` 自行提交或把虚拟液体注入 `BlockSource`/区块管线的方案。前者已出现黑块、过曝和未知方块纹理，后者会让游戏逻辑读取到虚拟液体，污染客户端世界认知。液体几何只保留在 `transparentSections` 并进入统一透明提交，不保留独立液体 GPU 网格、上传字段或第二次提交路径；自有液体生成器必须产出可捕获的无索引四边形，异常按现有分区构建失败通路处理。原版 Blend 模型仍保留未支持拓扑的原网格回退。这些路径只管理 LHolo 的几何与提交，不触发区块重建，也不修改世界。
 
 ### 4.3 `.litematic`
 
@@ -573,22 +580,28 @@ LHolo 不自制草方块、楼梯等材质模型。它使用：
 
 这样可保留草色、生物群系着色、方块模型和原版纹理。若新版本出现草方块白顶、随机材质或黑块，应先检查 atlas、BlockGraphics、Tessellator 缓存和材质，不要重新引入手写 UV。
 
-本节只描述实体方块模型。水和岩浆使用 4.2 节所述的液体 proxy 单元壳（`liquidProxySectionMeshes`），不进入这四种持久 GPU 网格桶，也不调用 `tessellateInWorld()`。
+实体方块使用本节的原版模型构建通路；水和岩浆按 4.2 节生成液体 proxy 单元壳，不调用原版液体网格化。两者的半透明四边形在提交阶段汇入同一个透明面排序缓存。
 
 ### 6.2 渲染桶
 
-方块按原版 `BlockRenderLayer` 映射到四类持久 GPU 网格：
+方块按原版 `BlockRenderLayer` 映射到四类桶；前三类保留持久 GPU 网格，Blend 的已支持四边形保留 CPU 几何并进入统一透明提交：
 
 - `Opaque`
 - `Alpha`
 - `AlphaOneSided`
 - `Blend`
 
-投影方块固定沿用原 100% 时的渲染规则，尽量使用匹配的原版 opaque/alpha/one-sided 材质；只有原有 Blend 桶在透明 pass 中按分区距离排序并使用 blend material。液体继续使用独立透明网格。
+Opaque/Alpha/AlphaOneSided 沿用原来的原版材质与持久 GPU 网格。Blend 与液体的无索引 QuadList 在网格构建时提取到不可变 `ProjectionTransparentSection`，异步完成结果与其他模型一起校验 revision/generation 后发布，纠错覆盖单独重建时保留这些数据。`ProjectionTransparency` 只收集当前可见分区，按实际投影/视图/世界矩阵的 clip-W 系数排列面中心，远到近统一提交；等深度按稳定的分区/来源/面编号排列，不使用会破坏比较器传递性的浮点 epsilon。
+
+统一透明材质优先从 `RenderMaterialGroup::switchable()` 解析，尚未解析到时查询 `common()` 中的同名原版材质；两者均未就绪则暂不提交该透明通道。不借用其他方块实体渲染器的成员。
+
+透明缓存保留源数据所有权，几何或实际可见分区变化才重新收集；视深度轴和玻璃背面判断所需的本地相机位置不变时复用排序，排序结果不变时复用 GPU 提交网格。已排序的面合并为一个网格，保留玻璃与水的交错关系。当前 SDK 未导出仅更新透明索引的接口，因此仅在可见面顺序或几何实际变化时重建这个提交网格，不重新网格化方块，不重建不透明 GPU 模型。已捕获的普通透明几何不再另存重复的原始 GPU 网格。带显式索引或其他未支持拓扑的原生网格保留原网格回退，不属于统一排序覆盖范围。当前是同一投影实例内的面中心排序，不是跨独立文件或真实世界透明几何的 OIT；相交图元也不保证完全正确。统一排序和完整玻璃面剔除已获用户实机确认；维护时不得把玻璃深度写入或分材质小段提交重新带回该通路。
 
 ### 6.3 相机相对坐标
 
 网格生成后，顶点减去投影 `renderOrigin`。每帧只在 world matrix 中应用相机相对平移。不要把几万格绝对坐标直接上传为 float 顶点，否则会复现远坐标渲染错误。
+
+透明排序沿用相同的相机相对矩阵；没有径向缩放、液体侧面内缩或关闭深度测试的抗闪烁特判。
 
 ### 6.4 灵动视效 / Deferred 路径
 
@@ -803,7 +816,7 @@ NBT 内容合并、本地化和背包读取仍在游戏 tick 线程执行，普�
 
 ### 8.6 透明排序
 
-透明网格按分区中心到相机距离从远到近排序。整体移动只改变矩阵/世界中心，不需要重建网格。若新版本出现特定角度黑块或闪烁，检查：
+可保留的 Blend 与液体四边形按实际投影矩阵的视深度从远到近统一排序，等深度以稳定面编号决胜；完整玻璃面另按相机位置过滤背面。几何保存在不可变分区对象中；相机移动只重新求可见面顺序，实际顺序或几何变化才重建合并提交网格，不重新网格化原版方块。不支持的原生拓扑保留原网格回退。若新版本出现特定角度黑块或闪烁，检查：
 
 1. 是否错误地让 opaque 网格走了 blend pass。
 2. 分区中心是否包含当前 anchor + offset。
@@ -1082,8 +1095,6 @@ OreUI 随模组资源包分发的目标目录、Mojang 清单规则和升级保�
 D:\games\LeviLauncher\MC\versions\1.26.51.01\mods\LHolo
 ```
 
-部署前确认 `Minecraft.Windows.exe` 未运行。复制 DLL 后对构建产物和部署文件计算 SHA256，必须一致。
-
 ---
 
 ## 15. 新版本适配流程
@@ -1108,7 +1119,7 @@ D:\games\LeviLauncher\MC\versions\1.26.51.01\mods\LHolo
 
 准备固定回归样本：
 
-- 小型 `.mcstructure`：草方块、石头、玻璃板、栅栏、楼梯、门、活塞、观察者、上下半砖、普通水、岩浆、不同液位、至少一个含水方块，以及带 NBT 的双箱/告示牌。放置单层半砖时，即使相邻支撑是同材质单层半砖，也不得把支撑误合并为双层；双箱必须显示为一个原版大箱子；水/岩浆样本同时验证贴图 proxy（顶层固定 8/9 高、同液体覆盖时满格、相邻同液体共享面剔除）与液位状态纠错；当前 proxy 不按流动深度改变视觉高度。
+- 小型 `.mcstructure`：草方块、石头、玻璃板、栅栏、楼梯、门、活塞、观察者、上下半砖、普通水、岩浆、不同液位、至少一个含水方块，以及带 NBT 的双箱/告示牌。放置单层半砖时，即使相邻支撑是同材质单层半砖，也不得把支撑误合并为双层；双箱必须显示为一个原版大箱子；水/岩浆样本验证原版图集动画、群系水色、liquid_depth 四角高度、同液体覆盖及共享面剔除、液位状态纠错，并验证玻璃包水时统一面排序与静止网格复用。
 - 多区域 `.litematic`：正/负 Size、区域重叠、不同 palette 位宽；负 Size 样本必须包含楼梯、门、活塞、观察者等方向明显的方块。
 - `主播公寓.litematic`：固定验证 X/Z 同时为负的区域不会被旋转 180°，建筑布局和楼梯朝向均与 Java 源文件一致。
 - `borgital-strike-cube-by-baonam7910.litematic`：固定验证 12 个橡木墙上告示牌的正面文字与发光状态，包含单行和四行文本。
@@ -1235,7 +1246,7 @@ D:\games\LeviLauncher\MC\versions\1.26.51.01\mods\LHolo
 
 ### 纠错与渲染
 
-- [ ] 未放置的水显示带原版水贴图的蓝色半透明外壳（无波浪动画，静态贴图为已知限制），岩浆显示原版岩浆贴图。
+- [ ] 未放置的水显示原版动态图集与所在位置的群系水色，岩浆保留动态图集原色；不添加几何波浪。玻璃与水的透明面按视深度交错，静止时不持续重建透明提交网格。
 - [ ] 玩家穿过投影水/岩浆无任何游戏效果（无伤害、无着火、无声音、无游泳状态）。
 - [ ] 在服务器上使用时服务器日志无异常、无踢出、世界数据无变化。
 - [ ] 液体放对后虚拟水在一小段时间内消失；拆除后虚拟水恢复。
@@ -1278,7 +1289,7 @@ D:\games\LeviLauncher\MC\versions\1.26.51.01\mods\LHolo
 - `spgui` 旧菜单命令。
 - 单方块即时 Tessellator、首次黑块预热、单方块射线选中日志。
 - 手写草方块 UV、手动替换材质或只修改顶点 alpha 的早期实验链。
-- 早期纯色液体单元壳：当前正式方案是使用 terrain atlas 水/岩浆贴图和水体 tint 的 `liquidProxySectionMeshes`，不得退回无贴图纯色版本。
+- 早期纯色液体单元壳：当前方案是使用 terrain atlas 水/岩浆动态图块与群系水色的液体 proxy，并与 Blend 透明面统一排序，不得退回无贴图纯色版本。
 - `tessellateLiquidInWorld()` 几何自行提交：盲提交黑块/过曝，受控提交（顶点色覆写 + Blend 桶）未知方块纹理，顶点格式/UV 语义与普通方块材质根本不兼容。
 - 用 `BlockSource::$fireBlockChanged` 或 `RenderChunkCoordinator::$onAreaChanged` 为投影液体触发区块重建：当前液体完全由 LHolo 自绘网格管理，只失效自己的 16³ 分区，不进入原版区块重建链。
 - 世界注入（Hook `BlockSource::getBlock`/`getLiquidBlock` 对读取路径返回投影液体 + `RenderChunkCoordinator::$onAreaChanged` 失效重建）：即使加了线程门和 Level 门，全类读取 Hook 仍无法穷尽区分渲染读者与游戏逻辑读者，且会污染客户端对世界的认知，违背“纯客户端、不修改游戏内容”的产品边界。液体渲染只允许 LHolo 自绘网格方案。
@@ -1334,6 +1345,7 @@ xmake r LHoloLogicTests
 当前覆盖：
 
 - `core/ProjectionLayoutRules`：镜像/旋转枚举映射、结构坐标变换、分层可见性、渲染桶分类。
+- `core/ProjectionTransparentOrder`：同分区玻璃/液体交错、反向和旋转视角、等深度稳定编号、重复排序、非有限深度输入，以及单面玻璃/双面液体过滤与完整单位共享面的识别。
 - `runtime/ProjectionProgress`：进度快照初始化、发布、越界钳制与重置语义。
 - `settings/SettingsStore`：配置文件缺失检测与保存/读取往返一致性。
 - `structure/StructureSession`：空会话、结构替换、变换、层数、恢复快照、关闭前冻结及分层恢复语义。

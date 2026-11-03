@@ -142,7 +142,9 @@ void scheduleProjectionMeshBuild(ProjectionState& state, Tessellator& tessellato
         bool needsBiomeSamples{};
         for (auto const index : state.sectionBlockIndices[section]) {
             auto const* block = state.structure->renderBlocks[index].block;
-            needsBiomeSamples = needsBiomeSamples || (block && projectionUsesBiomeTint(*block));
+            auto const* liquid = state.structure->renderBlocks[index].liquid;
+            needsBiomeSamples = needsBiomeSamples || (block && projectionUsesBiomeTint(*block))
+                || (liquid && projectionUsesBiomeTint(*liquid));
             auto const local = transformStructurePosition(state.structure->renderBlocks[index], *state.structure,
                                                           settings.mirrorMode, settings.rotationTurns);
             BlockPos const world{state.anchor.x + settings.offsetX + local.x,
@@ -223,7 +225,6 @@ void scheduleProjectionMeshBuild(ProjectionState& state, Tessellator& tessellato
     snapshot->correctionOutlineSectionMeshes.resize(1);
     snapshot->wrongFillSectionMeshes.resize(1);
     snapshot->wrongOutlineSectionMeshes.resize(1);
-    snapshot->liquidProxySectionMeshes.resize(1);
     snapshot->blockEntityPlaceholderSectionMeshes.resize(1);
 
     auto const snapshotDataFinished = std::chrono::steady_clock::now();
@@ -305,7 +306,7 @@ void scheduleProjectionMeshBuild(ProjectionState& state, Tessellator& tessellato
             result.correctionOutlineMesh = std::move(snapshot->correctionOutlineSectionMeshes[0]);
             result.wrongFillMesh = std::move(snapshot->wrongFillSectionMeshes[0]);
             result.wrongOutlineMesh = std::move(snapshot->wrongOutlineSectionMeshes[0]);
-            result.liquidProxyMesh = std::move(snapshot->liquidProxySectionMeshes[0]);
+            if (!result.correctionOnly) result.transparentGeometry = snapshot->transparentSections[0];
             result.blockEntityPlaceholderMesh = std::move(snapshot->blockEntityPlaceholderSectionMeshes[0]);
 
             constexpr std::array<std::string_view, 4> meshNames{"opaque", "alpha", "alphaOneSided", "blend"};
@@ -320,7 +321,6 @@ void scheduleProjectionMeshBuild(ProjectionState& state, Tessellator& tessellato
                              validateMeshData(result.correctionOutlineMesh, "correctionOutline", result) &&
                              validateMeshData(result.wrongFillMesh, "wrongFill", result) &&
                              validateMeshData(result.wrongOutlineMesh, "wrongOutline", result) &&
-                             validateMeshData(result.liquidProxyMesh, "liquidProxy", result) &&
                              validateMeshData(result.blockEntityPlaceholderMesh, "blockEntityPlaceholder", result);
         } catch (std::exception const& exception) {
             result.workerBuildMicros = static_cast<std::uint64_t>(

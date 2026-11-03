@@ -9,6 +9,7 @@
 #include "projection/core/ProjectionInternalTypes.h"
 #include "projection/core/ProjectionVisibilityRules.h"
 #include "projection/core/ProjectionBiomeRefresh.h"
+#include "projection/core/ProjectionTransparentGeometry.h"
 
 #include <array>
 #include <cstddef>
@@ -45,7 +46,7 @@ struct AsyncSectionBuildResult {
     std::unique_ptr<mce::Mesh> correctionOutlineMesh;
     std::unique_ptr<mce::Mesh> wrongFillMesh;
     std::unique_ptr<mce::Mesh> wrongOutlineMesh;
-    std::unique_ptr<mce::Mesh> liquidProxyMesh;
+    std::shared_ptr<ProjectionTransparentSection const> transparentGeometry;
     std::unique_ptr<mce::Mesh> blockEntityPlaceholderMesh;
 };
 

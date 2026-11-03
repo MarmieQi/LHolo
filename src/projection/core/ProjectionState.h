@@ -19,6 +19,7 @@
 #include "projection/core/ProjectionVisibilityRules.h"
 #include "projection/core/ProjectionDrawCache.h"
 #include "projection/core/ProjectionBiomeRefresh.h"
+#include "projection/core/ProjectionTransparentGeometry.h"
 #include "structure/StructureSession.h"
 
 #include <array>
@@ -155,7 +156,8 @@ struct ProjectionState {
     std::vector<std::unique_ptr<mce::Mesh>> correctionOutlineSectionMeshes;
     std::vector<std::unique_ptr<mce::Mesh>> wrongFillSectionMeshes;
     std::vector<std::unique_ptr<mce::Mesh>> wrongOutlineSectionMeshes;
-    std::vector<std::unique_ptr<mce::Mesh>> liquidProxySectionMeshes;
+    std::vector<std::shared_ptr<ProjectionTransparentSection const>> transparentSections;
+    ProjectionTransparentCache transparentCache;
     std::vector<std::unique_ptr<mce::Mesh>> blockEntityPlaceholderSectionMeshes;
     std::unique_ptr<mce::Mesh>              structureBoundsMesh;
     std::vector<SectionState>               sections;

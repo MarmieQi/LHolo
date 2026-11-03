@@ -134,7 +134,6 @@ bool prepareProjectionState(
     state.correctionOutlineSectionMeshes.resize(state.sectionBlockIndices.size());
     state.wrongFillSectionMeshes.resize(state.sectionBlockIndices.size());
     state.wrongOutlineSectionMeshes.resize(state.sectionBlockIndices.size());
-    state.liquidProxySectionMeshes.resize(state.sectionBlockIndices.size());
     state.blockEntityPlaceholderSectionMeshes.resize(state.sectionBlockIndices.size());
     state.sectionExtraBlockPositions.resize(state.sectionBlockIndices.size());
     return resolveTerrainTexture(client, state);

@@ -36,7 +36,11 @@ std::uint64_t prepareProjectionDrawLists(ProjectionState& state, Vec3 const& cam
                 if (index < meshes.size() && meshes[index])
                     record.slots |= projectionDrawBit(slot);
             };
-            add(state.liquidProxySectionMeshes, ProjectionDrawSlot::Liquid);
+            if (index < state.transparentSections.size() && state.transparentSections[index]) {
+                auto const& geometry = *state.transparentSections[index];
+                if (!geometry.terrain.quads.empty()) record.slots |= projectionDrawBit(ProjectionDrawSlot::Blend);
+                if (!geometry.liquid.quads.empty()) record.slots |= projectionDrawBit(ProjectionDrawSlot::Liquid);
+            }
             add(state.blockEntityPlaceholderSectionMeshes, ProjectionDrawSlot::Placeholder);
             add(state.warningFillSectionMeshes, ProjectionDrawSlot::MissingFill);
             add(state.correctionOutlineSectionMeshes, ProjectionDrawSlot::MissingOutline);

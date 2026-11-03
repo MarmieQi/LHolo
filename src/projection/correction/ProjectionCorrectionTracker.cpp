@@ -79,7 +79,6 @@ std::size_t ensureCorrectionSection(
     state.correctionOutlineSectionMeshes.emplace_back();
     state.wrongFillSectionMeshes.emplace_back();
     state.wrongOutlineSectionMeshes.emplace_back();
-    state.liquidProxySectionMeshes.emplace_back();
     state.blockEntityPlaceholderSectionMeshes.emplace_back();
     return section;
 }
