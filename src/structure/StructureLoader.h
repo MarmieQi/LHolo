@@ -18,6 +18,7 @@
 
 #include "i18n/Message.h"
 #include "structure/LayerDisplayTypes.h"
+#include "structure/StructureBlocks.h"
 
 #include <cstdint>
 #include <array>
@@ -77,18 +78,8 @@ struct LoadedStructure {
     std::vector<std::uint64_t>            omittedCells;
     // Original template origin, used by vanilla when relocating block-entity references.
     std::array<int, 3>                    sourceWorldOrigin{};
-    struct RenderBlock {
-        int          x{};
-        int          y{};
-        int          z{};
-        Block const* block{};
-        Block const* liquid{};
-        std::shared_ptr<CompoundTag const> blockEntityNbt;
-        int          materialIndex{-1};
-        int          liquidMaterialIndex{-1};
-        int          sourceIndex{-1};
-    };
-    std::vector<RenderBlock>              renderBlocks;
+    using RenderBlock = StructureBlock;
+    StructureBlocks                      renderBlocks;
 };
 // The first covering region owns schematic air; solid/liquid winners keep their own sourceIndex.
 int coveringSource(LoadedStructure const&, int x, int y, int z);

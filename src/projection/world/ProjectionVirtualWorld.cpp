@@ -17,7 +17,7 @@
 namespace lholo::projection::detail {
 namespace {
 
-thread_local ExpectedBlockMap const*      gTessellationBlocks{};
+thread_local ProjectionWorldLookup const*      gTessellationBlocks{};
 thread_local ExpectedBlockActorMap const* gTessellationBlockActors{};
 thread_local bool                         gSuppressRegionWrites{};
 thread_local bool                         gBiomeSampleFailed{};
@@ -37,7 +37,7 @@ bool regionWritesSuppressed() {
 }
 
 ScopedTessellationBlocks::ScopedTessellationBlocks(
-    ExpectedBlockMap const&      blocks,
+    ProjectionWorldLookup const&      blocks,
     ExpectedBlockActorMap const& blockActors,
     bool* worldDependency
 )
@@ -63,10 +63,10 @@ void markTessellationBiomeSampleFailed() {
 
 Block const* findTessellationBlock(BlockPos const& position) {
     if (!gTessellationBlocks) return nullptr;
-    auto const found = gTessellationBlocks->find(
+    auto const found = gTessellationBlocks->blockAt(
         std::tuple{position.x, position.y, position.z}
     );
-    if (found != gTessellationBlocks->end()) return found->second;
+    if (found) return found;
     if (gWorldDependency) *gWorldDependency = true;
     return nullptr;
 }
@@ -81,7 +81,7 @@ BlockActor const* findTessellationBlockActor(BlockPos const& position) {
 
 Block const& readRealTessellationBlock(BlockSource& region, BlockPos const& position) {
     struct Restore {
-        ExpectedBlockMap const* previous;
+        ProjectionWorldLookup const* previous;
         ~Restore() { gTessellationBlocks = previous; }
     } restore{std::exchange(gTessellationBlocks, nullptr)};
     return region.getBlock(position);

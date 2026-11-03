@@ -2,6 +2,7 @@
 // Copyright (C) 2026  MarmieQi
 
 #include "projection/runtime/ProjectionFramePipeline.h"
+#include "projection/mesh/ProjectionMeshResidency.h"
 
 #include "projection/correction/ProjectionCorrectionTracker.h"
 #include "projection/mesh/ProjectionMeshScheduler.h"
@@ -240,6 +241,7 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
     }
 
     uploadCompletedProjectionMeshes(root, tessellator);
+    trimProjectionMeshResidency(root, cameraPosition);
     // Maintain biome/bounds state for every file, then dispatch at most one
     // build globally (also when the worker has fallen back to synchronous).
     for (auto const& target : targets) {
@@ -281,7 +283,7 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
             auto const& target = targets[file];
             for (std::size_t index = 0; index < target.state->sections.size(); ++index) {
                 auto const& section = target.state->sections[index];
-                if (!section.dirty || section.buildInFlight)
+                if (!section.dirty || section.buildInFlight || !canBuildResidentSection(*target.state,index,cameraPosition))
                     continue;
                 if (projectionSectionHasPendingCorrection(*target.state, index, target.build))
                     continue;
@@ -305,6 +307,7 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
             scheduleProjectionMeshBuild(state, tessellator, region, cameraPosition, target.build);
             buildNextProjectionSectionSynchronously(state, tessellator, *state.blockTessellator, region, cameraPosition,
                                                     target.build);
+            if (!state.asyncMeshBuildingEnabled) trimProjectionMeshResidency(root,cameraPosition);
             if (&state != &root && state.meshBuildSelections != selectionsBefore)
                 ++root.meshBuildSelections;
         }

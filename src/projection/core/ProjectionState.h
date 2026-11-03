@@ -15,6 +15,7 @@
 #include "projection/correction/CorrectionAirScan.h"
 
 #include "projection/core/ProjectionInternalTypes.h"
+#include "projection/world/ProjectionWorldLookup.h"
 #include "projection/ProjectionTypes.h"
 #include "projection/core/ProjectionVisibilityRules.h"
 #include "projection/core/ProjectionDrawCache.h"
@@ -66,6 +67,8 @@ struct SectionState {
     bool    incrementalDirty{};
     bool    interactiveDirty{};
     bool    buildInFlight{};
+    bool    residencyDeferred{};
+    std::size_t residentBytes{};
     std::uint64_t requestedRevision{};
     std::uint64_t uploadedRevision{};
     std::array<std::unique_ptr<mce::Mesh>, static_cast<std::size_t>(RenderBucket::Count)> meshes;
@@ -173,6 +176,11 @@ struct ProjectionState {
     // after workers stop; no cached pointer can outlive a mesh or world.
     std::uint64_t                           drawMeshRevision{};
     std::uint64_t                           visibilityRevision{};
+    std::uint64_t                           residencyTrimRevision{};
+    Vec3                                   residencyCamera{};
+    bool                                   hasResidencyCamera{};
+    std::optional<float>                   residencyDistanceLimit;
+    std::size_t                           residencyFileCount{};
     std::optional<ProjectionViewKey>         visibilityKey;
     ProjectionDrawCache                     drawCache;
     ProjectionDrawTimings                   drawTimings;
@@ -192,7 +200,7 @@ struct ProjectionState {
     std::uint64_t                           meshWorkerPeakChunkViewMicros{};
     std::uint64_t                           meshWorkerPeakBuildMicros{};
     std::uint64_t                           meshWorkerPeakUploadMicros{};
-    std::shared_ptr<ExpectedBlockMap>        expectedWorldBlocks{std::make_shared<ExpectedBlockMap>()};
+    std::shared_ptr<ProjectionWorldLookup const> worldLookup{std::make_shared<ProjectionWorldLookup>()};
     std::shared_ptr<ExpectedBlockActorMap>   expectedWorldBlockActors{
         std::make_shared<ExpectedBlockActorMap>()
     };
@@ -200,9 +208,6 @@ struct ProjectionState {
     // The structure owns the immutable NBT keys. Appearance does not depend
     // on placement or visible layers and is released with this state.
     std::unordered_map<CompoundTag const*, BannerAppearance> bannerAppearances;
-    std::shared_ptr<ExpectedBlockIndexMap>   expectedWorldBlockIndices{
-        std::make_shared<ExpectedBlockIndexMap>()
-    };
 };
 
 } // namespace lholo::projection::detail

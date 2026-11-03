@@ -73,7 +73,7 @@ MaterialHudWorkerState& materialHudWorkerState() {
     return state;
 }
 
-MaterialUnitOwners materialUnits(std::vector<LoadedStructure::RenderBlock> const& blocks) {
+MaterialUnitOwners materialUnits(StructureBlocks const& blocks) {
     return buildMaterialUnits(blocks, [](Block const* value) { return block::placementPart(*value); });
 }
 
@@ -218,7 +218,7 @@ std::vector<MaterialRequirement> resolveMaterials(
 
 template <class IsIncluded>
 std::vector<MaterialRequirement> collectMaterials(
-    std::vector<LoadedStructure::RenderBlock> const& renderBlocks,
+    StructureBlocks const& renderBlocks,
     std::string_view localeCode,
     Level& level,
     IsIncluded included

@@ -124,7 +124,7 @@ void submitProjectedBlockActorPass(
     auto const& noForcedMaterial = *reinterpret_cast<mce::MaterialPtr const*>(sNoForcedMaterialStorage);
     auto& dispatcher = renderContext.mBlockEntityRenderDispatcher;
     ScopedTessellationBlocks blockActorWorldScope(
-        *state.expectedWorldBlocks,
+        *state.worldLookup,
         *state.expectedWorldBlockActors
     );
     for (auto const& projected : state.projectedBlockActors) {

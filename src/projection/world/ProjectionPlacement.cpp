@@ -49,7 +49,7 @@ void pairProjectedChests(BlockSource& region, ProjectionState& state) {
     }};
 
     ScopedTessellationBlocks projectedWorld{
-        *state.expectedWorldBlocks, *state.expectedWorldBlockActors
+        *state.worldLookup, *state.expectedWorldBlockActors
     };
     for (auto const& [key, actor] : *state.expectedWorldBlockActors) {
         if (actor->mType != BlockActorType::Chest) continue;
@@ -85,22 +85,32 @@ void rebuildProjectionPlacement(
     ++state.drawMeshRevision; // invalidate before mutating layout/centers
     for (auto& section : state.sections) section.biomeRefresh = {};
     state.biomeRefreshCursor = state.biomeRefreshVisibleCursor = 0;
-    // A moved placement keeps its local GPU geometry, but the virtual world
-    // and correction lookup must follow the new world origin.
+    // A moved placement keeps local GPU geometry. The immutable coordinate
+    // view follows the new origin without allocating per-cell world maps.
     state.blockTessellator = std::make_unique<BlockTessellator>(&region);
 
     // Publish a new immutable virtual-world version. In-flight workers keep
-    // the previous maps alive without observing a partially rebuilt placement.
+    // the previous view alive without observing a partially rebuilt placement.
     auto const totalBlocks = state.structure->renderBlocks.size();
-    state.expectedWorldBlocks = std::make_shared<ExpectedBlockMap>();
-    state.expectedWorldBlocks->reserve(totalBlocks);
+    ProjectionWorldLookup::BlockTransforms transformedBlocks;
+    state.structure->renderBlocks.forEachStoredValue([&](auto const& cell) {
+        for (auto value : {cell.block, cell.liquid}) {
+            if (!value || transformedBlocks.contains(value)) continue;
+            transformedBlocks.emplace(value, transformExpectedBlock(value, transformSettings, settings.identityTransform));
+        }
+    });
+    state.worldLookup = std::make_shared<ProjectionWorldLookup>(state.structure,
+        std::array<long long, 3>{static_cast<long long>(state.anchor.x) + settings.offsetX,
+                                static_cast<long long>(state.anchor.y) + settings.offsetY,
+                                static_cast<long long>(state.anchor.z) + settings.offsetZ},
+        settings.mirrorMode, settings.rotationTurns,
+        structure::LayerSettings{settings.layerAxis,settings.layerDisplayMode,settings.displayLayer},
+        std::move(transformedBlocks));
     state.expectedWorldBlockActors = std::make_shared<ExpectedBlockActorMap>();
     state.projectedBlockActors.clear();
     // Workers retain the previous immutable availability version while layout
-    // changes publish a fresh one, just like the virtual-world maps above.
+    // changes publish a fresh one, just like the coordinate view above.
     state.blockActorRendererAvailable = std::make_shared<std::vector<uchar>>(totalBlocks, 0);
-    state.expectedWorldBlockIndices = std::make_shared<ExpectedBlockIndexMap>();
-    state.expectedWorldBlockIndices->reserve(totalBlocks);
     std::vector<Vec3> centerSums(state.sections.size(), Vec3{});
     std::vector<std::size_t> centerCounts(state.sections.size(), 0);
 
@@ -129,7 +139,6 @@ void rebuildProjectionPlacement(
         };
         auto const worldKey = std::tuple{worldPosition.x, worldPosition.y, worldPosition.z};
         if (transformedBlock) {
-            state.expectedWorldBlocks->emplace(worldKey, transformedBlock);
             if (transformedBlock->getBlockType().getBlockEntityType() != BlockActorType::Undefined) {
                 auto blockActor = VanillaBlockActorFactory::createBlockActor(
                     worldPosition, transformedBlock->getBlockType()
@@ -153,17 +162,7 @@ void rebuildProjectionPlacement(
                     }
                 }
             }
-        } else {
-            // Liquids join the virtual world so vanilla liquid-height queries
-            // see stacked virtual water (full-cell columns).
-            auto const* transformedLiquid = transformExpectedBlock(
-                entry.liquid, transformSettings, settings.identityTransform
-            );
-            if (transformedLiquid) {
-                state.expectedWorldBlocks->emplace(worldKey, transformedLiquid);
-            }
         }
-        state.expectedWorldBlockIndices->emplace(worldKey, index);
         auto const section = state.correctionStates.section(index);
         centerSums[section] += Vec3{
             static_cast<float>(transformed.x) + 0.5f,
@@ -187,11 +186,11 @@ void rebuildProjectionPlacement(
     auto* regionAddress = &region;
     state.blockTessellator->mCachedGetBlock.get()
         = [stateAddress, regionAddress](BlockPos const& position) -> Block const& {
-            auto const found = stateAddress->expectedWorldBlocks->find(
+            auto const found = stateAddress->worldLookup->blockAt(
                 std::tuple{position.x, position.y, position.z}
             );
-            return found == stateAddress->expectedWorldBlocks->end()
-                ? regionAddress->getBlock(position) : *found->second;
+            return !found
+                ? regionAddress->getBlock(position) : *found;
         };
     if (settings.resetCorrectionScan) {
         state.correctionScan.reset(state.sectionBlockIndices);

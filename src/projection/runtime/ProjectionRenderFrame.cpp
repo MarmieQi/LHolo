@@ -314,11 +314,11 @@ bool shouldSuppressProjectionHitSelect(BlockPos const& pos) {
             if (!root.enabled) return false;
             auto suppresses=[&](ProjectionState const& state) {
             if (state.enabled && state.structure) {
-                auto const found = state.expectedWorldBlockIndices->find(
+                auto const found = state.worldLookup->indexAt(
                     std::tuple{pos.x, pos.y, pos.z}
                 );
-                if (found != state.expectedWorldBlockIndices->end()) {
-                    auto const correctionState = state.renderCorrectionState(found->second);
+                if (found) {
+                    auto const correctionState = state.renderCorrectionState(*found);
                     if (correctionState == CorrectionState::WrongType
                         || correctionState == CorrectionState::WrongState) {
                         // LHolo already renders a complete red/yellow hull and

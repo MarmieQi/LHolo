@@ -2,6 +2,7 @@
 // Copyright (C) 2026  MarmieQi
 
 #include "projection/mesh/ProjectionMeshScheduler.h"
+#include "projection/mesh/ProjectionMeshResidency.h"
 
 #include "plugin/LHolo.h"
 #include "projection/mesh/ProjectionMeshWorker.h"
@@ -57,7 +58,7 @@ std::optional<std::size_t> selectNextDirtySection(
             auto const dx = section.center.x + static_cast<float>(state.anchor.x + settings.offsetX) - cameraPosition.x;
             auto const dy = section.center.y + static_cast<float>(state.anchor.y + settings.offsetY) - cameraPosition.y;
             auto const dz = section.center.z + static_cast<float>(state.anchor.z + settings.offsetZ) - cameraPosition.z;
-            bool ready = section.dirty && !section.buildInFlight
+            bool ready = section.dirty && !section.buildInFlight && canBuildResidentSection(state,index,cameraPosition)
                 && !projectionSectionHasPendingCorrection(state, index, settings);
             return ProjectionBuildCandidate{ready, section.buildInFlight,
                 section.buildVisible, section.prefetchVisible, section.incrementalDirty, dx*dx+dy*dy+dz*dz,
@@ -215,9 +216,8 @@ void scheduleProjectionMeshBuild(ProjectionState& state, Tessellator& tessellato
         snapshot->extraBlockPositions.insert(positions.begin(), positions.end());
     }
     snapshot->correctionSnapshot.emplace(state.correctionStates.capture(correctionSections));
-    snapshot->expectedWorldBlocks = state.expectedWorldBlocks;
+    snapshot->worldLookup = state.worldLookup;
     snapshot->expectedWorldBlockActors = state.expectedWorldBlockActors;
-    snapshot->expectedWorldBlockIndices = state.expectedWorldBlockIndices;
     snapshot->sections.resize(1);
     snapshot->sections[0].meshBounds = state.sections[section].meshBounds;
     snapshot->sections[0].biomeRefresh = state.sections[section].biomeRefresh;
@@ -288,8 +288,8 @@ void scheduleProjectionMeshBuild(ProjectionState& state, Tessellator& tessellato
                 localBlockTessellator.mCachedGetBlock.get() =
                     [snapshot, region = localRegion.get()](BlockPos const& position) -> Block const& {
                     auto const found =
-                        snapshot->expectedWorldBlocks->find(std::tuple{position.x, position.y, position.z});
-                    return found == snapshot->expectedWorldBlocks->end() ? region->getBlock(position) : *found->second;
+                        snapshot->worldLookup->blockAt(std::tuple{position.x, position.y, position.z});
+                    return !found ? region->getBlock(position) : *found;
                 };
                 buildProjectionSection(*snapshot, localTessellator, localBlockTessellator, *localRegion, 0,
                                        Tessellator::UploadMode::Never, settings);
@@ -377,6 +377,7 @@ void buildNextProjectionSectionSynchronously(ProjectionState& state, Tessellator
     state.sections[section].dirty = false;
     state.sections[section].modelDirty = false;
     state.sections[section].uploadedRevision = state.sections[section].requestedRevision;
+    recordProjectionResidentBytes(state, section);
     state.sections[section].incrementalDirty = false;
     state.sections[section].interactiveDirty = false;
 }

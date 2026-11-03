@@ -248,10 +248,10 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
             // exposed face added or removed (including across 16^3 borders).
             constexpr int neighbors[6][3] = {{-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}};
             for (auto const& delta : neighbors) {
-                auto const neighbor = state.expectedWorldBlockIndices->find(
+                auto const neighbor = state.worldLookup->indexAt(
                     std::tuple{position.x + delta[0], position.y + delta[1], position.z + delta[2]});
-                if (neighbor != state.expectedWorldBlockIndices->end()) {
-                    auto const section = state.correctionStates.section(neighbor->second);
+                if (neighbor) {
+                    auto const section = state.correctionStates.section(*neighbor);
                     markDirty(section, models || state.sections[section].worldOcclusionDependent);
                 }
             }
@@ -340,10 +340,10 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
     auto const invalidateWorldNeighbors = [&](BlockPos const& world) {
         constexpr int neighbors[6][3]{{-1,0,0}, {1,0,0}, {0,-1,0}, {0,1,0}, {0,0,-1}, {0,0,1}};
         for (auto const& d : neighbors) {
-            auto const found = state.expectedWorldBlockIndices->find(
+            auto const found = state.worldLookup->indexAt(
                 std::tuple{world.x + d[0], world.y + d[1], world.z + d[2]});
-            if (found == state.expectedWorldBlockIndices->end()) continue;
-            auto const section = state.correctionStates.section(found->second);
+            if (!found) continue;
+            auto const section = state.correctionStates.section(*found);
             auto const& target = state.sections[section];
             if (target.worldOcclusionDependent || target.buildInFlight) markDirty(section, true);
         }

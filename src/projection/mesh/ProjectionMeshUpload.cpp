@@ -7,6 +7,7 @@
 // (at your option) any later version.
 
 #include "projection/mesh/ProjectionMeshUpload.h"
+#include "projection/mesh/ProjectionMeshResidency.h"
 
 #include "plugin/LHolo.h"
 #include "projection/core/ProjectionInternalTypes.h"
@@ -156,6 +157,7 @@ void uploadCompletedProjectionMeshes(ProjectionState& root, Tessellator& tessell
                         }
                     }
                 }
+                recordProjectionResidentBytes(state, section);
                 ++state.drawMeshRevision;
                 state.sections[section].incrementalDirty = false;
                 state.sections[section].interactiveDirty = false;

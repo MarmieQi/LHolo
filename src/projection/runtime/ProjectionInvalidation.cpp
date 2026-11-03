@@ -119,6 +119,9 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         }
     }
 
+    if (result.placementViewChanged()) {
+        state.hasResidencyCamera = false;
+    }
     state.cachedRotation = settings.rotationTurns;
     state.cachedMirror = settings.mirrorMode;
     state.cachedOffsetX = settings.offsetX;
@@ -154,6 +157,7 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         state.transparentCache = {};
         state.correctionStates.fill(CorrectionState::Missing);
         for (auto& sectionState : state.sections) {
+            sectionState.residentBytes = 0;
             for (auto& mesh : sectionState.meshes) mesh.reset();
         }
         for (auto& mesh : state.warningFillSectionMeshes) mesh.reset();

@@ -427,7 +427,8 @@ LevelListener，即使首个投影尚未激活，世界销毁回调也先清空�
 - `volume`：结构包围盒体积。
 - `paletteEntries`：调色板项数量。
 - `generation`：每次成功加载递增，用于通知投影替换结构。
-- `renderBlocks`：仅包含至少一个可解析实体方块或液体的坐标。
+- `renderBlocks`：`StructureBlocks` 值序列，仅包含至少一个可解析实体方块或液体的坐标，按 XYZ 排序。消费者读取 `RenderBlock` 值，不缓存元素地址或假定连续 `std::vector<RenderBlock>` 内存。
+- `.litematic` 使用每格一个 `uint64_t` 的坐标/调色板编号及共享调色板，NBT 只由实际需要的调色板项持有；有界 Z 行目录加速邻居查询。`.mcstructure` 保留原版解析和普通值数组路径。`mutableValues()` 仅供发布前构造使用，已发布的结构不可修改。
 - `RenderBlock{x,y,z,block,liquid,blockEntityNbt,materialIndex,liquidMaterialIndex}`：归一化局部坐标、可空实体方块指针、可空液体指针、可选的原生 Bedrock 方块实体 NBT，以及与材料清单稳定排序一致的实体/液体材料索引。同一坐标可同时具有实体与液体，用于含水方块；`.mcstructure` 直接保留原生 NBT，`.litematic` 仅为已有明确转换规则的方块实体生成 NBT。
 
 ### 4.2 `.mcstructure`
@@ -496,6 +497,10 @@ Java→Bedrock 映射不再手工散落维护。`GeneratedChunkerMappings.inc` �
 生成器位于 `tools/java_to_bedrock/`，更新方法见该目录 README。Java、Gradle 和 Chunker 只在重新生成映射时使用，正式 LHolo 运行时只读取已压缩进 DLL 的生成表。手动运行生成脚本时，`javac` 的临时 `.class` 文件写入 `build/java-to-bedrock-generator/`；普通 `xmake` 构建不会生成这些文件，该目录也不得发布。更新 Chunker 或目标 Bedrock 版本后必须重新生成、检查 unsupported 输出、完成 Release 构建，并由用户在游戏中手动验证固定样本。
 
 运行时映射模块缓存 `BlockTypeRegistry` 拥有的 permutation 裸指针。Minecraft 退出世界时会注销或重建这些方块对象，因此缓存不得跨世界保留：`clear()` 必须调用 `resetJavaBlockMappingCache()`，每次 `loadLitematic()` 在确认当前客户端 Level 有效后也必须先重置缓存。重置同时清空 permutation 表和含水映射使用的 `gWaterSource`；禁止仅清除 `LoadedStructure` 而遗留 Java 映射指针。
+
+大结构读取由 `formats/LitematicInput.h`（有上限的 gzip 解压）、`formats/LitematicNbt.h`（big-endian NBT / BlockStates）和 `StructureBlocks`（共享调色板与紧凑坐标）分别负责。LongArray 直接借用解压缓冲，不复制一份整数数组；缓冲在所有视图和区域指针销毁后释放。普通实体仍不参与投影/写入，读取时跳过区域 Entities 的对象树；TileEntities 保留。递归深度、负长度、截断数组、体积乘法和打包位数均检查后再使用。
+
+先遍历实际 BlockStates 统计各区域映射后的非空气数量，按最大单区域的真实数量预留紧凑记录；不根据 Metadata.TotalBlocks 直接分配内存。多区域逐个排序、归并当前获胜格并释放已被覆盖的方块实体 NBT，不保留所有区域重复格的总和。随后解析坐标与方块实体，按打包键排序并合并重复位置。区域调色板按源遍历顺序追加，较大编号保留原先“后区域非空气覆盖前区域、空气不擦除前区域”的行为；负 Size 仍仅影响区域最小坐标，不镜像数据。实体/液体材料编号根据最终获胜格计数后写入共享调色板，不生成逐格材料副本。
 
 ### 4.4 文件安全约束
 
@@ -735,7 +740,7 @@ dirty 分区的 `BlockTessellator` 和全部 CPU 几何生成不在 `$renderBloc
 
 - 一个分区最多一个 in-flight Task；连续变化只递增 revision，旧结果不会覆盖新状态。
 - 增量方块变化优先于初次加载，二者内部都按分区中心到相机距离由近到远选择。
-- 主线程用 `ChunkViewSource::move(..., DontGenerateOnlyGet, ...)` 固定分区加两格 halo 的局部视图。投影虚拟方块/方块实体/世界坐标索引表按 placement generation 发布为共享不可变版本：移动、旋转、镜像或切层时新建一组 Map，in-flight Task 通过 `shared_ptr` 保活旧版本，禁止原地清空或修改已发布版本。纠错状态由 `correction/CorrectionStateStore` 按本地 16³ 分区保存；Task 只保活当前及六邻居分区的只读状态页，活动页被修改时仅局部复制，不复制整图状态或分区指针表。索引到分区/槽位的布局不可变共享，替代原 blockToSection 数组；显示范围作为页内位图，与真实纠错结果分开。Task 继续共享不可变的方块实体渲染可用性，复制本 section 索引及当前/六邻居 section 的稀疏多余方块坐标，不复制完整多余集合、halo Map 或 `LoadedStructure`。
+- 主线程用 `ChunkViewSource::move(..., DontGenerateOnlyGet, ...)` 固定分区加两格 halo 的局部视图。投影世界查询由 `world/ProjectionWorldLookup` 提供不可变视图：世界坐标先逆变换，再查询源结构的有界行目录/排序记录；只保留每种 Block 的原生变换结果，不为每个方块构建两张世界坐标哈希表。移动、旋转、镜像或切层发布新视图，in-flight Task 通过 `shared_ptr` 保活旧视图与结构；原生方块状态转换仅在游戏线程按不同 Block 执行，Worker 不调用转换 API。世界查询直接持有现有 LayerSettings 值，不持有通用可见性回调；已发布的方块变换表必须完整，缺项显式报错，不作为蓝图空气处理。方块实体表仍按原生命周期发布。纠错状态由 `correction/CorrectionStateStore` 按本地 16³ 分区保存；Task 只保活当前及六邻居分区的只读状态页，活动页被修改时仅局部复制，不复制整图状态或分区指针表。索引到分区/槽位的布局不可变共享，替代原 blockToSection 数组；显示范围作为页内位图，与真实纠错结果分开。Task 继续共享不可变的方块实体渲染可用性，复制本 section 索引及当前/六邻居 section 的稀疏多余方块坐标，不复制完整多余集合、halo Map 或 `LoadedStructure`。
 - Worker 独占 `BlockSource`、`BlockTessellator` 和 `Tessellator`，不读取 `gState`、`renderContext` 或渲染线程的活动 Tessellator。
 - Worker 必须用 `Tessellator::end(UploadMode::Never, ...)` 生成 CPU `mce::MeshData`；禁止在 Worker 使用 `Buffered` 或触碰 GPU。
 - `UploadMode::Never` 返回的 CPU-only `mce::Mesh` 尚未设置上传态 vertex count，因此 Worker 不能用 `Mesh::getMeshVertexCount()` 校验结果（该值在 1.26.20.04 实测为 0）。CPU 阶段以 `MeshData::mPositions.size()` 为权威顶点数，并检查所有非空顶点属性数组与它一致。
@@ -747,6 +752,8 @@ dirty 分区的 `BlockTessellator` 和全部 CPU 几何生成不在 `$renderBloc
 Worker 初始化失败，或构建/上传连续失败三次后，本次游戏会话禁用异步路径，恢复每帧同步重建一个 dirty 分区。该回退继续复用同一份几何生成函数，避免两条路径产生视觉差异。
 
 关闭投影、换世界、切维度和模组卸载时，必须先停止接收任务、提升 generation 并 join Worker，之后才能释放 `Level`、`Dimension`、`ChunkViewSource`、Block/BlockActor 和 Mesh。Worker 不得获取 `gStateMutex`；完成队列使用独立 mutex，避免清理时 join 死锁。
+
+网格驻留由 `mesh/ProjectionMeshResidency` 管理，所有独立文件共用 `core/ProjectionResidencyBudget` 的 512 MiB 计费预算。计费包含 CPU 数据、透明面容量和保守 GPU 估算，并非整个进程或实际显存的精确上限。超出预算先释放距离相机最远的分区模型、纠错和透明缓存，推进 revision，保留完整结构、纠错结果、材料与放置语义；旧 Worker 结果不能复活已回收网格。预算压力下暂停更远分区的构建，避免构建后立即丢弃；相机移动至少 8 格、位置/分层/方向变化后重新开放，驻留量降到预算 75% 以下也重新开放。普通结构未触及预算时保留全部网格。同步回退与异步上传共用计费和回收，稳定帧未发生资源/相机变化时不扫描驻留列表。单个在途结果及底层驱动延迟释放仍可能形成短暂额外开销。
 
 ### 8.3 有界纠错扫描
 
@@ -809,7 +816,7 @@ HUD 每帧只读取原子计数，不查询世界、不遍历结构。`ui/hud/Hu
 版本查询和快照复制必须通过 `Projection.h` 的 `getMaterialProgressKey()` /
 `captureMaterialProgress()` 门面完成；`structure` 模块不得包含 `ProjectionSession.h`、获取投影锁或读取
 `ProjectionState` 内部字段。
-`MaterialUnits` 按原生起点坐标、方块类型、方向和任务来源生成每格到放置单元代表格的索引；代表优先使用起始格及其 NBT，源结构裁切掉起始格时保留已有部分。材料清单和缺失材料 HUD 共用 `MaterialCounts.h` 中的 `collectRawMaterials`：先判断各格是否在统计范围内，再按单元去重，因此只显示上半格、只缺一半或多格组件仍只需求一个物品；同类型的不同门、不同任务来源不会合并，液体副层独立按状态汇总。建造进度和纠错仍逐坐标计算。
+`MaterialUnits` 按原生起点坐标、方块类型、方向和任务来源生成每格到放置单元代表格的索引；代表优先使用起始格及其 NBT，源结构裁切掉起始格时保留已有部分。材料清单和缺失材料 HUD 共用 `MaterialCounts.h` 中的 `collectRawMaterials`：先判断各格是否在统计范围内，再按单元去重，因此只显示上半格、只缺一半或多格组件仍只需求一个物品；同类型的不同门、不同任务来源不会合并，液体副层独立按状态汇总。建造进度和纠错仍逐坐标计算。 普通单格材料的代表索引隐含为自身，仅为真实多格放置组保存别名；计数去重集合也只涉及这些组，不再为普通石块、玻璃等逐格分配 owner、representative 和 counted 数组。
 液体材料只计蓝图中的源方块：在上述公共 `resolveMaterials` 通路中，游戏 tick 线程对每个唯一液体状态调用 `BlockUtils::isLiquidSource`，只将原生判定为源的计数归入水/岩浆材料。水平流动、下落液体不计需求，含水副层使用相同原生判定；不能凭 `water` / `flowing_water` 名称区分源与流动。后台仍只保存不透明来源指针与数量，不访问游戏对象，也不新增独立液体缓存。数量表示蓝图源格数，包含自然生成的源，并非最少倒桶次数；仍不将背包中的水桶/岩浆桶折算成源格抵扣，本次不改液体投影、纠错或进度。
 HUD 首次遇到结构时在游戏 tick 线程按唯一方块状态解析原生放置描述，索引快照按不可变结构对象身份缓存；只改变纠错进度、偏移或分层时复用，结构对象更换时重建，缓存只弱引用源结构，后台任务独立持有只读索引及结构快照。不会因 HUD 重算逐次读取原生组件或逐帧扫描全图。
 加载完成和任务选择通过原子失效信号请求 HUD 重算，`published` 和调度时间只由玩家 tick 消费后修改；其它线程不得直接修改材料 Worker 状态。卸载先停止加载与任务生产者，再回收材料后台任务。
@@ -1342,7 +1349,7 @@ D:\games\LeviLauncher\MC\versions\1.26.51.01\logs\crash\minidump_*.dmp
 
 ## 19. 自动化测试
 
-纯逻辑单元使用独立的控制台测试目标，不加载游戏运行时：
+纯逻辑单元使用独立的控制台测试目标，不加载游戏运行时。GitHub 的 build.yml 在生成完整模组目录后也构建并执行同一逻辑回归，失败时不上传构建附件：
 
 ```bash
 xmake -b LHoloLogicTests
@@ -1367,3 +1374,14 @@ xmake r LHoloLogicTests
 新增可独立链接的纯逻辑时必须同步补充对应断言；涉及 Minecraft 运行时对象（Block、BlockSource、Tessellator）的代码不进入该测试目标。
 
 结构变换通过 useTransform → bridge → TransformBindings/TransformProtocol → structure/TransformActions → StructureSession，在现有控制帧执行并复用 saveSettings。TransformTypes 提供纯数据与范围校验，会话不依赖 OreUI 或队列。请求按字段校验 context 与 expected 原值，避免旧输入覆盖新加载或快捷键；细节与回归要求见 docs/OREUI_MIGRATION.md。
+
+结构存储与查询的隔离回归位于 `tests/logic/StructureStorageTests.cpp`：紧凑/展开数据对照、区域覆盖及重复区域的有界归并、覆盖后 NBT 释放、NBT/含水/材料身份、任务合成、全部旋转/镜像与分层模式、旧视图保活、数组截断与实体跳过，以及几何预算策略。
+
+真实文件基准不启动 Minecraft：
+
+```powershell
+xmake -b LHoloStructureBenchmark
+xmake r LHoloStructureBenchmark "<完整 .litematic 路径>"
+```
+
+基准复用正式 gzip/NBT 与紧凑存储，输出实际格数、存储字节、进程工作集峰值、读取/排序时间和随机坐标查询校验；用不透明指针代替原生方块转换，不测试游戏渲染、原生资源或游戏总内存。不要运行旧全量哈希表来人为重现 OOM。实机仍需检查巨大投影加载、移动/旋转/分层、缓存回收后回看、液体/玻璃/方块实体、材料/放置及退出世界；多文件重叠合成、原生结构预览和写入世界仍有各自的内存需求，本次不将其宣传为流式运行。

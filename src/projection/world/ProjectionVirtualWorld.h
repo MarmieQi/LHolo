@@ -7,6 +7,7 @@
 #pragma once
 
 #include "projection/core/ProjectionInternalTypes.h"
+#include "projection/world/ProjectionWorldLookup.h"
 
 class Block;
 class BlockActor;
@@ -18,7 +19,7 @@ namespace lholo::projection::detail {
 class ScopedTessellationBlocks {
 public:
     explicit ScopedTessellationBlocks(
-        ExpectedBlockMap const&      blocks,
+        ProjectionWorldLookup const&      blocks,
         ExpectedBlockActorMap const& blockActors,
         bool* worldDependency = nullptr
     );
@@ -29,7 +30,7 @@ public:
     ScopedTessellationBlocks& operator=(ScopedTessellationBlocks const&) = delete;
 
 private:
-    ExpectedBlockMap const*      mPreviousBlocks{};
+    ProjectionWorldLookup const*      mPreviousBlocks{};
     ExpectedBlockActorMap const* mPreviousBlockActors{};
     bool mPreviousBiomeSampleFailed{};
     bool* mPreviousWorldDependency{};

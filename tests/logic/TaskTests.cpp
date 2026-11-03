@@ -75,7 +75,7 @@ int runTaskTests() {
         {0, 0, 0, stone, nullptr, {}, 0, -1}, {1, 0, 0, nullptr, nullptr}, {2, 1, 1, glass, water, {}, 1, 2}};
     first->materialCount = 3;
     auto nbtOwner = std::make_shared<int>(42);
-    first->renderBlocks.back().blockEntityNbt =
+    first->renderBlocks.mutableValues().back().blockEntityNbt =
         std::shared_ptr<CompoundTag const>(nbtOwner, reinterpret_cast<CompoundTag const*>(nbtOwner.get()));
     auto second = std::make_shared<structure::LoadedStructure>(*first);
     second->renderBlocks = {{0, 0, 0, glass, nullptr, {}, 0, -1}, {1, 0, 0, stone, nullptr, {}, 1, -1}};

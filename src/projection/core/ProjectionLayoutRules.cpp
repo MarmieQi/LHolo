@@ -111,29 +111,9 @@ BlockPos inverseTransformStructurePosition(
     int                               mirrorMode,
     int                               rotation
 ) {
-    int x{};
-    int z{};
-    switch (rotation & 3) {
-    case 1:
-        x = position.z;
-        z = loaded.sizeZ - 1 - position.x;
-        break;
-    case 2:
-        x = loaded.sizeX - 1 - position.x;
-        z = loaded.sizeZ - 1 - position.z;
-        break;
-    case 3:
-        x = loaded.sizeX - 1 - position.z;
-        z = position.x;
-        break;
-    default:
-        x = position.x;
-        z = position.z;
-        break;
-    }
-    if (mirrorMode == 1) x = loaded.sizeX - 1 - x;
-    if (mirrorMode == 2) z = loaded.sizeZ - 1 - z;
-    return BlockPos{x, position.y, z};
+    auto p = structure::inverseTransformCell(position.x, position.y, position.z, loaded.sizeX, loaded.sizeZ,
+                                             mirrorMode, rotation);
+    return BlockPos{p[0], p[1], p[2]};
 }
 
 std::optional<ProjectionCellBox> projectionSectionLocalIntersection(

@@ -43,6 +43,12 @@ jobs:
       - run: |
           xmake -v -y
 
+      - name: Run logic regressions
+        run: |
+          xmake -b LHoloLogicTests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          xmake r LHoloLogicTests
+
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ github.event.repository.name }}-${{ github.sha }}-client-windows-x64

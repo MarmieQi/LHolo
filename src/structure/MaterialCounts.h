@@ -1,6 +1,7 @@
 #pragma once
 
 #include "structure/StructureLoader.h"
+#include "structure/MaterialUnits.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -8,8 +9,8 @@
 #include <functional>
 #include <limits>
 #include <memory>
-#include <span>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -60,22 +61,22 @@ struct RawMaterialCounts {
     MaterialCounts liquid;
 };
 
-template <class IsIncluded>
+template <class Blocks, class IsIncluded>
 RawMaterialCounts collectRawMaterials(
-    std::span<LoadedStructure::RenderBlock const> blocks,
-    std::span<std::size_t const> owners,
+    Blocks const& blocks,
+    MaterialUnitOwners const& owners,
     IsIncluded included
 ) {
     RawMaterialCounts counts;
     counts.body.reserve(std::min<std::size_t>(blocks.size(), 4096));
     counts.liquid.reserve(std::min<std::size_t>(blocks.size(), 64));
-    std::vector<unsigned char> counted(blocks.size());
+    std::unordered_set<std::size_t> countedGroups;
+    bool const hasGroups = !owners.empty();
     for (std::size_t i = 0; i < blocks.size(); ++i) {
         if (!included(i)) continue;
-        auto const owner = owners[i];
-        if (!counted[owner]) {
-            counted[owner] = 1;
-            auto const& source = blocks[owner];
+        auto const owner = hasGroups ? owners.representative(i) : std::nullopt;
+        if (!owner || countedGroups.insert(*owner).second) {
+            auto const& source = blocks[owner.value_or(i)];
             counts.body.add(source.block, source.blockEntityNbt);
         }
         // Preserve liquid state counts per cell, independent of the body unit.

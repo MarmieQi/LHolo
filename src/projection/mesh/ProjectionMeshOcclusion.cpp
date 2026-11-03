@@ -13,13 +13,12 @@ namespace lholo::projection::detail {
 bool projectionFaceCovered(ProjectionState const& state, BlockSource& region,
     BlockPos const& neighbor, bool& worldDependent) {
     auto const key = std::tuple{neighbor.x, neighbor.y, neighbor.z};
-    auto const index = state.expectedWorldBlockIndices->find(key);
-    if (index != state.expectedWorldBlockIndices->end()) {
-        auto const correction = state.renderCorrectionState(index->second);
+    auto const index = state.worldLookup->indexAt(key);
+    if (index) {
+        auto const correction = state.renderCorrectionState(*index);
         if (correction == CorrectionState::Missing || correction == CorrectionState::Unknown) {
-            auto const block = state.expectedWorldBlocks->find(key);
-            if (block != state.expectedWorldBlocks->end() && block->second
-                && block->second->getBlockType().mIsOpaqueFullBlock) return true;
+            auto const block = state.worldLookup->blockAt(key);
+            if (block && block->getBlockType().mIsOpaqueFullBlock) return true;
         }
     }
     worldDependent = true;

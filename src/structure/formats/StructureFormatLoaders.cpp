@@ -15,6 +15,8 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "structure/formats/StructureFormatLoaders.h"
+#include "structure/formats/LitematicNbt.h"
+#include "structure/formats/LitematicInput.h"
 #include "structure/StructureLoader.h"
 #include "block/BlockPlacementRules.h"
 #include "structure/java_to_bedrock/JavaBlockEntityToBedrock.h"
@@ -25,7 +27,6 @@
 #include "structure/StructureGeneration.h"
 #include <bit>
 #include <cstdint>
-#include <cstring>
 #include <cwctype>
 #include <filesystem>
 #include <fstream>
@@ -36,12 +37,10 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <tuple>
 #include <unordered_map>
 #include <variant>
 #include <vector>
 
-#include <zlib.h>
 
 #include "ll/api/service/Bedrock.h"
 #include "mc/client/game/ClientInstance.h"
@@ -62,7 +61,6 @@ namespace lholo::structure::detail {
 namespace {
 
 constexpr std::uintmax_t kMaximumStructureFileSize = 512ull * 1024ull * 1024ull;
-constexpr std::size_t    kMaximumInflatedFileSize  = 1024ull * 1024ull * 1024ull;
 
 void assignMaterialIndices(LoadedStructure& loaded) {
     std::map<std::string, std::uint64_t> bodyCounts;
@@ -74,12 +72,12 @@ void assignMaterialIndices(LoadedStructure& loaded) {
         return cachedKeys.try_emplace(value, block::materialKey(value->getTypeName()))
             .first->second;
     };
-    for (auto const& entry : loaded.renderBlocks) {
+    loaded.renderBlocks.forEachCountedValue([&](auto const& entry, std::uint64_t count) {
         auto const& body = keyFor(entry.block);
         auto const& liquid = keyFor(entry.liquid);
-        if (!body.empty()) ++bodyCounts[body];
-        if (!liquid.empty()) ++liquidCounts[liquid];
-    }
+        if (!body.empty()) bodyCounts[body] += count;
+        if (!liquid.empty()) liquidCounts[liquid] += count;
+    });
     auto sortedKeys = [](auto const& counts) {
         std::vector<std::string> keys;
         for (auto const& [key, count] : counts) {
@@ -104,14 +102,14 @@ void assignMaterialIndices(LoadedStructure& loaded) {
             liquidKeys[index], static_cast<int>(bodyKeys.size() + index)
         );
     }
-    for (auto& entry : loaded.renderBlocks) {
+    loaded.renderBlocks.forEachValue([&](auto& entry) {
         if (auto const found = bodyIndices.find(keyFor(entry.block)); found != bodyIndices.end()) {
             entry.materialIndex = found->second;
         }
         if (auto const found = liquidIndices.find(keyFor(entry.liquid)); found != liquidIndices.end()) {
             entry.liquidMaterialIndex = found->second;
         }
-    }
+    });
     loaded.materialCount = bodyKeys.size() + liquidKeys.size();
 }
 
@@ -195,138 +193,6 @@ bool inspectBlockLayer(IntArrayTag const& layer, std::uint64_t volume, std::uint
     return true;
 }
 
-struct JavaNbtTag {
-    using ByteArray = std::vector<std::uint8_t>;
-    using List = std::vector<JavaNbtTag>;
-    using Compound = std::unordered_map<std::string, JavaNbtTag>;
-    using IntArray = std::vector<std::int32_t>;
-    using LongArray = std::vector<std::int64_t>;
-    using Value = std::variant<
-        std::monostate, std::int8_t, std::int16_t, std::int32_t, std::int64_t, float, double,
-        ByteArray, std::string, List, Compound, IntArray, LongArray>;
-    Value value;
-};
-
-class JavaNbtReader {
-public:
-    explicit JavaNbtReader(std::string_view bytes) : mBytes(bytes) {}
-
-    JavaNbtTag::Compound readRoot() {
-        auto const type = readU8();
-        if (type != 10) throw std::runtime_error("Litematic 根标签不是 Compound");
-        (void)readString();
-        auto root = readPayload(type);
-        if (!std::holds_alternative<JavaNbtTag::Compound>(root.value)) {
-            throw std::runtime_error("Litematic 根标签无效");
-        }
-        return std::move(std::get<JavaNbtTag::Compound>(root.value));
-    }
-
-private:
-    std::string_view mBytes;
-    std::size_t mOffset{};
-
-    void require(std::size_t count) const {
-        if (count > mBytes.size() - std::min(mOffset, mBytes.size())) {
-            throw std::runtime_error("Litematic NBT 数据被截断");
-        }
-    }
-
-    std::uint8_t readU8() {
-        require(1);
-        return static_cast<std::uint8_t>(mBytes[mOffset++]);
-    }
-
-    template <class T>
-    T readBigEndian() {
-        require(sizeof(T));
-        T value{};
-        std::memcpy(&value, mBytes.data() + mOffset, sizeof(T));
-        mOffset += sizeof(T);
-        if constexpr (sizeof(T) > 1) {
-            if constexpr (std::endian::native == std::endian::little) {
-                auto* first = reinterpret_cast<std::uint8_t*>(&value);
-                std::reverse(first, first + sizeof(T));
-            }
-        }
-        return value;
-    }
-
-    std::string readString() {
-        auto const length = readBigEndian<std::uint16_t>();
-        require(length);
-        std::string result{mBytes.substr(mOffset, length)};
-        mOffset += length;
-        return result;
-    }
-
-    std::size_t readArrayLength() {
-        auto const length = readBigEndian<std::int32_t>();
-        if (length < 0) throw std::runtime_error("Litematic NBT 数组长度为负数");
-        return static_cast<std::size_t>(length);
-    }
-
-    JavaNbtTag readPayload(std::uint8_t type) {
-        JavaNbtTag tag;
-        switch (type) {
-        case 1: tag.value = static_cast<std::int8_t>(readU8()); break;
-        case 2: tag.value = readBigEndian<std::int16_t>(); break;
-        case 3: tag.value = readBigEndian<std::int32_t>(); break;
-        case 4: tag.value = readBigEndian<std::int64_t>(); break;
-        case 5: tag.value = readBigEndian<float>(); break;
-        case 6: tag.value = readBigEndian<double>(); break;
-        case 7: {
-            auto const count = readArrayLength();
-            require(count);
-            JavaNbtTag::ByteArray values(count);
-            std::memcpy(values.data(), mBytes.data() + mOffset, count);
-            mOffset += count;
-            tag.value = std::move(values);
-            break;
-        }
-        case 8: tag.value = readString(); break;
-        case 9: {
-            auto const elementType = readU8();
-            auto const count = readArrayLength();
-            if (count > kMaximumInflatedFileSize) throw std::runtime_error("Litematic NBT 列表过大");
-            JavaNbtTag::List values;
-            values.reserve(count);
-            for (std::size_t i = 0; i < count; ++i) values.push_back(readPayload(elementType));
-            tag.value = std::move(values);
-            break;
-        }
-        case 10: {
-            JavaNbtTag::Compound values;
-            for (;;) {
-                auto const childType = readU8();
-                if (childType == 0) break;
-                auto name = readString();
-                values.insert_or_assign(std::move(name), readPayload(childType));
-            }
-            tag.value = std::move(values);
-            break;
-        }
-        case 11: {
-            auto const count = readArrayLength();
-            if (count > kMaximumInflatedFileSize / sizeof(std::int32_t)) throw std::runtime_error("Litematic IntArray 过大");
-            JavaNbtTag::IntArray values(count);
-            for (auto& value : values) value = readBigEndian<std::int32_t>();
-            tag.value = std::move(values);
-            break;
-        }
-        case 12: {
-            auto const count = readArrayLength();
-            if (count > kMaximumInflatedFileSize / sizeof(std::int64_t)) throw std::runtime_error("Litematic LongArray 过大");
-            JavaNbtTag::LongArray values(count);
-            for (auto& value : values) value = readBigEndian<std::int64_t>();
-            tag.value = std::move(values);
-            break;
-        }
-        default: throw std::runtime_error("Litematic 包含不支持的 NBT 标签类型");
-        }
-        return tag;
-    }
-};
 
 template <class T>
 T const* javaValue(JavaNbtTag::Compound const& compound, std::string_view name) {
@@ -394,39 +260,6 @@ std::uint64_t localCellIndex(int x, int y, int z, int sizeY, int sizeZ) {
         * static_cast<std::uint64_t>(sizeZ) + static_cast<std::uint64_t>(z);
 }
 
-std::optional<std::string> inflateGzip(std::string_view compressed, std::string& error) {
-    if (compressed.size() < 2 || static_cast<std::uint8_t>(compressed[0]) != 0x1f
-        || static_cast<std::uint8_t>(compressed[1]) != 0x8b) {
-        return std::string{compressed};
-    }
-    z_stream stream{};
-    stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(compressed.data()));
-    stream.avail_in = static_cast<uInt>(std::min<std::size_t>(compressed.size(), std::numeric_limits<uInt>::max()));
-    if (inflateInit2(&stream, 15 + 16) != Z_OK) {
-        error = "无法初始化 gzip 解压器";
-        return std::nullopt;
-    }
-    struct EndInflate { z_stream* stream; ~EndInflate() { inflateEnd(stream); } } end{&stream};
-    std::string output;
-    std::array<char, 256 * 1024> chunk{};
-    int result = Z_OK;
-    while (result == Z_OK) {
-        stream.next_out = reinterpret_cast<Bytef*>(chunk.data());
-        stream.avail_out = static_cast<uInt>(chunk.size());
-        result = inflate(&stream, Z_NO_FLUSH);
-        auto const produced = chunk.size() - stream.avail_out;
-        if (output.size() + produced > kMaximumInflatedFileSize) {
-            error = "解压后的 Litematic 超过 1 GiB 限制";
-            return std::nullopt;
-        }
-        output.append(chunk.data(), produced);
-    }
-    if (result != Z_STREAM_END) {
-        error = std::string{"Litematic gzip 解压失败: "} + (stream.msg ? stream.msg : "未知错误");
-        return std::nullopt;
-    }
-    return output;
-}
 
 ResolvedJavaBlock resolveJavaBlock(JavaNbtTag const& paletteEntry, int javaDataVersion) {
     auto const* compound = std::get_if<JavaNbtTag::Compound>(&paletteEntry.value);
@@ -447,23 +280,6 @@ ResolvedJavaBlock resolveJavaBlock(JavaNbtTag const& paletteEntry, int javaDataV
     return resolveJavaBlockState(*name, properties, javaDataVersion);
 }
 
-std::uint32_t packedPaletteIndex(
-    JavaNbtTag::LongArray const& values,
-    std::uint64_t index,
-    unsigned bits
-) {
-    auto const bitOffset = index * bits;
-    auto const arrayIndex = static_cast<std::size_t>(bitOffset >> 6);
-    auto const shift = static_cast<unsigned>(bitOffset & 63);
-    if (arrayIndex >= values.size()) throw std::runtime_error("BlockStates 长度不足");
-    auto packed = static_cast<std::uint64_t>(values[arrayIndex]) >> shift;
-    if (shift + bits > 64) {
-        if (arrayIndex + 1 >= values.size()) throw std::runtime_error("BlockStates 跨界数据不完整");
-        packed |= static_cast<std::uint64_t>(values[arrayIndex + 1]) << (64 - shift);
-    }
-    auto const mask = bits == 32 ? 0xffffffffull : ((1ull << bits) - 1ull);
-    return static_cast<std::uint32_t>(packed & mask);
-}
 
 std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& path, std::string& error) {
     auto bytes = readFile(path, error);
@@ -668,6 +484,7 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
     if (!compressed) return nullptr;
     auto bytes = inflateGzip(*compressed, error);
     if (!bytes) return nullptr;
+    compressed.reset();
 
     auto root = JavaNbtReader{*bytes}.readRoot();
     auto const* storedFormatVersion = javaValue<std::int32_t>(root, "Version");
@@ -684,6 +501,7 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
         int posX{}, posY{}, posZ{};
         int signedX{}, signedY{}, signedZ{};
         int sizeX{}, sizeY{}, sizeZ{};
+        unsigned bits{};
         std::vector<ResolvedJavaBlock> palette;
         JavaNbtTag::LongArray const* states{};
         std::unordered_map<std::uint64_t, JavaNbtTag::Compound const*> blockEntities;
@@ -696,7 +514,7 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
     std::int64_t maxX = std::numeric_limits<std::int64_t>::min();
     std::int64_t maxY = maxX;
     std::int64_t maxZ = maxX;
-    std::uint64_t paletteEntries{};
+    std::uint64_t paletteEntries{}, blockEntityEntries{};
 
     for (auto const& [regionName, regionTag] : *regions) {
         auto const* compound = std::get_if<JavaNbtTag::Compound>(&regionTag.value);
@@ -726,9 +544,11 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
         for (auto const& entry : *palette) {
             region.palette.push_back(resolveJavaBlock(entry, regionDataVersion));
         }
+        region.bits = std::max(2u,static_cast<unsigned>(std::bit_width(region.palette.size()-1)));
         paletteEntries += palette->size();
 
         if (auto const* blockEntities = javaValue<JavaNbtTag::List>(*compound, "TileEntities")) {
+            blockEntityEntries += blockEntities->size();
             region.blockEntities.reserve(blockEntities->size());
             for (auto const& entry : *blockEntities) {
                 auto const* wrapper = std::get_if<JavaNbtTag::Compound>(&entry.value);
@@ -783,15 +603,42 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
     loaded->sizeX = static_cast<int>(extentX);
     loaded->sizeY = static_cast<int>(extentY);
     loaded->sizeZ = static_cast<int>(extentZ);
+    if (static_cast<std::uint64_t>(extentX) > std::numeric_limits<std::uint64_t>::max() /
+        static_cast<std::uint64_t>(extentY) / static_cast<std::uint64_t>(extentZ)) {
+        error = "Litematic 合并体积超出支持范围";
+        return nullptr;
+    }
     loaded->volume = static_cast<std::uint64_t>(extentX)
         * static_cast<std::uint64_t>(extentY) * static_cast<std::uint64_t>(extentZ);
     loaded->paletteEntries = paletteEntries;
     loaded->regions.reserve(parsedRegions.size());
-    struct MergedJavaCell {
-        ResolvedJavaBlock                 block;
-        std::shared_ptr<CompoundTag const> blockEntityNbt;
-    };
-    std::unordered_map<std::uint64_t, MergedJavaCell> mergedBlocks;
+    // Count actual mapped cells before reserving. Metadata is untrusted and
+    // must never drive a multi-gigabyte allocation. No cell objects are created.
+    std::size_t largestRegion{};
+    for (auto const& region : parsedRegions) {
+        auto volume = static_cast<std::uint64_t>(region.sizeX) * region.sizeY * region.sizeZ;
+        auto bits = region.bits;
+        std::size_t occupied{};
+        if (volume > (std::numeric_limits<std::uint64_t>::max() - 63) / bits ||
+            (volume * bits + 63) / 64 > region.states->size()) {
+            error = "Litematic 的 BlockStates 数量与区域尺寸不匹配";
+            return nullptr;
+        }
+        for (std::uint64_t i = 0; i < volume; ++i) {
+            auto id = packedPaletteIndex(*region.states, i, bits);
+            if (id < region.palette.size()) {
+                auto const& value = region.palette[id];
+                if (value.mapped && (value.block || value.liquid)) ++occupied;
+            }
+        }
+        largestRegion = std::max(largestRegion,occupied);
+    }
+    if (!loaded->renderBlocks.beginCompact(loaded->sizeY, loaded->sizeZ, loaded->volume - 1,
+                                          paletteEntries + blockEntityEntries)) {
+        error = "Litematic 坐标或调色板超出紧凑存储范围";
+        return nullptr;
+    }
+    loaded->renderBlocks.reserveCompact(largestRegion);
 
     for (auto const& region : parsedRegions) {
         auto const regionVolume = static_cast<std::uint64_t>(region.sizeX)
@@ -813,15 +660,11 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
             region.sizeY,
             region.sizeZ,
         });
-        auto const bits = std::max<unsigned>(
-            2u,
-            static_cast<unsigned>(std::bit_width(static_cast<unsigned>(region.palette.size() - 1)))
-        );
-        auto const requiredLongs = (regionVolume * bits + 63) / 64;
-        if (requiredLongs > region.states->size()) {
-            error = "Litematic 的 BlockStates 数量与区域尺寸不匹配";
-            return nullptr;
-        }
+        auto const bits = region.bits;
+        std::vector<std::uint32_t> paletteIds;
+        paletteIds.reserve(region.palette.size());
+        for (auto const& value : region.palette)
+            paletteIds.push_back(loaded->renderBlocks.addPalette({0, 0, 0, value.block, value.liquid}));
         for (std::uint64_t index = 0; index < regionVolume; ++index) {
             auto const paletteIndex = packedPaletteIndex(*region.states, index, bits);
             if (paletteIndex >= region.palette.size()) {
@@ -867,29 +710,20 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
                     }
                 }
             }
-            mergedBlocks.insert_or_assign(
-                mergedIndex, MergedJavaCell{resolved, std::move(blockEntityNbt)}
-            );
+            auto paletteId = paletteIds[paletteIndex];
+            if (blockEntityNbt)
+                paletteId = loaded->renderBlocks.addPalette({0, 0, 0, resolved.block, resolved.liquid,
+                                                            std::move(blockEntityNbt)});
+            loaded->renderBlocks.appendCompact(mergedIndex, paletteId);
         }
+        if (parsedRegions.size() > 1) loaded->renderBlocks.mergeCompactRegion();
     }
-    loaded->renderBlocks.reserve(mergedBlocks.size());
-    auto const yz = static_cast<std::uint64_t>(loaded->sizeY) * loaded->sizeZ;
-    for (auto& [index, cell] : mergedBlocks) {
-        auto const x = index / yz;
-        auto const remainder = index % yz;
-        auto const y = remainder / static_cast<std::uint64_t>(loaded->sizeZ);
-        auto const z = remainder % static_cast<std::uint64_t>(loaded->sizeZ);
-        // The Java -> Bedrock mapper already split each cell into its body and
-        // liquid layers (pure liquids, and the water that waterlogged blocks
-        // carry), matching the two-layer semantics of the .mcstructure path.
-        loaded->renderBlocks.push_back({
-            static_cast<int>(x), static_cast<int>(y), static_cast<int>(z),
-            cell.block.block, cell.block.liquid, std::move(cell.blockEntityNbt)
-        });
-    }
-    std::sort(loaded->renderBlocks.begin(), loaded->renderBlocks.end(), [](auto const& left, auto const& right) {
-        return std::tie(left.x, left.y, left.z) < std::tie(right.x, right.y, right.z);
-    });
+    // LongArray views and entity pointers end here, before releasing their
+    // backing bytes. Published storage owns its native block-entity data.
+    parsedRegions.clear();
+    root.clear();
+    bytes.reset();
+    loaded->renderBlocks.finishCompact();
     loaded->primaryBlocks = loaded->renderBlocks.size();
     assignMaterialIndices(*loaded);
     loaded->generation = nextStructureGeneration();

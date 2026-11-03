@@ -22,18 +22,15 @@ ProjectionQuery queryProjectionCell(
     BlockPos const&        worldPosition
 ) {
     auto const key = std::tuple{worldPosition.x, worldPosition.y, worldPosition.z};
-    auto const foundIndex = state.expectedWorldBlockIndices->find(key);
-    if (foundIndex == state.expectedWorldBlockIndices->end()) return {nullptr, false};
-    if (state.structure->composed && state.structure->renderBlocks[foundIndex->second].sourceIndex
+    auto const foundIndex = state.worldLookup->indexAt(key);
+    if (!foundIndex) return {nullptr, false};
+    if (state.structure->composed && state.structure->renderBlocks[*foundIndex].sourceIndex
         != structure::detail::StructureSession::getInstance().selectedSourceFor(*state.structure)) return {nullptr,false};
-    auto const foundBlock = state.expectedWorldBlocks->find(key);
-    Block const* block = foundBlock == state.expectedWorldBlocks->end()
-        ? nullptr
-        : foundBlock->second;
+    Block const* block = state.worldLookup->blockAt(key);
     // Liquids have no normal block item, so they are never a valid place target.
     if (block && block->getBlockType().mMaterial.mLiquid) block = nullptr;
-    bool const missing = state.renderCorrectionState(foundIndex->second) == CorrectionState::Missing;
-    return {block, missing, block ? state.structure->renderBlocks[foundIndex->second].blockEntityNbt : nullptr};
+    bool const missing = state.renderCorrectionState(*foundIndex) == CorrectionState::Missing;
+    return {block, missing, block ? state.structure->renderBlocks[*foundIndex].blockEntityNbt : nullptr};
 }
 
 std::vector<RangeCandidate> queryMissingProjectionCells(
@@ -57,19 +54,16 @@ std::vector<RangeCandidate> queryMissingProjectionCells(
         for (int z = minZ; z <= maxZ; ++z) {
             for (int x = minX; x <= maxX; ++x) {
                 auto const key = std::tuple{x, y, z};
-                auto const foundIndex = state.expectedWorldBlockIndices->find(key);
-                if (foundIndex == state.expectedWorldBlockIndices->end()) continue;
-                if (state.structure->composed && state.structure->renderBlocks[foundIndex->second].sourceIndex
+                auto const foundIndex = state.worldLookup->indexAt(key);
+                if (!foundIndex) continue;
+                if (state.structure->composed && state.structure->renderBlocks[*foundIndex].sourceIndex
                     != source) continue;
-                if (state.renderCorrectionState(foundIndex->second) != CorrectionState::Missing) continue;
+                if (state.renderCorrectionState(*foundIndex) != CorrectionState::Missing) continue;
                 float const dx = static_cast<float>(x) + 0.5f - center.x;
                 float const dy = static_cast<float>(y) + 0.5f - center.y;
                 float const dz = static_cast<float>(z) + 0.5f - center.z;
                 if (dx * dx + dy * dy + dz * dz > r2) continue;
-                auto const foundBlock = state.expectedWorldBlocks->find(key);
-                Block const* block = foundBlock == state.expectedWorldBlocks->end()
-                    ? nullptr
-                    : foundBlock->second;
+                Block const* block = state.worldLookup->blockAt(key);
                 // Liquids have no normal block item, so they are never a valid place target.
                 if (block && block->getBlockType().mMaterial.mLiquid) block = nullptr;
                 if (!block) continue;
