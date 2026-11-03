@@ -1061,14 +1061,14 @@ xmake f -a x64 -m release -p windows --target_type=client -y
 xmake -r
 ```
 
-临时排查崩溃可启用完整 PDB，保持 Release 的 `/O2` 优化及 `/OPT:REF`、`/OPT:ICF`：
+本地构建默认生成完整 PDB，保持 Release 的 `/O2` 优化及 `/OPT:REF`、`/OPT:ICF`。已有本地配置曾关闭符号时，执行一次以下命令；之后直接运行 `xmake` 即可沿用：
 
 ```powershell
 xmake f -m release --debug_symbols=y -y
 xmake -y
 ```
 
-符号开关仅作用于 LHolo 原生目标，默认关闭。原生打包器会把匹配的 `LHolo.pdb` 复制到 `bin/LHolo/`；本机诊断时将 DLL/PDB 作为同一对保存、部署，不能用新 PDB 解析旧 DLL。正式六文件安装清单不包含 PDB，现有部署脚本不会自动复制符号；本机诊断部署可在游戏退出并成功部署 DLL 后另行复制匹配 PDB。恢复普通构建用 `xmake f -m release --debug_symbols=n -y` 再构建；不要发布残留符号文件。
+符号开关仅作用于 LHolo 原生目标，默认开启。原生打包器会把匹配的 `LHolo.pdb` 复制到 `bin/LHolo/`，DLL/PDB 必须作为同一对保存。GitHub Actions 构建显式传入 `--debug_symbols=n`，产物上传另行排除 `*.pdb`；正式六文件安装清单不包含 PDB。本地如需关闭，可用 `xmake f -m release --debug_symbols=n -y` 再构建；已有旧符号文件不代表当前 DLL 带有配套符号。
 
 唯一发布目录：
 

@@ -7,7 +7,7 @@ option("levimc_repo")
 option_end()
 
 option("debug_symbols")
-    set_default(false)
+    set_default(true)
     set_showmenu(true)
     set_description("Generate full PDB symbols for local crash diagnosis (keeps Release optimization)")
 option_end()
