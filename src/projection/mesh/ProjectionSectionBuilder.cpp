@@ -642,6 +642,20 @@ void buildLiquidGeometry(
                     || transformed->getBlockType().mMaterial.mSuperHot;
                 return isLavaNeighbor == isLava;
             };
+            auto const sideIsCovered = [&](int dx, int dz) {
+                if (neighborIsSameLiquid(dx, 0, dz)) return true;
+                auto const key = std::tuple{worldPosition.x + dx, worldPosition.y, worldPosition.z + dz};
+                auto const block = state.expectedWorldBlocks->find(key);
+                if (block == state.expectedWorldBlocks->end() || !block->second
+                    || !block->second->getBlockType().mIsOpaqueFullBlock) return false;
+                auto const index = state.expectedWorldBlockIndices->find(key);
+                if (index == state.expectedWorldBlockIndices->end()) return false;
+                auto const correction = state.renderCorrectionState(index->second);
+                // Only cells with a projected model may hide this face. Their
+                // visibility changes already rebuild both neighboring sections;
+                // real-world occlusion remains handled by the depth test.
+                return correction == CorrectionState::Missing || correction == CorrectionState::Unknown;
+            };
 
             // Flow-aware surface. Source and submerged cells stay full;
             // flowing cells taper by liquid_depth, and each top corner is
@@ -773,10 +787,10 @@ void buildLiquidGeometry(
                 );
             };
 
-            if (!neighborIsSameLiquid( 0, 0, -1)) addSideFace(x0, z0, yc00, x1, z0, yc10, nsColor);
-            if (!neighborIsSameLiquid( 0, 0,  1)) addSideFace(x1, z1, yc11, x0, z1, yc01, nsColor);
-            if (!neighborIsSameLiquid(-1, 0,  0)) addSideFace(x0, z1, yc01, x0, z0, yc00, ewColor);
-            if (!neighborIsSameLiquid( 1, 0,  0)) addSideFace(x1, z0, yc10, x1, z1, yc11, ewColor);
+            if (!sideIsCovered( 0, -1)) addSideFace(x0, z0, yc00, x1, z0, yc10, nsColor);
+            if (!sideIsCovered( 0,  1)) addSideFace(x1, z1, yc11, x0, z1, yc01, nsColor);
+            if (!sideIsCovered(-1,  0)) addSideFace(x0, z1, yc01, x0, z0, yc00, ewColor);
+            if (!sideIsCovered( 1,  0)) addSideFace(x1, z0, yc10, x1, z1, yc11, ewColor);
         }
         bool const retained = captureProjectionTransparency(geometry, *tessellator.mMeshData);
         tessellator.end(
