@@ -5,9 +5,6 @@
 #include "ui/preview/StructurePreviewScene.h"
 #include "oreui/OreUiScreen.h"
 #include "i18n/Translator.h"
-#include "plugin/LHolo.h"
-#include "ll/api/mod/NativeMod.h"
-#include "diagnostics/StructurePreviewTrace.h"
 #include <mutex>
 #include <optional>
 #include <utility>
@@ -54,10 +51,6 @@ void processStructurePreviewActions() {
     auto* file = task ? tasks::findFile(*task, request.fileId) : nullptr;
     if (!file) return;
     auto const name = structure::detail::pathToUtf8(structure::detail::pathFromUtf8(file->path).filename());
-    auto& logger = LHolo::getInstance().getSelf().getLogger();
-    logger.info("[structure-preview] request id={} task={} file={} path={}",request.id,request.taskId,request.fileId,file->path);
-    diagnostics::traceStructurePreview(fmt::format("request id={} path={}",request.id,file->path));
-    logger.flush();
     if (!structure::detail::startStructureRead(request.id, file->path)) return;
     readId = request.id;
     if (!ui::preview::requestStructurePreviewScene(request.id, name, request.frame)) {

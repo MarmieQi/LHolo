@@ -3,7 +3,6 @@
 
 #include "structure/StructureFileLoader.h"
 #include "structure/ProjectionActions.h"
-#include "diagnostics/StructurePreviewTrace.h"
 
 #include "plugin/LHolo.h"
 #include "structure/MaterialTracker.h"
@@ -49,13 +48,10 @@ struct FileLoader final : LevelListener {
         -> std::shared_ptr<LoadedStructure const> {
         std::lock_guard parseLock(nativeParserMutex);
         if (cancelled.load()) return {};
-        diagnostics::traceStructurePreview(fmt::format("parse begin path={}",path));
         std::shared_ptr<LoadedStructure const> loaded;
         try { loaded=loadStructureFile(pathFromUtf8(path),error); }
         catch (std::exception const& e) { error=e.what(); }
         catch (...) { error="Unknown structure read error"; }
-        diagnostics::traceStructurePreview(fmt::format("parse end path={} success={} cancelled={} error={}",
-            path,static_cast<bool>(loaded),cancelled.load(),error));
         return loaded;
     }};
     std::unordered_map<std::string, std::shared_ptr<LoadedStructure const>> cache;

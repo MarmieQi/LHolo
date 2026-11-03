@@ -9,7 +9,6 @@
 #include "projection/core/ProjectionState.h"
 #include "projection/world/ProjectionVirtualWorld.h"
 
-#include <chrono>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -41,20 +40,6 @@
 namespace lholo::projection::detail {
 
 namespace {
-
-struct ProjectionDrawPassTimer {
-    ProjectionState& state;
-    bool alpha;
-    std::uint64_t prepareMicros{};
-    std::size_t draws{};
-    std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
-    ~ProjectionDrawPassTimer() {
-        auto const elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - started).count());
-        // Diagnostic logging must not throw while a render scope unwinds.
-        try { recordProjectionDrawPass(state, alpha, elapsed, prepareMicros, draws); } catch (...) {}
-    }
-};
 
 using render::materialExists;
 
@@ -168,7 +153,6 @@ void submitProjectionMeshPass(
     bool                    correctionSeeThrough,
     bool                    missingSeeThrough
 ) {
-    ProjectionDrawPassTimer drawTimer{state, renderAlphaLayer};
     auto& itemRenderer = renderContext.mItemInHandRenderer;
     auto const& blendMaterial = itemRenderer.mMatBlendBlock.get();
     // All sorted faces share one material and do not write depth.
@@ -193,7 +177,7 @@ void submitProjectionMeshPass(
         );
     }
 
-    drawTimer.prepareMicros = prepareProjectionDrawLists(state, camera, renderOrigin);
+    prepareProjectionDrawLists(state, camera, renderOrigin);
     auto const& cache = state.drawCache;
     auto list = [&](ProjectionDrawSlot slot) -> std::vector<std::size_t> const& {
         return cache.lists[static_cast<std::size_t>(slot)];
@@ -202,7 +186,6 @@ void submitProjectionMeshPass(
         if (section >= state.sections.size() || !materialExists(material)) return;
         auto const& mesh = state.sections[section].meshes[bucket];
         if (!mesh || !mesh->isValid()) return;
-        ++drawTimer.draws;
         mesh->renderMesh(renderContext.mScreenContext, material, *state.terrainTextureVariant,
             0, mesh->mVertexCount.get().value_or(0u), emptyOffscreenCaptureDescription(), nullptr);
     };
@@ -228,14 +211,9 @@ void submitProjectionMeshPass(
     } else if (transparentMaterial) {
         if (auto* mesh = prepareProjectionTransparency(state, renderContext)) {
             if (mesh->isValid()) {
-                ++drawTimer.draws;
                 auto const count = static_cast<unsigned>(state.transparentCache.order.size() * 4);
-                auto const started = std::chrono::steady_clock::now();
                 mesh->renderMesh(renderContext.mScreenContext, *transparentMaterial, *state.terrainTextureVariant,
                     0, count, emptyOffscreenCaptureDescription(), nullptr);
-                state.drawTimings.transparency.cpuMicros[ProjectionDrawTimings::TransparencySample::Draw]
-                    = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-                        std::chrono::steady_clock::now() - started).count());
             }
         }
         // Unindexed quad lists use the unified pass above. Keep unsupported
@@ -251,7 +229,6 @@ void submitProjectionMeshPass(
             if (section >= state.blockEntityPlaceholderSectionMeshes.size()) continue;
             auto const& placeholder = state.blockEntityPlaceholderSectionMeshes[section];
             if (!placeholder || !placeholder->isValid()) continue;
-            ++drawTimer.draws;
             placeholder->renderMesh(
                 renderContext.mScreenContext,
                 blendMaterial,
@@ -273,7 +250,6 @@ void submitProjectionMeshPass(
     if (materialExists(outlineMaterial) && structureBoundsEnabled
         && state.structureBoundsMesh && state.structureBoundsMesh->isValid()) {
         render::ScopedShaderColor boundsColor{renderContext.mScreenContext.currentShaderColor, 0xFFFFD633U};
-        ++drawTimer.draws;
         state.structureBoundsMesh->renderMesh(
             renderContext.mScreenContext,
             outlineMaterial,
@@ -310,7 +286,6 @@ void submitProjectionMeshPass(
             if (section >= meshes.size()) continue;
             auto const& overlay = meshes[section];
             if (!overlay || !overlay->isValid()) continue;
-            ++drawTimer.draws;
             overlay->renderMesh(
                 renderContext.mScreenContext,
                 material,

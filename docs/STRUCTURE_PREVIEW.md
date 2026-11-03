@@ -22,7 +22,7 @@ TasksPage → useStructurePreview → previewBridge
 
 页面只发送文件身份、revision 和窗口实测比例，不发送路径。原生协议限制 JSON 字段、大小、数值及身份长度；应用层重新校验任务 revision 和文件身份，再查真实路径。
 
-app 层协调任务快照、只读读取、原生场景与 OreUI 关闭/返回。ui/preview 不依赖 OreUI、任务目录或 projection 私有状态。structure 不依赖 UI、app 或 OreUI；诊断日志是独立叶模块。
+app 层协调任务快照、只读读取、原生场景与 OreUI 关闭/返回。ui/preview 不依赖 OreUI、任务目录或 projection 私有状态。structure 不依赖 UI、app 或 OreUI。
 
 ## 后台读取与取消
 
@@ -52,4 +52,4 @@ StructureReadQueue 最多持有一个正在执行的读取和一个取消后重�
 
 实机回归应覆盖重复打开/关闭、加载中取消、切维度、退出世界、模组停用，以及原投影和任务操作是否保持正常。
 
-同步诊断文件为 mods/LHolo/logs/structure-preview.log，保留阶段与失败信息，不逐普通方块、逐方块实体或每帧写文件。PDB 是可关闭的本地诊断构建选项；必须与 DLL 的 GUID/Age 匹配，六文件正式安装清单不包含 PDB。
+正式预览不创建独立调试日志目录或 structure-preview.log，不输出请求、初始化、首帧及释放阶段的调试信息，也不为这些阶段同步写盘。实际失败沿用页面错误提示及模组正常错误日志，阶段和位置上下文继续保留。PDB 是可关闭的本地诊断构建选项；必须与 DLL 的 GUID/Age 匹配，六文件正式安装清单不包含 PDB。

@@ -190,7 +190,6 @@ struct ProjectionState {
     std::uint64_t                           biomeRefreshFrame{};
     std::uint64_t                           biomeSampleRetryCount{};
     std::uint64_t                           meshBuildSelections{};
-    std::size_t                             visibleSectionCount{};
     // Render-thread/session-owned values only. Session reset releases caches
     // after workers stop; no cached pointer can outlive a mesh or world.
     std::uint64_t                           drawMeshRevision{};
@@ -199,7 +198,6 @@ struct ProjectionState {
     std::size_t                             residencyFileCursor{};
     std::optional<ProjectionViewKey>         visibilityKey;
     ProjectionDrawCache                     drawCache;
-    ProjectionDrawTimings                   drawTimings;
     std::uint64_t                           meshWorkerGeneration{};
     int                                     consecutiveMeshWorkerFailures{};
     bool                                    asyncMeshBuildingEnabled{true};

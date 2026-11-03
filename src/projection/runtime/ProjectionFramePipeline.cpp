@@ -237,6 +237,14 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
     }
 
     uploadCompletedProjectionMeshes(root, tessellator);
+    // Correction can append sections, and uploads publish new mesh bounds.
+    // Classify those changes before eviction and dispatch, rather than using
+    // a new section's permissive defaults for the remainder of this frame.
+    for (auto const& target : targets) {
+        auto& state = *target.state;
+        if (!state.visibilityKey || !state.visibilityKey->matchesResources(state.drawMeshRevision, state.sections.size()))
+            updateProjectionVisibility(state, renderContext, cameraPosition, renderDistance);
+    }
     trimProjectionMeshResidency(root);
     // Maintain biome/bounds state for every file, then dispatch at most one
     // build globally (also when the worker has fallen back to synchronous).

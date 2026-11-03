@@ -192,6 +192,34 @@ void testResidencyScan() {
     CULL_CHECK(drained == count - ProjectionResidencyProbesPerFrame);
 }
 
+void testPublishedVisibility() {
+    ProjectionViewKey classified;
+    classified.meshRevision = 10;
+    classified.sections = 1;
+    CULL_CHECK(classified.matchesResources(10, 1));
+    CULL_CHECK(!classified.matchesResources(10, 2)); // Correction added a section after initial classification.
+    CULL_CHECK(!classified.matchesResources(11, 1)); // Upload replaced bounds without changing section count.
+
+    ProjectionBounds const source{{0, 0, 0}, {16, 16, 16}, true};
+    ProjectionFrustum const frustum;
+    auto const near = classifyProjectionSection(frustum, source, source, {}, 128);
+    auto const distant = classifyProjectionSection(frustum, source, {}, {1000, 0, 0}, 128);
+    CULL_CHECK(!distant.withinBuildDistance && !distant.withinRetentionDistance);
+    std::array<ProjectionBuildCandidate, 2> candidates{};
+    candidates[0].dirty = near.withinBuildDistance;
+    candidates[0].visible = near.buildVisible;
+    candidates[1].dirty = distant.withinBuildDistance;
+    candidates[1].interactive = true;
+    for (auto turn : {0u, 7u}) {
+        auto selected = selectProjectionBuild(candidates.size(), turn, 1,
+                                              [&](std::size_t i) { return candidates[i]; });
+        CULL_CHECK(selected == 0); // Neither an interactive edit nor fairness bypasses distance admission.
+    }
+    ProjectionBounds const overhang{{-20, 0, 0}, {16, 16, 16}, true};
+    auto const published = classifyProjectionSection(frustum, source, overhang, {165, 0, 0}, 128);
+    CULL_CHECK(published.withinRetentionDistance); // Newly published geometry reaches the retention ring.
+}
+
 void testBuildSelection() {
     std::array<ProjectionBuildCandidate, 4> candidates{{{true, false, false, false, true, 1},
                                                         {true, false, true, true, false, 100},
@@ -281,6 +309,7 @@ int runProjectionCullingTests() {
     testTransformedBounds();
     testRenderDistance();
     testResidencyScan();
+    testPublishedVisibility();
     testBuildSelection();
     testShell();
     std::printf("ProjectionCullingTests: %d checks, %d failures\n", checks, failures);

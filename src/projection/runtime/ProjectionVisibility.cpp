@@ -3,19 +3,9 @@
 #include "mc/client/renderer/BaseActorRenderContext.h"
 #include "mc/deps/renderer/Camera.h"
 #include "projection/core/ProjectionState.h"
-#include <chrono>
 
 namespace lholo::projection::detail {
 void updateProjectionVisibility(ProjectionState& state, BaseActorRenderContext& context, Vec3 const& camera, float renderDistance) {
-    struct MeasureVisibility {
-        std::uint64_t& output;
-        std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
-        ~MeasureVisibility() {
-            output = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-                                                    std::chrono::steady_clock::now() - started)
-                                                    .count());
-        }
-    } measure{state.drawTimings.lastVisibilityMicros};
     ProjectionViewKey key;
     glm::mat4 viewProjection{1};
     auto const& cameraObject = context.mScreenContext.camera;
@@ -45,7 +35,6 @@ void updateProjectionVisibility(ProjectionState& state, BaseActorRenderContext& 
     state.visibilityKey = key;
     auto const frustum =
         key.hasMatrix ? ProjectionFrustum::fromViewProjection(viewProjection) : ProjectionFrustum{};
-    state.visibleSectionCount = 0;
     ++state.visibilityRevision;
     for (auto& section : state.sections) {
         // Actual vertex bounds include liquid and correction geometry. Before
@@ -56,8 +45,6 @@ void updateProjectionVisibility(ProjectionState& state, BaseActorRenderContext& 
         section.prefetchVisible = visibility.prefetchVisible;
         section.withinBuildDistance = visibility.withinBuildDistance;
         section.withinRetentionDistance = visibility.withinRetentionDistance;
-        if (section.renderVisible)
-            ++state.visibleSectionCount;
     }
 }
 } // namespace lholo::projection::detail

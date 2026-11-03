@@ -25,6 +25,9 @@ struct ProjectionViewKey {
     std::size_t sections{};
     bool hasMatrix{};
     bool operator==(ProjectionViewKey const&) const = default;
+    bool matchesResources(std::uint64_t revision, std::size_t count) const {
+        return meshRevision == revision && sections == count;
+    }
 };
 
 inline bool projectionResidencyViewChanged(ProjectionViewKey const& before, ProjectionViewKey const& after) {

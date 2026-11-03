@@ -192,7 +192,7 @@ void uploadCompletedProjectionMeshes(ProjectionState& root, Tessellator& tessell
                 if (state.meshWorkerUploadedSections % 64 == 0) {
                     auto const count = state.meshWorkerUploadedSections;
                     logger().debug(
-                        "Projection mesh worker: {} sections; snapshot {}/{} us (data {}/{}, chunkView {}/{}), build {}/{} us, upload {}/{} us; visible {}/{}, discarded {}; correction snapshot {} B, COW total {} B, overlay-only {}",
+                        "Projection mesh worker: {} sections; snapshot {}/{} us (data {}/{}, chunkView {}/{}), build {}/{} us, upload {}/{} us; sections {}, discarded {}; correction snapshot {} B, COW total {} B, overlay-only {}",
                         count,
                         state.meshWorkerSnapshotMicros / count,
                         state.meshWorkerPeakSnapshotMicros,
@@ -204,7 +204,6 @@ void uploadCompletedProjectionMeshes(ProjectionState& root, Tessellator& tessell
                         state.meshWorkerPeakBuildMicros,
                         state.meshWorkerUploadMicros / count,
                         state.meshWorkerPeakUploadMicros,
-                        state.visibleSectionCount,
                         state.sections.size(),
                         state.meshWorkerDiscardedBuilds,
                         result.correctionSnapshotBytes,

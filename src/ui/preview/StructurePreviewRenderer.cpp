@@ -1,7 +1,6 @@
 #include "ui/preview/StructurePreviewRenderer.h"
 #include "ui/preview/StructurePreviewTransform.h"
 #include "ui/preview/StructurePreviewStorage.h"
-#include "diagnostics/StructurePreviewTrace.h"
 #include "structure/StructureLoader.h"
 #include "structure/StructurePaths.h"
 #include "plugin/LHolo.h"
@@ -53,7 +52,6 @@ thread_local glm::vec2 activeCenter{};
 thread_local float activeZoom{1};
 thread_local bool zoomApplied{};
 thread_local char const** activeStage{};
-thread_local bool activeFirstFrame{};
 // StructureVolumeRenderer copies its fitted world matrix to GameRenderer
 // before dispatching geometry. Keep that render-graph snapshot and the live
 // camera in sync; changing the projection stack alone is not consumed here.
@@ -86,7 +84,6 @@ bool blocksInstalled{}, blockActorsInstalled{}, sourceInstalled{};
 LL_TYPE_INSTANCE_HOOK(PreviewNativeSource, ll::memory::HookPriority::Normal,
     Dimension, &Dimension::$getBlockSourceFromMainChunkSource, BlockSource&) {
     if (activeRenderer && activeSource && &activeSource->getDimension() == this) {
-        if (activeFirstFrame) diagnostics::traceStructurePreview("native root source redirected to private preview source");
         return *activeSource;
     }
     return origin();
@@ -99,7 +96,6 @@ LL_TYPE_INSTANCE_HOOK(PreviewBlocks, ll::memory::HookPriority::Normal,
     BaseActorRenderContext& context, BlockSource& region, AABB const& area) {
     if (this != activeRenderer || !activeSource) return origin(context, region, area);
     if (activeStage) *activeStage = "native-block-meshes";
-    if (activeFirstFrame) diagnostics::traceStructurePreview(fmt::format("native block meshes sourceMatches={}",&region == activeSource));
     GeometryZoom zoom{&context.mScreenContext};
     auto const result = origin(context, *activeSource, area);
     if (activeStage) *activeStage = "native-render";
@@ -111,15 +107,7 @@ LL_STATIC_HOOK(PreviewBlockActors, ll::memory::HookPriority::Normal,
     if (!activeRenderer || !activeSource) { origin(region, area, callback); return; }
     if (activeStage) *activeStage = "native-block-entities";
     GeometryZoom zoom{activeScreen};
-    origin(*activeSource, area, [&](IVanillaRenderBlockActorComponent& component) {
-        try { callback(component); }
-        catch (std::exception const& e) {
-            auto const& pos = component.getBlockActorPosition();
-            diagnostics::traceStructurePreview(fmt::format("block entity render failed renderer={} type={} pos=({},{},{}) error={}",
-                static_cast<int>(component.getRendererId()),static_cast<int>(component.getBlockActorType()),pos.x,pos.y,pos.z,e.what()));
-            throw;
-        }
-    });
+    origin(*activeSource, area, callback);
     if (activeStage) *activeStage = "native-render";
 }
 // No parent: all lookups terminate in this private collection, including the
@@ -186,26 +174,10 @@ struct StructurePreviewRenderer::Impl {
     BlockPos currentPosition{};
 };
 StructurePreviewRenderer::StructurePreviewRenderer() : mImpl(std::make_unique<Impl>()) {}
-StructurePreviewRenderer::~StructurePreviewRenderer() {
-    auto const path = mImpl && mImpl->file ? structure::detail::pathToUtf8(mImpl->file->sourcePath) : std::string{};
-    auto& logger = LHolo::getInstance().getSelf().getLogger();
-    logger.info("[structure-preview] release begin file={}",path);
-    diagnostics::traceStructurePreview(fmt::format("release begin file={}",path));
-    mImpl.reset();
-    logger.info("[structure-preview] release complete file={}",path);
-    diagnostics::traceStructurePreview(fmt::format("release complete file={}",path));
-}
+StructurePreviewRenderer::~StructurePreviewRenderer() = default;
 void StructurePreviewRenderer::setStructure(std::shared_ptr<structure::LoadedStructure const> file) {
     mImpl = std::make_unique<Impl>();
     mImpl->file = std::move(file);
-    if (mImpl->file) {
-        auto const& f = *mImpl->file;
-        diagnostics::traceStructurePreview(fmt::format("renderer begin file={} cells={}",structure::detail::pathToUtf8(f.sourcePath),f.renderBlocks.size()));
-        LHolo::getInstance().getSelf().getLogger().info(
-            "[structure-preview] begin file={} size={}x{}x{} cells={}",
-            structure::detail::pathToUtf8(f.sourcePath),f.sizeX,f.sizeY,f.sizeZ,f.renderBlocks.size());
-        LHolo::getInstance().getSelf().getLogger().flush();
-    }
 }
 std::string const& StructurePreviewRenderer::error() const { return mImpl->error; }
 bool StructurePreviewRenderer::ready() const { return mImpl->initialized; }
@@ -220,7 +192,6 @@ void StructurePreviewRenderer::render(MinecraftUIRenderContext& context, ClientI
         auto const& f = *s.file;
         if (!s.region) {
             s.stage = "create-private-source";
-            diagnostics::traceStructurePreview(fmt::format("create private source file={}",structure::detail::pathToUtf8(f.sourcePath)));
             auto& world = player->getDimensionBlockSource();
             s.baseY = world.getMinHeight();
             if (f.sizeY > world.getMaxHeight() - s.baseY)
@@ -272,10 +243,6 @@ void StructurePreviewRenderer::render(MinecraftUIRenderContext& context, ClientI
             s.renderer = new StructureVolumeRenderer();
             s.rendererOwner.reset(s.renderer);
             s.stage = "initialize-native-chunk-builder";
-            diagnostics::traceStructurePreview(fmt::format("initialize chunk builder file={}",structure::detail::pathToUtf8(f.sourcePath)));
-            LHolo::getInstance().getSelf().getLogger().info(
-                "[structure-preview] initialize chunk builder file={}",structure::detail::pathToUtf8(f.sourcePath));
-            LHolo::getInstance().getSelf().getLogger().flush();
             s.renderer->_initializeChunkBuilder(*s.pipeline, *s.region, *s.tessellator, area);
             // The wrapper keeps its normal listener lifecycle; only this
             // renderer's geometry and block-entity reads use the private source.
@@ -319,38 +286,28 @@ void StructurePreviewRenderer::render(MinecraftUIRenderContext& context, ClientI
             glm::vec2 previousCenter;
             float previousZoom;
             char const** previousStage;
-            bool previousFirstFrame;
             StructureVolumeRenderer& renderer;
             ~SourceScope() {
                 renderer.mUnsafeSourcePointer = nullptr;
                 activeRenderer = previousRenderer; activeSource = previousSource;
                 activeScreen = previousScreen; activeZoom = previousZoom;
                 activeGameRenderer = previousGameRenderer; activeCenter = previousCenter;
-                activeStage = previousStage; activeFirstFrame = previousFirstFrame;
+                activeStage = previousStage;
             }
-        } sourceScope{activeRenderer, activeSource, activeScreen, activeGameRenderer, activeCenter, activeZoom, activeStage, activeFirstFrame, *s.renderer};
+        } sourceScope{activeRenderer, activeSource, activeScreen, activeGameRenderer, activeCenter, activeZoom, activeStage, *s.renderer};
         activeRenderer = s.renderer; activeSource = s.region.get();
         activeScreen = &context.mScreenContext; activeZoom = zoom;
         activeGameRenderer = &client.getGameRenderer(); activeCenter = position + size * 0.5f;
-        activeStage = &s.stage; activeFirstFrame = !s.initialized;
+        activeStage = &s.stage;
         // This renderer never subscribes to real-world block changes. The
         // preview scene owns its Level guard and the private data is immutable.
         s.renderer->mInitialize = false;
         s.stage = "native-render";
-        if (!s.initialized) {
-            diagnostics::traceStructurePreview(fmt::format("first native render file={}",structure::detail::pathToUtf8(f.sourcePath)));
-            LHolo::getInstance().getSelf().getLogger().info(
-                "[structure-preview] first native render file={}",structure::detail::pathToUtf8(f.sourcePath));
-            LHolo::getInstance().getSelf().getLogger().flush();
-        }
         s.renderer->$render(context, client, owner, 0);
         s.initialized = true;
         s.stage = "ready";
     } catch (std::exception const& e) {
         s.error = e.what();
-        diagnostics::traceStructurePreview(fmt::format("failed file={} stage={} cell={} block={} pos=({},{},{}) error={}",
-            structure::detail::pathToUtf8(s.file->sourcePath),s.stage,s.cursor,s.currentBlock,
-            s.currentPosition.x,s.currentPosition.y,s.currentPosition.z,s.error));
         LHolo::getInstance().getSelf().getLogger().error(
             "[structure-preview] failed file={} stage={} cell={}/{} block={} pos=({},{},{}) error={}; resources retained until scene close",
             structure::detail::pathToUtf8(s.file->sourcePath),s.stage,s.cursor,s.file->renderBlocks.size(),
