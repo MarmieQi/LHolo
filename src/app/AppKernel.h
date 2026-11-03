@@ -2,7 +2,7 @@
 // Copyright (C) 2026  MarmieQi
 //
 // Single application entry point. The plugin facade only delegates here;
-// AppKernel owns enable/disable/load and application control-frame orchestration.
+// AppKernel owns enable/disable/load and client-logic-thread action orchestration.
 
 #pragma once
 

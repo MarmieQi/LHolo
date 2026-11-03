@@ -18,9 +18,6 @@
 
 namespace lholo::overlay {
 
-using ControlFrameCallback = void (*)();
-// The application supplies business work; the display driver owns no app dependency.
-void setControlFrameCallback(ControlFrameCallback callback);
 bool ensureInstalled();
 void shutdown();
 

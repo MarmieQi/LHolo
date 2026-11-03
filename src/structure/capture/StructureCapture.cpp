@@ -11,6 +11,7 @@
 #include <mutex>
 #include <chrono>
 #include <exception>
+#include <thread>
 
 #include "ll/api/service/Bedrock.h"
 #include "mc/client/game/ClientInstance.h"
@@ -159,6 +160,13 @@ void exportStructure(Draft const& draft, std::filesystem::path const& output) {
     BlockPos const min{bounds.min.x, bounds.min.y, bounds.min.z};
     BlockPos const max{bounds.max.x, bounds.max.y, bounds.max.z};
     auto& region = context.player->getDimensionBlockSource();
+    // Even read-only block queries mutate BlockSource's last-chunk cache.
+    // Enforce its ownership before the first chunk query, including validation.
+    if (region.mOwnerThreadID.get() != std::this_thread::get_id()) {
+        LHolo::getInstance().getSelf().getLogger().error("[capture] world capture requires the BlockSource owner thread");
+        setStatus(i18n::Message{i18n::TextKey::CaptureStatusTemplateFailed});
+        return;
+    }
     auto const size = captureSize(bounds);
     if (!size) {
         setStatus(i18n::Message{i18n::TextKey::CaptureStatusSizeLimit});

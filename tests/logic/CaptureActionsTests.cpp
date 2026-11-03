@@ -4,6 +4,7 @@
 #include "nlohmann/json.hpp"
 #include <cstdio>
 #include <limits>
+#include <thread>
 
 // The action runner is tested against a fake world boundary. These tests do
 // not read game memory or claim to validate StructureTemplate capture itself.
@@ -12,6 +13,7 @@ namespace {
 Snapshot fake;
 int exports{};
 std::filesystem::path exportedPath;
+std::thread::id exportThread;
 }
 Snapshot getSnapshot() { return fake; }
 void updateDraft(Draft const& draft) { if (fake.draft != draft) { fake.draft = draft; ++fake.revision; } }
@@ -20,7 +22,9 @@ void setPointFromPlayer(PointSlot slot) {
     ++fake.revision;
 }
 void clear() { fake.draft = {}; ++fake.revision; }
-void exportStructure(Draft const&, std::filesystem::path const& output) { ++exports; exportedPath = output; }
+void exportStructure(Draft const&, std::filesystem::path const& output) {
+    ++exports; exportedPath = output; exportThread = std::this_thread::get_id();
+}
 }
 
 int runCaptureActionsTests() {
@@ -91,6 +95,16 @@ int runCaptureActionsTests() {
     request->action = Action::Export; request->revision = fake.revision; request->id = 7;
     submitAction(*request); resetActions(); processActions();
     check(exports == 1 && !actionPending(), "reset drops queued world action");
+    request->revision = fake.revision; request->id = 8;
+    bool submitted{};
+    std::thread producer([&] { submitted = submitAction(*request); });
+    producer.join();
+    check(submitted && actionPending() && exports == 1, "foreign-thread producer only queues export data");
+    auto const logicThread = std::this_thread::get_id();
+    processActions();
+    processActions();
+    check(exports == 2 && exportThread == logicThread && completedAction() == 8 && !actionPending(),
+          "queued export runs once on the consumer thread, never on the producer thread");
     std::printf("CaptureActionsTests: %d failures\n", failures);
     return failures;
 }

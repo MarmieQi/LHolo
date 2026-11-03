@@ -32,8 +32,26 @@
 #include "structure/write/command/CommandWorldWriter.h"
 
 #include "ll/api/mod/NativeMod.h"
+#include "ll/api/memory/Hook.h"
+
+#include <atomic>
 
 namespace lholo::app {
+namespace {
+std::atomic_bool controlFramesEnabled{};
+
+// World-facing actions belong to the client logic thread. Present may run
+// concurrently with this update and must never drain application queues.
+LL_TYPE_INSTANCE_HOOK(AppClientUpdate, ll::memory::HookPriority::Normal,
+    ClientInstance, &ClientInstance::$update, bool, bool isInitFinished) {
+    auto const result = origin(isInitFinished);
+    if (controlFramesEnabled.load(std::memory_order_acquire)) {
+        auto client = ll::service::getClientInstance();
+        if (client && &client.get() == this) AppKernel::getInstance().processControlFrame();
+    }
+    return result;
+}
+} // namespace
 
 AppKernel& AppKernel::getInstance() {
     static AppKernel instance;
@@ -79,12 +97,12 @@ bool AppKernel::enable() {
         return false;
     }
 
-    if (!oreui::installMenuBridge() || !oreui::installMenuScreen()) {
+    if (!oreui::installMenuBridge() || !oreui::installMenuScreen() || AppClientUpdate::hook() != 0) {
         oreui::uninstallMenuScreen();
         oreui::uninstallMenuBridge();
         projection::detail::projectionController().uninstallHooks();
         structure::detail::shutdownStructureFileLoader();
-        logger.error("Failed to install the LHolo OreUI menu");
+        logger.error("Failed to install the LHolo menu or client control update");
         return false;
     }
 
@@ -103,7 +121,7 @@ bool AppKernel::enable() {
         logger.warn("Failed to install projection mouse-wheel guard");
     }
 
-    overlay::setControlFrameCallback([] { AppKernel::getInstance().processControlFrame(); });
+    controlFramesEnabled.store(true, std::memory_order_release);
     if (!overlay::ensureInstalled()) {
         logger.warn("GUI overlay hotkey hooks are not ready; lholo will retry initialization");
     }
@@ -114,7 +132,7 @@ bool AppKernel::enable() {
 
 bool AppKernel::disable() {
     auto& logger = LHolo::getInstance().getSelf().getLogger();
-    overlay::setControlFrameCallback(nullptr);
+    if (controlFramesEnabled.exchange(false, std::memory_order_acq_rel)) AppClientUpdate::unhook();
     input::clearMenuOpenRequest();
 
     resetStructurePreviewActions();

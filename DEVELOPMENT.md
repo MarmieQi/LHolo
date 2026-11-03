@@ -371,7 +371,9 @@ LHolo/
 3. 安装投影滚轮保护：`MouseDevice::feed` 只在投影取得滚轮所有权时阻止原生热栏滚动；失败告警，不阻断菜单启用。
 4. 尝试安装 ImGui/DXGI Hook；图形环境尚未可用时允许后续 `Present` 重试。
 
-配置由 `LHolo::load()` 在 enable 之前从 `mods/LHolo/config/config.json` 读取。世界退出由 `LevelListener::onLevelDestruction()` 发布轻量信号；投影渲染入口和 Overlay Present 都能观察该信号，真正的结构、辅助放置、捕获和投影清理在引擎回调之外执行。投影渲染入口仍通过 `client/level/dimension` 身份变化检测世界/维度切换，并在上下文失效时清理投影。
+应用控制帧由 `app/AppKernel` 自有的 `ClientInstance::$update` Hook 在原版更新返回后驱动，只处理当前主客户端实例，标题界面和世界内均可执行。业务模块仍只提供独立动作队列；启用完成才开始消费，卸载先停用并移除该 Hook，再拆除业务模块。DXGI Present 只管理图形后端和绘制动作提示，不消费业务队列，业务执行不依赖 ImGui 或交换链初始化。
+
+配置由 `LHolo::load()` 在 enable 之前从 `mods/LHolo/config/config.json` 读取。世界退出由 `LevelListener::onLevelDestruction()` 发布轻量信号；投影渲染入口和客户端逻辑控制帧都能观察该信号，真正的结构、辅助放置、捕获和投影清理在销毁回调之外执行。投影渲染入口仍通过 `client/level/dimension` 身份变化检测世界/维度切换，并在上下文失效时清理投影。
 
 文件加载由 `structure/StructureFileLoader` 独立管理一个后台 future，普通加载、菜单恢复与恢复快捷键
 共用入口。请求在派发前捕获位置/维度或保存的恢复参数，成功/失败均校验 StructureSession 的请求
@@ -518,14 +520,14 @@ OreUI 创建页使用 application/useCapture → bridge → CaptureProtocol/Capt
 
 “创建结构”不经过 `LoadedStructure`，也不会自动载入投影。选区端点先按每轴最小值/最大值归一化，两个端点都包含在内；导出前由 `BlockSource::areChunksFullyLoaded(min, max)` 拒绝客户端尚未完整加载的范围。
 
-捕获只使用 LeviLamina 26.40.0 客户端头文件确认的原版接口：
+捕获只使用 LeviLamina 26.51.0 客户端头文件确认的原版接口，并在客户端逻辑更新线程同步执行：
 
 1. `ll::service::getClientInstance()` 和 `ClientInstance::getLocalPlayer()` 获取当前客户端玩家。
 2. `Actor::getDimensionBlockSource()` 取得当前维度的 `BlockSource`。
-3. `StructureTemplate::create(name, blockSource, BoundingBox{min, max}, false, !includeEntities)` 同步捕获。
+3. `BedrockStructureCapture` 构造使用该 Level 注册表的 `StructureTemplate`，完整初始化 `StructureSettings` 后调用 `fillFromWorld` 同步捕获；不使用只赋值四个字段的 SDK `create(region, bounds)` 便捷封装。
 4. `StructureManager::exportStructure(template, Core::Path)` 写出官方 `.mcstructure`。
 
-不得改用依赖服务端 `ll::service::getLevel()` 的 NBT 重载，不调用 `StructureBlockActor::_saveStructure()`，也不增加手工 palette、索引、实体 NBT 或备用序列化路径。捕获过程中不异步读取 `BlockSource`，不每帧扫描选区。
+`BlockSource` 的读取会更新其 last-chunk 弱引用与直接指针缓存，引用计数的原子操作并不允许两个线程同时改写同一缓存对象。捕获入口在区块完整性校验之前检查 `mOwnerThreadID`，错误线程直接报告捕获失败并记录日志。不得从 Present 或后台线程执行区块查询，也不得用仅保护 LHolo 的互斥锁替代引擎线程归属。不得改用依赖服务端 `ll::service::getLevel()` 的 NBT 重载，不调用 `StructureBlockActor::_saveStructure()`，也不增加手工 palette、索引、实体 NBT 或备用序列化路径。捕获不每帧扫描选区，超大选区的同步捕获和写文件仍可能阻塞客户端更新。
 
 ---
 
@@ -849,7 +851,7 @@ NBT 内容合并、本地化和背包读取仍在游戏 tick 线程执行，普�
 
 主菜单和 HUD 设置使用 OreUI，页面位于 frontend/，原生绑定集中在 src/oreui/。普通、材料和写入 HUD、布局编辑器及结构预览使用原生通路。不要把 JS 协议加入结构或投影内部模块。
 
-旧 C++ ImGui 菜单、同步文件选择、菜单可见/输入过渡状态及菜单缩放已删除。ImGui 仍承载动作提示，后端仍负责快捷键输入和 Present 控制帧；迁移这些活跃功能前保留后端和 FluentTheme。
+旧 C++ ImGui 菜单、同步文件选择、菜单可见/输入过渡状态及菜单缩放已删除。ImGui 仍承载动作提示，后端仍负责快捷键输入；应用控制帧由 AppKernel 的客户端逻辑更新 Hook 驱动。迁移动作提示和输入前保留后端和 FluentTheme。
 
 ### 9.2 输入所有权
 
@@ -912,7 +914,7 @@ input/ProjectionInputGuard 仅保留 MouseDevice::feed Hook：活动投影取得
 6. `ReleaseWrappedResources` 并 `Flush`。
 7. 释放该帧 wrapped resource 和 RTV。
 
-不跨帧持有 back buffer wrapper。动作提示不显示时跳过这条提交路径；输入和控制帧调度仍保留原后端生命周期。
+不跨帧持有 back buffer wrapper。动作提示不显示时跳过这条提交路径；输入仍保留原后端生命周期，业务队列不进入 Present。
 
 ### 10.3 历史崩溃根因
 

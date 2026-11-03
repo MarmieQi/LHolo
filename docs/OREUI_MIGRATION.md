@@ -49,7 +49,7 @@ Gameface 的普通 div 默认按纵向 flex 排列直接子节点。连续文案
 FilePicker 不依赖 Gameface、ImGui、结构会话、投影或模组日志。
 MenuBindings 将投影意图提交给 structure/ProjectionActions，不复制结构加载逻辑。
 ProjectionActions 在现有应用控制帧统一执行加载、关闭和恢复，读取玩家坐标并复用 StructureFileLoader / StructureSession；业务模块不依赖 OreUI 协议。快捷键也复用这一入口。
-应用控制帧在 ImGui 初始化之前处理请求，操作执行不依赖旧菜单成功初始化。
+应用控制帧由 AppKernel 的 `ClientInstance::$update` Hook 在客户端逻辑线程处理请求，只消费当前主客户端实例的队列。操作执行不依赖 ImGui 或交换链初始化，DXGI Present 不调用应用控制帧。
 不为首个功能预建通用服务框架；后续按选定业务扩展绑定。
 
 ## 任务文件与投影操作
@@ -76,7 +76,7 @@ ProjectionActions 在现有应用控制帧统一执行加载、关闭和恢复�
 - 每个请求携带选区 revision 和请求 id；捕获前再次校验世界及 revision。换世界/维度或旧菜单修改选区后，旧保存结果不能导出到新上下文。
 - 当前未加载区块拒绝捕获、实体完整性限制、导出错误沿用原有实现及文案。
 
-捕获适配集中在 `structure/capture/BedrockStructureCapture`：直接构造使用当前 BlockSource 所属 Level 注册表的原版模板，完整初始化 StructureSettings 后调用已声明的 `fillFromWorld`，不使用仅初始化四个字段的 SDK `create(region, bounds)` 便捷封装。进入原版前用 int64 计算选区边长，检查 format-1 NBT 的 int32 索引容量和当前维度高度，不以任意小体积阈值限制正常选区。`[capture]` 日志记录起点、尺寸、体积、实体选项，以及捕获完成/写文件完成的累计耗时；只在导出时输出，不逐帧扫描。C++ 异常转为对应阶段的现有错误提示，不吞掉堆损坏等 SEH。捕获和写文件目前仍同步执行在应用控制帧，超大选区的卡顿尚未消除；参数初始化修正是否消除既有堆损坏须用原复现选区实机验证，不以逻辑测试代替。
+捕获适配集中在 `structure/capture/BedrockStructureCapture`：直接构造使用当前 BlockSource 所属 Level 注册表的原版模板，完整初始化 StructureSettings 后调用已声明的 `fillFromWorld`，不使用仅初始化四个字段的 SDK `create(region, bounds)` 便捷封装。进入原版前用 int64 计算选区边长，检查 format-1 NBT 的 int32 索引容量和当前维度高度，不以任意小体积阈值限制正常选区。区块完整性查询与捕获均在客户端逻辑更新线程执行，并在首次区块查询前检查 BlockSource 的 mOwnerThreadID；不得从 DXGI Present 或保存对话框线程读取区块，因为原版读取会改写 last-chunk 缓存。`[capture]` 日志记录起点、尺寸、体积、实体选项，以及捕获完成/写文件完成的累计耗时；只在导出时输出，不逐帧扫描。C++ 异常转为对应阶段的现有错误提示，不吞掉堆损坏等 SEH。捕获和写文件仍同步执行，超大选区的卡顿尚未消除；须用原复现选区实机验证，不以逻辑测试代替。
 
 ## 结构变换接入
 
@@ -90,7 +90,7 @@ lholo.transform.intent 接收 {id, context, field, expected, value}；lholo:tran
 
 ## 渲染设置接入与架构检查
 
-依赖方向：RenderPage → useRenderSettings → platform/bridge → OreUiBridge → RenderSettingsBindings / RenderSettingsProtocol → app/RenderSettingsActions。应用层分别调用 projection 的公开参数接口和 StructureSession 的分层接口；structure/projection/settings 不依赖 app、OreUI 或页面协议。AppKernel::processControlFrame 是控制帧的编排入口；应用启用时向 Overlay 注册原子函数回调，Overlay 只执行回调、不 include AppKernel，关闭时清理回调。它仍在 ImGui 初始化之前执行，成功修改沿用 structure::saveSettings，不修改配置格式或渲染算法。
+依赖方向：RenderPage → useRenderSettings → platform/bridge → OreUiBridge → RenderSettingsBindings / RenderSettingsProtocol → app/RenderSettingsActions。应用层分别调用 projection 的公开参数接口和 StructureSession 的分层接口；structure/projection/settings 不依赖 app、OreUI 或页面协议。AppKernel::processControlFrame 是控制帧的编排入口，由应用自有的 ClientInstance::$update Hook 驱动，关闭时先停用并移除 Hook。Overlay 不持有应用回调，也不消费业务动作。成功修改沿用 structure::saveSettings，不修改配置格式或渲染算法。
 
 - 视觉参数仍在 projection；分层轴、范围、当前索引和 Y/X/材料最大索引由 StructureSession 拥有。LayerSettings 是无 UI/协议依赖的纯数据；会话锁内检查上下文和原分层元组后更新，换轴按真实范围钳制。
 - lholo.render.intent 接收 {id,context,axis,changes:[{field,expected,value}]}，lholo:render 下发 {values,maximum:[Y,X,材料],context,ack,accepted}。field 为 bounds/axis/mode/layer/fill/outline/correctionSeeThrough/missingSeeThrough；布尔和整数严格区分，百分比 0～100，轴 0～2、范围 0～3、层为非负 int32，id/context 为 JS 安全整数。拒绝重复字段、空批次、超范围、错误类型和超过 4096 字节的 payload。

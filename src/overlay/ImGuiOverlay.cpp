@@ -90,7 +90,6 @@ IDXGISwapChain*      gActiveSwapChain{};
 HWND    gWindow{};
 WNDPROC gOriginalWndProc{};
 std::atomic_bool gInstalled{false};
-std::atomic<ControlFrameCallback> gControlFrameCallback{};
 std::array<bool, 256> gCaptureKeyReleases{}; // WndProc thread only
 std::atomic_bool gShuttingDown{false};
 std::atomic_bool gRendering{false};
@@ -439,7 +438,6 @@ void render(IDXGISwapChain* swapChain) {
     // Present so hotkeys are available even when no action hint is visible.
     // D3D12 startup may not have exposed its command queue yet, so a failed
     // attempt is intentionally retried on the next Present.
-    if (auto callback = gControlFrameCallback.load(std::memory_order_acquire)) callback();
     if (!initializeImGui(swapChain)) return;
     // Only explicitly opted-in transient hints can appear above the menu.
     if (ui::hud::hudLayoutEditorActive() || ui::preview::structurePreviewActive()) return;
@@ -760,14 +758,9 @@ void shutdownLocked() {
 
 } // namespace
 
-void setControlFrameCallback(ControlFrameCallback callback) {
-    gControlFrameCallback.store(callback, std::memory_order_release);
-}
-
 void shutdown() {
     std::lock_guard installLock(gInstallMutex);
     shutdownLocked();
-    setControlFrameCallback(nullptr);
 }
 
 } // namespace lholo::overlay
