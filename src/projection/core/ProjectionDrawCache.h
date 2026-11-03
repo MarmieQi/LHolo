@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -205,6 +206,19 @@ class ProjectionDrawCache {
 };
 
 struct ProjectionDrawTimings {
+    struct TransparencySample {
+        enum Stage : std::size_t { Collect, View, Sort, Setup, Vertices, Finalize, Draw, Total, StageCount };
+        std::array<std::uint64_t, StageCount> cpuMicros{};
+        std::size_t faces{}, sections{}, vertices{};
+        bool called{}, collected{}, sorted{}, rebuilt{}, reused{};
+    };
+    struct TransparencyWindow {
+        std::array<std::uint64_t, TransparencySample::StageCount> sum{}, peak{};
+        std::chrono::steady_clock::time_point started{};
+        std::uint64_t calls{}, collected{}, sorted{}, rebuilt{}, reused{}, vertices{};
+        std::uint64_t meshPass{}, meshPassPeak{}, visibility{}, visibilityPeak{}, draws{}, drawsPeak{};
+        std::size_t faces{}, facesPeak{}, sections{}, sectionsPeak{};
+    };
     struct Sample {
         std::uint64_t prepare{}, submit{};
         std::size_t draws{};
@@ -214,6 +228,8 @@ struct ProjectionDrawTimings {
     Sample opaque;
     std::uint64_t frames{}, lastOrderBuilds{};
     std::uint64_t lastVisibilityMicros{};
+    TransparencySample transparency;
+    TransparencyWindow transparencyWindow;
 };
 
 } // namespace lholo::projection::detail

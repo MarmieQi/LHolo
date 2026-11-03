@@ -5,8 +5,61 @@
 
 #include <algorithm>
 #include <chrono>
+#include <utility>
 
 namespace lholo::projection::detail {
+namespace {
+void recordTransparencyWindow(ProjectionState& state, ProjectionDrawTimings::Sample const& draw) {
+    using Timing = ProjectionDrawTimings::TransparencySample;
+    auto const sample = std::exchange(state.drawTimings.transparency, {});
+    if (!sample.called) return;
+    auto& window = state.drawTimings.transparencyWindow;
+    auto const now = std::chrono::steady_clock::now();
+    if (!window.calls) window.started = now;
+    ++window.calls;
+    window.collected += sample.collected;
+    window.sorted += sample.sorted;
+    window.rebuilt += sample.rebuilt;
+    window.reused += sample.reused;
+    window.vertices += sample.vertices;
+    window.faces = sample.faces;
+    window.facesPeak = std::max(window.facesPeak, sample.faces);
+    window.sections = sample.sections;
+    window.sectionsPeak = std::max(window.sectionsPeak, sample.sections);
+    auto const meshPass = draw.prepare + draw.submit;
+    window.meshPass += meshPass;
+    window.meshPassPeak = std::max(window.meshPassPeak, meshPass);
+    window.visibility += draw.visibility;
+    window.visibilityPeak = std::max(window.visibilityPeak, draw.visibility);
+    window.draws += draw.draws;
+    window.drawsPeak = std::max(window.drawsPeak, static_cast<std::uint64_t>(draw.draws));
+    for (std::size_t phase = 0; phase < sample.cpuMicros.size(); ++phase) {
+        window.sum[phase] += sample.cpuMicros[phase];
+        window.peak[phase] = std::max(window.peak[phase], sample.cpuMicros[phase]);
+    }
+    // Wall time, rather than frame count, also reports promptly at very low FPS.
+    if (now - window.started < std::chrono::seconds{2}) return;
+    if (window.facesPeak) {
+        auto const milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(now - window.started).count();
+        auto& logger = LHolo::getInstance().getSelf().getLogger();
+        logger.info("[projection-transparency] activation={} file={} window={}ms calls={} sections(last/peak)={}/{} "
+                    "faces(last/peak)={}/{} collect/sort/rebuild/reuse={}/{}/{}/{} vertices-written={}",
+            state.activationGeneration, state.fileId, milliseconds, window.calls, window.sections, window.sectionsPeak,
+            window.faces, window.facesPeak, window.collected, window.sorted, window.rebuilt, window.reused, window.vertices);
+        auto average = [&](Timing::Stage stage) { return window.sum[stage] / window.calls; };
+        logger.info("[projection-transparency] activation={} CPU-us(avg/max) collect={}/{} view={}/{} sort={}/{} "
+                    "setup={}/{} vertices={}/{} finalize={}/{} draw={}/{} prepare-total={}/{} mesh-pass={}/{} visibility={}/{} draws={}/{}",
+            state.activationGeneration,
+            average(Timing::Collect), window.peak[Timing::Collect], average(Timing::View), window.peak[Timing::View],
+            average(Timing::Sort), window.peak[Timing::Sort], average(Timing::Setup), window.peak[Timing::Setup],
+            average(Timing::Vertices), window.peak[Timing::Vertices],
+            average(Timing::Finalize), window.peak[Timing::Finalize], average(Timing::Draw), window.peak[Timing::Draw],
+            average(Timing::Total), window.peak[Timing::Total], window.meshPass / window.calls, window.meshPassPeak,
+            window.visibility / window.calls, window.visibilityPeak, window.draws / window.calls, window.drawsPeak);
+    }
+    window = {};
+}
+} // namespace
 
 std::uint64_t prepareProjectionDrawLists(ProjectionState& state, Vec3 const& camera, BlockPos const& origin) {
     auto const started = std::chrono::steady_clock::now();
@@ -69,6 +122,7 @@ void recordProjectionDrawPass(ProjectionState& state, bool alpha, std::uint64_t 
     sample.draws += timings.opaque.draws;
     sample.visibility = timings.opaque.visibility;
     timings.opaque = {};
+    recordTransparencyWindow(state, sample);
     timings.samples[timings.frames++ % timings.samples.size()] = sample;
     if (timings.frames % timings.samples.size())
         return;

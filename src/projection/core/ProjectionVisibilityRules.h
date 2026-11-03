@@ -15,16 +15,23 @@ struct LoadedStructure;
 
 namespace lholo::projection::detail {
 
-// Exact cache key: turning, moving, projection changes and resource publication
+// Exact cache key: turning, moving, view distance, projection changes and resource publication
 // all invalidate classification. No camera/world object is retained.
 struct ProjectionViewKey {
     std::array<float, 16> matrix{};
     float originX{}, originY{}, originZ{};
+    float renderDistance{};
     std::uint64_t activation{}, meshRevision{};
     std::size_t sections{};
     bool hasMatrix{};
     bool operator==(ProjectionViewKey const&) const = default;
 };
+
+inline bool projectionResidencyViewChanged(ProjectionViewKey const& before, ProjectionViewKey const& after) {
+    return before.originX != after.originX || before.originZ != after.originZ
+        || before.renderDistance != after.renderDistance || before.activation != after.activation
+        || before.meshRevision != after.meshRevision || before.sections != after.sections;
+}
 
 struct ProjectionBounds {
     Vec3 minimum{};
@@ -63,6 +70,40 @@ inline bool projectionBoundsVisible(ProjectionFrustum const &frustum, Projection
                                  bounds.minimum.z + origin.z - padding},
                                 {bounds.maximum.x + origin.x + padding, bounds.maximum.y + origin.y + padding,
                                  bounds.maximum.z + origin.z + padding});
+}
+
+// Horizontal distance to the nearest point of an AABB, not its center. Tall
+// structures and sections intersecting the radius must remain visible.
+inline bool projectionBoundsWithinDistance(ProjectionBounds const& bounds, Vec3 const& origin, float distance) {
+    if (!bounds.valid) return true;
+    float const dx = std::max({0.0f, bounds.minimum.x + origin.x, -bounds.maximum.x - origin.x});
+    float const dz = std::max({0.0f, bounds.minimum.z + origin.z, -bounds.maximum.z - origin.z});
+    return dx * dx + dz * dz <= distance * distance;
+}
+
+struct ProjectionSectionVisibility {
+    bool renderVisible{};
+    bool buildVisible{};
+    bool prefetchVisible{};
+    bool withinBuildDistance{};
+    bool withinRetentionDistance{};
+};
+
+inline ProjectionSectionVisibility classifyProjectionSection(
+    ProjectionFrustum const& frustum, ProjectionBounds const& buildBounds, ProjectionBounds const& meshBounds,
+    Vec3 const& origin, float renderDistance) {
+    ProjectionSectionVisibility result;
+    result.withinBuildDistance = projectionBoundsWithinDistance(buildBounds, origin, renderDistance + 16.0f);
+    result.withinRetentionDistance = result.withinBuildDistance
+        || projectionBoundsWithinDistance(buildBounds, origin, renderDistance + 32.0f)
+        || (meshBounds.valid && projectionBoundsWithinDistance(meshBounds, origin, renderDistance + 32.0f));
+    result.renderVisible = projectionBoundsWithinDistance(meshBounds.valid ? meshBounds : buildBounds, origin, renderDistance)
+        && projectionBoundsVisible(frustum, meshBounds, origin);
+    result.buildVisible = projectionBoundsWithinDistance(buildBounds, origin, renderDistance)
+        && projectionBoundsVisible(frustum, buildBounds, origin);
+    result.prefetchVisible = result.withinBuildDistance
+        && (result.buildVisible || projectionBoundsVisible(frustum, buildBounds, origin, 16.0f));
+    return result;
 }
 
 // Hidden edits must not starve initial geometry currently in view.

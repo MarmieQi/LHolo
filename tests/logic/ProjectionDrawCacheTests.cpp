@@ -240,6 +240,9 @@ void testBadDistancesAndViewKeys() {
     changed.originX = 1;
     DRAW_CHECK(changed != key);
     changed = key;
+    changed.renderDistance = 128;
+    DRAW_CHECK(changed != key);
+    changed = key;
     changed.matrix[5] = 1;
     DRAW_CHECK(changed != key);
     changed = key;

@@ -20,6 +20,7 @@
 #include "mc/client/renderer/BaseActorRenderContext.h"
 #include "mc/client/gui/screens/ScreenContext.h"
 #include "mc/client/game/IClientInstance.h"
+#include "mc/client/options/IOptionRegistry.h"
 #include "mc/client/player/LocalPlayer.h"
 #include <chrono>
 #include <limits>
@@ -74,10 +75,13 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
         return;
     auto& region = player->getDimensionBlockSource();
     auto& tessellator = renderContext.mScreenContext.tessellator;
+    // Read the native setting once for all independent files and both
+    // visibility passes. The option is in chunks; geometry is in blocks.
+    float const renderDistance = static_cast<float>(renderContext.mClientInstance.getOptions().getViewDistanceChunks()) * 16.0f;
     // Placement/visibility are prepared for every file before spending the
     // shared correction budget. Budget exhaustion never skips their drawing.
     for (auto const& target : targets)
-        updateProjectionVisibility(*target.state, renderContext, cameraPosition);
+        updateProjectionVisibility(*target.state, renderContext, cameraPosition, renderDistance);
 
     CorrectionFrameBudget budget;
     auto started = CorrectionFrameBudget::Clock::now();
@@ -233,7 +237,7 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
     }
 
     uploadCompletedProjectionMeshes(root, tessellator);
-    trimProjectionMeshResidency(root, cameraPosition);
+    trimProjectionMeshResidency(root);
     // Maintain biome/bounds state for every file, then dispatch at most one
     // build globally (also when the worker has fallen back to synchronous).
     for (auto const& target : targets) {
@@ -275,7 +279,7 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
             auto const& target = targets[file];
             for (std::size_t index = 0; index < target.state->sections.size(); ++index) {
                 auto const& section = target.state->sections[index];
-                if (!section.dirty || section.buildInFlight || !canBuildResidentSection(*target.state,index,cameraPosition))
+                if (!section.dirty || section.buildInFlight || !section.withinBuildDistance)
                     continue;
                 if (projectionSectionHasPendingCorrection(*target.state, index, target.build))
                     continue;
@@ -299,14 +303,13 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
             scheduleProjectionMeshBuild(state, tessellator, region, cameraPosition, target.build);
             buildNextProjectionSectionSynchronously(state, tessellator, *state.blockTessellator, region, cameraPosition,
                                                     target.build);
-            if (!state.asyncMeshBuildingEnabled) trimProjectionMeshResidency(root,cameraPosition);
             if (&state != &root && state.meshBuildSelections != selectionsBefore)
                 ++root.meshBuildSelections;
         }
     }
     for (auto const& target : targets)
         if (!target.state->asyncMeshBuildingEnabled)
-            updateProjectionVisibility(*target.state, renderContext, cameraPosition);
+            updateProjectionVisibility(*target.state, renderContext, cameraPosition, renderDistance);
 }
 
 } // namespace lholo::projection::detail

@@ -6,7 +6,7 @@
 #include <chrono>
 
 namespace lholo::projection::detail {
-void updateProjectionVisibility(ProjectionState& state, BaseActorRenderContext& context, Vec3 const& camera) {
+void updateProjectionVisibility(ProjectionState& state, BaseActorRenderContext& context, Vec3 const& camera, float renderDistance) {
     struct MeasureVisibility {
         std::uint64_t& output;
         std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
@@ -34,11 +34,14 @@ void updateProjectionVisibility(ProjectionState& state, BaseActorRenderContext& 
     key.originX = origin.x;
     key.originY = origin.y;
     key.originZ = origin.z;
+    key.renderDistance = renderDistance;
     key.activation = state.activationGeneration;
     key.meshRevision = state.drawMeshRevision;
     key.sections = state.sections.size();
     if (state.visibilityKey && *state.visibilityKey == key)
         return;
+    if (!state.visibilityKey || projectionResidencyViewChanged(*state.visibilityKey, key))
+        state.residencyScan.request(state.sections.size());
     state.visibilityKey = key;
     auto const frustum =
         key.hasMatrix ? ProjectionFrustum::fromViewProjection(viewProjection) : ProjectionFrustum{};
@@ -47,10 +50,12 @@ void updateProjectionVisibility(ProjectionState& state, BaseActorRenderContext& 
     for (auto& section : state.sections) {
         // Actual vertex bounds include liquid and correction geometry. Before
         // geometry exists, build priority uses transformed source-cell bounds.
-        section.renderVisible = projectionBoundsVisible(frustum, section.meshBounds, origin);
-        section.buildVisible = projectionBoundsVisible(frustum, section.buildBounds, origin);
-        section.prefetchVisible =
-            section.buildVisible || projectionBoundsVisible(frustum, section.buildBounds, origin, 16.0f);
+        auto const visibility = classifyProjectionSection(frustum, section.buildBounds, section.meshBounds, origin, renderDistance);
+        section.renderVisible = visibility.renderVisible;
+        section.buildVisible = visibility.buildVisible;
+        section.prefetchVisible = visibility.prefetchVisible;
+        section.withinBuildDistance = visibility.withinBuildDistance;
+        section.withinRetentionDistance = visibility.withinRetentionDistance;
         if (section.renderVisible)
             ++state.visibleSectionCount;
     }

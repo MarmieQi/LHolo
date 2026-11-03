@@ -118,7 +118,10 @@ void submitProjectedBlockActorPass(
     Vec3 const&             camera,
     bool                    renderAlphaLayer
 ) {
-    if (state.projectedBlockActors.empty()) return;
+    // Share the classified view with section meshes, including native block
+    // entities whose own distance check can have a different cutoff.
+    if (state.projectedBlockActors.empty() || !state.visibilityKey) return;
+    ProjectionBounds const blockBounds{{0, 0, 0}, {1, 1, 1}, true};
 
     alignas(mce::MaterialPtr) static const std::byte sNoForcedMaterialStorage[sizeof(mce::MaterialPtr)]{};
     auto const& noForcedMaterial = *reinterpret_cast<mce::MaterialPtr const*>(sNoForcedMaterialStorage);
@@ -128,6 +131,9 @@ void submitProjectedBlockActorPass(
         *state.expectedWorldBlockActors
     );
     for (auto const& projected : state.projectedBlockActors) {
+        Vec3 const relative{static_cast<float>(projected.position.x) - camera.x, 0,
+                            static_cast<float>(projected.position.z) - camera.z};
+        if (!projectionBoundsWithinDistance(blockBounds, relative, state.visibilityKey->renderDistance)) continue;
         auto const correctionState = state.renderCorrectionState(projected.structureIndex);
         auto* renderComponent = projected.actor->_getRenderComponent();
         if (correctionState == CorrectionState::Correct
@@ -224,8 +230,12 @@ void submitProjectionMeshPass(
             if (mesh->isValid()) {
                 ++drawTimer.draws;
                 auto const count = static_cast<unsigned>(state.transparentCache.order.size() * 4);
+                auto const started = std::chrono::steady_clock::now();
                 mesh->renderMesh(renderContext.mScreenContext, *transparentMaterial, *state.terrainTextureVariant,
                     0, count, emptyOffscreenCaptureDescription(), nullptr);
+                state.drawTimings.transparency.cpuMicros[ProjectionDrawTimings::TransparencySample::Draw]
+                    = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - started).count());
             }
         }
         // Unindexed quad lists use the unified pass above. Keep unsupported

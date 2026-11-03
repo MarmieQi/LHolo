@@ -89,7 +89,6 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
                 if (result.geometryTransformChanged) {
                     for (auto &mesh : state.sections[i].meshes)
                         mesh.reset();
-                    state.sections[i].residentBytes = 0;
                     state.blockEntityPlaceholderSectionMeshes[i].reset();
                 }
             }
@@ -112,7 +111,6 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
             ++state.drawMeshRevision;
         }
         if (result.placementViewChanged()) {
-            state.hasResidencyCamera = false;
             ++state.progressRevision;
         }
         cacheSettings(state, settings);
@@ -182,9 +180,6 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         }
     }
 
-    if (result.placementViewChanged()) {
-        state.hasResidencyCamera = false;
-    }
     cacheSettings(state, settings);
 
     if (result.placementViewChanged()) {
@@ -210,7 +205,6 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         state.transparentCache = {};
         state.correctionStates.fill(CorrectionState::Missing);
         for (auto& sectionState : state.sections) {
-            sectionState.residentBytes = 0;
             for (auto& mesh : sectionState.meshes) mesh.reset();
         }
         for (auto& mesh : state.warningFillSectionMeshes) mesh.reset();

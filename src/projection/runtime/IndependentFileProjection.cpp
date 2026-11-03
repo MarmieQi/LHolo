@@ -95,7 +95,6 @@ void publishIndependentFileViews(ProjectionState &root, BaseActorRenderContext &
         if (changed.empty())
             continue;
         ++file->progressRevision;
-        file->hasResidencyCamera = false;
         auto previous = root.taskWorld ? root.taskWorld->placements->fileIndex(file->fileId) : std::nullopt;
         bool ownWorldChanged = !previous;
         if (previous) {

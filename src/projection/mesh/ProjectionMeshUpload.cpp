@@ -7,7 +7,6 @@
 // (at your option) any later version.
 
 #include "projection/mesh/ProjectionMeshUpload.h"
-#include "projection/mesh/ProjectionMeshResidency.h"
 
 #include "plugin/LHolo.h"
 #include "projection/core/ProjectionInternalTypes.h"
@@ -75,9 +74,10 @@ void uploadCompletedProjectionMeshes(ProjectionState& root, Tessellator& tessell
     
             auto const section = result.section;
             state.sections[section].buildInFlight = false;
-            // Obsolete work cannot report a failure for the current placement
-            // or contribute to disabling its asynchronous worker.
-            if (result.revision != state.sections[section].requestedRevision) {
+            // Obsolete or now-distant work must not allocate GPU resources,
+            // report a current failure or disable the asynchronous worker.
+            if (result.revision != state.sections[section].requestedRevision
+                || !state.sections[section].withinRetentionDistance) {
                 ++state.meshWorkerDiscardedBuilds;
                 state.sections[section].dirty = true;
                 continue;
@@ -157,7 +157,6 @@ void uploadCompletedProjectionMeshes(ProjectionState& root, Tessellator& tessell
                         }
                     }
                 }
-                recordProjectionResidentBytes(state, section);
                 ++state.drawMeshRevision;
                 state.sections[section].incrementalDirty = false;
                 state.sections[section].interactiveDirty = false;

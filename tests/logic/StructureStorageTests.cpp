@@ -1,5 +1,4 @@
 #include "TaskComposerOracle.h"
-#include "projection/core/ProjectionResidencyBudget.h"
 #include "projection/core/ProjectionRules.h"
 #include "projection/world/ProjectionWorldLookup.h"
 #include "structure/MaterialCounts.h"
@@ -188,10 +187,6 @@ int runStructureStorageTests() {
         std::get<JavaNbtTag::Compound>(tree.at("Regions").value).at("r").value);
     check(!region.contains("Entities") && std::get<JavaNbtTag::List>(region.at("TileEntities").value).size() == 1,
         "unused ordinary entities are skipped while block entities are preserved");
-    std::vector<ProjectionResident> resident{{0,200,100},{1,300,400},{2,100,25}};
-    check(selectProjectionEvictions(resident,600).empty(), "small structures keep all meshes");
-    check(selectProjectionEvictions(resident,350) == std::vector<std::size_t>{1}, "geometry budget evicts farthest first");
-    check(selectProjectionEvictions(resident,0) == std::vector<std::size_t>({1,0,2}), "zero budget releases all resources");
     std::printf("StructureStorageTests: %d checks, %d failures\n",checks,failures);
     return failures;
 }

@@ -1,4 +1,5 @@
 #include "projection/mesh/ProjectionTransparency.h"
+#include "projection/mesh/ProjectionTransparentMeshData.h"
 #include "projection/core/ProjectionState.h"
 
 #include "mc/client/gui/screens/ScreenContext.h"
@@ -8,9 +9,11 @@
 #include "mc/deps/renderer/Camera.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <gsl/util>
 
 namespace lholo::projection::detail {
 
@@ -47,6 +50,16 @@ bool captureProjectionTransparency(ProjectionTransparentGeometry& output, mce::M
 }
 
 mce::Mesh* prepareProjectionTransparency(ProjectionState& state, BaseActorRenderContext& context) {
+    using Clock = std::chrono::steady_clock;
+    using Timing = ProjectionDrawTimings::TransparencySample;
+    auto elapsed = [](Clock::time_point start) {
+        return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start).count());
+    };
+    auto& timing = state.drawTimings.transparency;
+    timing = {};
+    timing.called = true;
+    auto const started = Clock::now();
+    auto finish = gsl::finally([&] { timing.cpuMicros[Timing::Total] = elapsed(started); });
     auto& cache = state.transparentCache;
     auto& candidates = cache.candidateSections;
     candidates.clear();
@@ -88,12 +101,17 @@ mce::Mesh* prepareProjectionTransparency(ProjectionState& state, BaseActorRender
             cache.sources.push_back(std::move(source));
         }
     }
+    timing.cpuMicros[Timing::Collect] = elapsed(started);
+    timing.collected = changed;
+    timing.sections = candidates.size();
+    timing.faces = cache.faces.size();
     if (cache.faces.empty()) {
         cache.mesh.reset();
         cache.order.clear();
         cache.hasAxis = false;
         return nullptr;
     }
+    auto phaseStarted = Clock::now();
     auto const& camera = context.mScreenContext.camera;
     auto const clip = camera.getProjectionMatrix() * *camera.viewMatrixStack->top()._m
         * *camera.worldMatrixStack->top()._m;
@@ -113,16 +131,25 @@ mce::Mesh* prepareProjectionTransparency(ProjectionState& state, BaseActorRender
             });
         if (sameVisibility) {
             cache.eye = eye;
+            timing.cpuMicros[Timing::View] = elapsed(phaseStarted);
+            timing.reused = true;
             return cache.mesh.get();
         }
     }
     if (cache.faces.size() > static_cast<std::size_t>(std::numeric_limits<int>::max() / 4))
         throw std::length_error("Projection transparent vertex count exceeds the engine limit");
+    timing.cpuMicros[Timing::View] = elapsed(phaseStarted);
+    phaseStarted = Clock::now();
     auto order = projectionTransparentOrder(cache.keys, axis, eye);
+    timing.cpuMicros[Timing::Sort] = elapsed(phaseStarted);
+    timing.sorted = true;
     cache.axis = axis;
     cache.eye = eye;
     cache.hasAxis = true;
-    if (!changed && cache.mesh && order == cache.order) return cache.mesh.get();
+    if (!changed && cache.mesh && order == cache.order) {
+        timing.reused = true;
+        return cache.mesh.get();
+    }
     if (order.empty()) {
         cache.mesh.reset();
         cache.order.clear();
@@ -132,22 +159,36 @@ mce::Mesh* prepareProjectionTransparency(ProjectionState& state, BaseActorRender
     // The SDK does not export an index-only update API. Rebuild only this
     // visible transparent submission when its actual order/geometry changes;
     // never re-tessellate blocks or rebuild opaque meshes for camera movement.
+    phaseStarted = Clock::now();
     Tessellator builder{context.mScreenContext.tessellator.mBufferResourceService};
     builder.begin(Tessellator::DebugContextCallback{}, mce::PrimitiveMode::QuadList,
         static_cast<int>(order.size() * 4), false);
     builder.mHasNormals = true;
-    for (auto index : order) {
-        for (auto const& vertex : cache.faces[index]->vertices) {
-            builder.mNextColor.get() = vertex.color;
-            builder.mNextNormal.get() = glm::vec4{vertex.normal[0], vertex.normal[1], vertex.normal[2], 0.0f};
-            builder.mNextUV[0].get() = glm::vec2{vertex.uv[0], vertex.uv[1]};
-            builder.vertex(vertex.position[0], vertex.position[1], vertex.position[2]);
-        }
-    }
+    // Establish the native format once. With buildFaceData=false, vertex()
+    // otherwise only appends streams, updates count/bounds and performs native
+    // per-call bookkeeping; the remaining stream can be filled in one batch.
+    auto const& first = cache.faces[order.front()]->vertices.front();
+    builder.mNextColor.get() = first.color;
+    builder.mNextNormal.get() = glm::vec4{first.normal[0], first.normal[1], first.normal[2], 0.0f};
+    builder.mNextUV[0].get() = glm::vec2{first.uv[0], first.uv[1]};
+    builder.vertex(first.position[0], first.position[1], first.position[2]);
+    timing.cpuMicros[Timing::Setup] = elapsed(phaseStarted);
+    phaseStarted = Clock::now();
+    auto& data = builder.mMeshData.get();
+    auto const bounds = fillProjectionTransparentVertices(cache.faces, order,
+        data.mPositions.get(), data.mNormals.get(), data.mColors.get(), data.mTextureUVs[0].get());
+    data.mAABB = bounds.positions;
+    data.mUVAABB = bounds.uv;
+    builder.mCount = static_cast<unsigned int>(data.mPositions.get().size());
+    timing.cpuMicros[Timing::Vertices] = elapsed(phaseStarted);
+    timing.vertices = order.size() * 4;
+    phaseStarted = Clock::now();
     auto mesh = std::make_unique<mce::Mesh>(builder.end(Tessellator::UploadMode::Buffered,
         "LHoloSortedTransparent", SupplementaryFieldAutoGenerationMode{0}));
     cache.mesh = std::move(mesh);
     cache.order = std::move(order);
+    timing.cpuMicros[Timing::Finalize] = elapsed(phaseStarted);
+    timing.rebuilt = true;
     return cache.mesh.get();
 }
 

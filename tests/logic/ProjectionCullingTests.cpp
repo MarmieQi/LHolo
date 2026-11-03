@@ -2,6 +2,7 @@
 #include "projection/core/ProjectionRules.h"
 #include "projection/core/ProjectionShellRules.h"
 #include "projection/core/ProjectionVisibilityRules.h"
+#include "projection/core/ProjectionResidencyScan.h"
 
 #include <bit>
 #include <cstdio>
@@ -99,6 +100,98 @@ void testTransformedBounds() {
     CULL_CHECK(projectionBuildRank(true, true, true) < projectionBuildRank(true, true, false));
 }
 
+void testRenderDistance() {
+    ProjectionBounds const section{{0, -1000, 0}, {16, 1000, 16}, true};
+    CULL_CHECK(projectionBoundsWithinDistance(section, {128, 0, 0}, 128));
+    CULL_CHECK(!projectionBoundsWithinDistance(section, {128.25f, 0, 0}, 128));
+    CULL_CHECK(projectionBoundsWithinDistance(section, {-144, 9000, 0}, 128));
+    CULL_CHECK(!projectionBoundsWithinDistance(section, {-144.25f, 0, 0}, 128));
+    CULL_CHECK(!projectionBoundsWithinDistance(section, {100, 0, 100}, 128));
+    CULL_CHECK(projectionBoundsWithinDistance(section, {90, 10000, 90}, 128));
+    CULL_CHECK(projectionBoundsWithinDistance(section, {-8, 0, -8}, 0));
+
+    // Compare against a separate closest-point oracle across negative origins,
+    // diagonal boundaries, altitude changes and several native view distances.
+    for (int chunks : {2, 4, 8, 16, 32})
+        for (int x = -10; x <= 10; ++x)
+            for (int z = -10; z <= 10; ++z) {
+                Vec3 const origin{x * 15.75f, x * 100.0f, z * 15.75f};
+                double const closestX = std::clamp(-static_cast<double>(origin.x), 0.0, 16.0);
+                double const closestZ = std::clamp(-static_cast<double>(origin.z), 0.0, 16.0);
+                double const dx = closestX + origin.x;
+                double const dz = closestZ + origin.z;
+                float const radius = chunks * 16.0f;
+                CULL_CHECK(projectionBoundsWithinDistance(section, origin, radius)
+                    == (dx * dx + dz * dz <= static_cast<double>(radius) * radius));
+            }
+
+    ProjectionFrustum const noFrustum;
+    auto near = classifyProjectionSection(noFrustum, section, section, {128, 0, 0}, 128);
+    CULL_CHECK(near.renderVisible && near.buildVisible && near.prefetchVisible && near.withinBuildDistance);
+    auto edge = classifyProjectionSection(noFrustum, section, section, {140, 0, 0}, 128);
+    CULL_CHECK(!edge.renderVisible && !edge.buildVisible && edge.prefetchVisible && edge.withinBuildDistance);
+    auto far = classifyProjectionSection(noFrustum, section, section, {145, 0, 0}, 128);
+    CULL_CHECK(!far.renderVisible && !far.buildVisible && !far.prefetchVisible && !far.withinBuildDistance);
+    CULL_CHECK(far.withinRetentionDistance); // Keep cached geometry in the outer buffer ring.
+    CULL_CHECK(classifyProjectionSection(noFrustum, section, section, {160, 0, 0}, 128).withinRetentionDistance);
+    CULL_CHECK(!classifyProjectionSection(noFrustum, section, section, {160.25f, 0, 0}, 128).withinRetentionDistance);
+    CULL_CHECK(classifyProjectionSection(noFrustum, section, section, {-176, 9000, 0}, 128).withinRetentionDistance);
+    CULL_CHECK(!classifyProjectionSection(noFrustum, section, section, {-176.25f, 0, 0}, 128).withinRetentionDistance);
+    auto expanded = classifyProjectionSection(noFrustum, section, section, {145, 0, 0}, 256);
+    CULL_CHECK(expanded.renderVisible && expanded.buildVisible && expanded.withinBuildDistance);
+    auto unknownMesh = classifyProjectionSection(noFrustum, section, {}, {145, 0, 0}, 128);
+    CULL_CHECK(!unknownMesh.renderVisible && !unknownMesh.withinBuildDistance);
+    ProjectionBounds const overhang{{-4, 0, 0}, {16, 1, 16}, true};
+    auto extendedMesh = classifyProjectionSection(noFrustum, section, overhang, {130, 0, 0}, 128);
+    CULL_CHECK(extendedMesh.renderVisible && !extendedMesh.buildVisible);
+    CULL_CHECK(classifyProjectionSection(noFrustum, section, overhang, {163, 0, 0}, 128).withinRetentionDistance);
+    auto hidden = classifyProjectionSection(ProjectionFrustum::fromViewProjection(glm::mat4{1}), section, section,
+                                             {32, 0, 0}, 128);
+    CULL_CHECK(!hidden.renderVisible && !hidden.buildVisible && hidden.withinBuildDistance);
+    CULL_CHECK(hidden.withinRetentionDistance); // Turning away does not evict geometry.
+}
+
+void testResidencyScan() {
+    ProjectionViewKey before;
+    before.renderDistance = 128;
+    auto after = before;
+    after.matrix[0] = 2;
+    after.originY = 20;
+    CULL_CHECK(!projectionResidencyViewChanged(before, after));
+    after.originX = 1;
+    CULL_CHECK(projectionResidencyViewChanged(before, after));
+    after = before; after.renderDistance = 64;
+    CULL_CHECK(projectionResidencyViewChanged(before, after));
+    after = before; ++after.meshRevision;
+    CULL_CHECK(projectionResidencyViewChanged(before, after));
+    after = before; ++after.sections;
+    CULL_CHECK(projectionResidencyViewChanged(before, after));
+
+    ProjectionResidencyScan scan;
+    CULL_CHECK(!scan.pending());
+    scan.request(5);
+    CULL_CHECK(scan.next() == 0 && scan.next() == 1);
+    scan.request(5);
+    for (auto expected : {2u, 3u, 4u, 0u, 1u}) CULL_CHECK(scan.next() == expected);
+    CULL_CHECK(!scan.pending());
+    scan.request(1);
+    CULL_CHECK(scan.next() == 0 && !scan.pending());
+    scan.request(0);
+    CULL_CHECK(!scan.pending());
+
+    // Renewing a large scan every frame must still visit every section.
+    constexpr std::size_t count = 1025;
+    std::array<bool, count> visited{};
+    for (std::size_t frame = 0; frame < 9; ++frame) {
+        scan.request(count);
+        for (std::size_t work = 0; work < ProjectionResidencyProbesPerFrame; ++work) visited[scan.next()] = true;
+    }
+    CULL_CHECK(std::all_of(visited.begin(), visited.end(), [](bool v) { return v; }));
+    std::size_t drained{};
+    while (scan.pending()) { scan.next(); ++drained; }
+    CULL_CHECK(drained == count - ProjectionResidencyProbesPerFrame);
+}
+
 void testBuildSelection() {
     std::array<ProjectionBuildCandidate, 4> candidates{{{true, false, false, false, true, 1},
                                                         {true, false, true, true, false, 100},
@@ -186,6 +279,8 @@ void testShell() {
 int runProjectionCullingTests() {
     testFrustum();
     testTransformedBounds();
+    testRenderDistance();
+    testResidencyScan();
     testBuildSelection();
     testShell();
     std::printf("ProjectionCullingTests: %d checks, %d failures\n", checks, failures);
