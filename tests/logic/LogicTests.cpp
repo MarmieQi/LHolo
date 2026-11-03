@@ -28,6 +28,7 @@ int runProjectionDrawCacheTests();
 int runProjectionTransparentOrderTests();
 int runProjectionBiomeRefreshTests();
 int runCorrectionStateStoreTests();
+int runProjectionNeighborSnapshotTests();
 int runCorrectionSchedulingTests();
 int runCorrectionAirScanTests();
 int runCorrectionBulkEventTests();
@@ -1000,6 +1001,7 @@ int main(int argc, char** argv) {
     LHOLO_CHECK(runProjectionTransparentOrderTests() == 0);
     LHOLO_CHECK(runProjectionBiomeRefreshTests() == 0);
     LHOLO_CHECK(runCorrectionStateStoreTests() == 0);
+    LHOLO_CHECK(runProjectionNeighborSnapshotTests() == 0);
     LHOLO_CHECK(runCorrectionSchedulingTests() == 0);
     LHOLO_CHECK(runCorrectionAirScanTests() == 0);
     LHOLO_CHECK(runCorrectionBulkEventTests() == 0);

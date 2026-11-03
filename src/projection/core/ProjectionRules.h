@@ -98,6 +98,11 @@ struct ProjectionCellBox { std::array<int, 3> minimum{}, maximum{}; };
 ProjectionWorldBounds projectionSectionCellWorldBounds(SubChunkKey const& key,
     structure::LoadedStructure const& loaded, std::array<long long, 3> const& origin,
     int mirror, int rotation, int halo = 0);
+// Model queries extend past the file boundary. Clip the Section's own cells
+// first, then expand in WORLD space so neighboring files remain in scope.
+ProjectionWorldBounds projectionSectionQueryWorldBounds(SubChunkKey const& key,
+    structure::LoadedStructure const& loaded, std::array<long long, 3> const& origin,
+    int mirror, int rotation, int halo);
 // World subchunk intersected with the transformed structure, returned in local
 // cells (maximum exclusive). A local 16^3 tile need not align to the world grid.
 std::optional<ProjectionCellBox> projectionSectionLocalIntersection(

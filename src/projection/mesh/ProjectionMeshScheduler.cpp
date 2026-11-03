@@ -114,7 +114,7 @@ bool validateMeshData(
 bool projectionSectionHasPendingCorrection(ProjectionState const& state, std::size_t section,
                                            ProjectionSectionBuildSettings const& settings) {
     if (state.correctionEvents.empty()) return false;
-    auto bounds = projectionSectionCellWorldBounds(state.localSectionKeys[section], *state.structure,
+    auto bounds = projectionSectionQueryWorldBounds(state.localSectionKeys[section], *state.structure,
         {static_cast<long long>(state.anchor.x) + settings.offsetX,
          static_cast<long long>(state.anchor.y) + settings.offsetY,
          static_cast<long long>(state.anchor.z) + settings.offsetZ}, settings.mirrorMode, settings.rotationTurns, 1);
@@ -216,7 +216,7 @@ void scheduleProjectionMeshBuild(ProjectionState& state, Tessellator& tessellato
         snapshot->extraBlockPositions.insert(positions.begin(), positions.end());
     }
     snapshot->correctionSnapshot.emplace(state.correctionStates.capture(correctionSections));
-    auto sectionWorld = projectionSectionCellWorldBounds(state.localSectionKeys[section], *state.structure,
+    auto sectionWorld = projectionSectionQueryWorldBounds(state.localSectionKeys[section], *state.structure,
                                                          {static_cast<long long>(state.anchor.x) + settings.offsetX,
                                                           static_cast<long long>(state.anchor.y) + settings.offsetY,
                                                           static_cast<long long>(state.anchor.z) + settings.offsetZ},
@@ -234,13 +234,8 @@ void scheduleProjectionMeshBuild(ProjectionState& state, Tessellator& tessellato
             auto other = state.taskRuntimeFiles[foreign].lock();
             assert(other);
             std::vector<std::size_t> pages;
-            for (int x = static_cast<int>(local.minimum[0] / 16); x <= (local.maximum[0] - 1) / 16; ++x)
-                for (int y = static_cast<int>(local.minimum[1] / 16); y <= (local.maximum[1] - 1) / 16; ++y)
-                    for (int z = static_cast<int>(local.minimum[2] / 16); z <= (local.maximum[2] - 1) / 16; ++z) {
-                        auto it = other->localSectionIndices.find({x, y, z});
-                        if (it != other->localSectionIndices.end())
-                            pages.push_back(it->second);
-                    }
+            visitTaskSections(local, other->localSectionKeys, other->localSectionIndices,
+                [&](std::size_t page) { pages.push_back(page); });
             ProjectionState::NeighborCorrection captured{foreign, other->correctionStates.capture(pages), {}};
             for (auto page : pages)
                 for (auto const &[x, y, z] : other->sectionExtraBlockPositions[page]) {

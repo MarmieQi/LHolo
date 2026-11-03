@@ -31,6 +31,18 @@ ProjectionWorldBounds projectionSectionCellWorldBounds(SubChunkKey const& key,
              origin[2] + std::max(a.z, b.z) + 1}};
 }
 
+ProjectionWorldBounds projectionSectionQueryWorldBounds(SubChunkKey const& key,
+    structure::LoadedStructure const& loaded, std::array<long long, 3> const& origin,
+    int mirror, int rotation, int halo) {
+    auto bounds = projectionSectionCellWorldBounds(key, loaded, origin, mirror, rotation);
+    for (int axis = 0; axis < 3; ++axis) {
+        if (bounds.minimum[axis] >= bounds.maximum[axis]) return {};
+        bounds.minimum[axis] -= halo;
+        bounds.maximum[axis] += halo;
+    }
+    return bounds;
+}
+
 ProjectionBounds projectionSectionBounds(
     SubChunkKey const& key, structure::LoadedStructure const& loaded, int mirror, int rotation
 ) {

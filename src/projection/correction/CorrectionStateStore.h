@@ -9,6 +9,7 @@
 #include <limits>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <vector>
 
 namespace lholo::projection::detail {
@@ -54,11 +55,12 @@ public:
 
       public:
         CorrectionState rawState(std::size_t index) const {
-            auto const location = (*mLayout)[index];
+            auto const location = mLayout->at(index);
             auto const found =
                 std::lower_bound(mPages.begin(), mPages.end(), location.section,
                                  [](Entry const &entry, std::size_t section) { return entry.section < section; });
-            assert(found != mPages.end() && found->section == location.section);
+            if (found == mPages.end() || found->section != location.section)
+                throw std::logic_error("Projection correction snapshot does not contain the requested section");
             return found->page->epoch == mEpoch ? found->page->states[location.slot] : mDefault;
         }
         std::size_t retainedBytes() const {
