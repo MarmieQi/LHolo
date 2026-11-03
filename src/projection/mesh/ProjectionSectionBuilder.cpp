@@ -8,6 +8,7 @@
 
 #include "projection/mesh/ProjectionSectionBuilder.h"
 #include "projection/mesh/ProjectionTransparency.h"
+#include "projection/mesh/ProjectionMeshOcclusion.h"
 
 #include "projection/core/ProjectionInternalTypes.h"
 #include "projection/core/ProjectionRules.h"
@@ -173,6 +174,7 @@ void buildLiquidGeometry(
 void buildBlockEntityPlaceholderSectionMesh(
     ProjectionState&,
     Tessellator&,
+    BlockSource&,
     std::size_t,
     Tessellator::UploadMode,
     ProjectionSectionBuildSettings const&,
@@ -217,6 +219,7 @@ void buildProjectionSection(
     state.transparentSections.resize(state.sections.size());
     state.transparentSections[section] = transparent;
     state.sections[section].meshBounds = {};
+    state.sections[section].worldOcclusionDependent = false;
     auto const mirror                   = sectionBuildSettings.mirror;
     auto const rotation                 = sectionBuildSettings.rotation;
     auto const mirrorMode               = sectionBuildSettings.mirrorMode;
@@ -309,7 +312,8 @@ void buildProjectionSection(
         };
     ScopedTessellationBlocks tessellationBlocksScope(
         *state.expectedWorldBlocks,
-        *state.expectedWorldBlockActors
+        *state.expectedWorldBlockActors,
+        &state.sections[section].worldOcclusionDependent
     );
     auto& biomeRefresh = state.sections[section].biomeRefresh;
     auto const previousBiomeRefresh = biomeRefresh;
@@ -368,6 +372,7 @@ void buildProjectionSection(
             Block const* block{};
         };
         std::vector<GlassRange> glassRanges;
+        std::vector<ProjectionBottomRange> coveredBottoms;
         for (auto const& layered : layeredBlocks) {
             if (layered.bucket != bucket) continue;
             blockTessellator.mRenderingLayer = static_cast<int>(layered.layer);
@@ -421,6 +426,18 @@ void buildProjectionSection(
                 if (!layered.bubbleColumn) failedTessellationIndices.push_back(layered.structureIndex);
                 continue;
             }
+            auto const lastPosition = tessellator.mMeshData->mPositions.get().size();
+            if (hasProjectionBottomFace(*tessellator.mMeshData, firstPosition,
+                    {static_cast<float>(layered.position.x), static_cast<float>(layered.position.y),
+                     static_cast<float>(layered.position.z)})
+                && projectionFaceCovered(state, region,
+                    BlockPos{layered.position.x, layered.position.y - 1, layered.position.z},
+                    state.sections[section].worldOcclusionDependent)) {
+                coveredBottoms.push_back({firstPosition, lastPosition,
+                    {static_cast<float>(layered.position.x - origin.x),
+                     static_cast<float>(layered.position.y - origin.y),
+                     static_cast<float>(layered.position.z - origin.z)}});
+            }
             auto& colors = tessellator.mMeshData->mColors.get();
             if (foliageTint) {
                 for (std::size_t colorIndex = firstColor; colorIndex < colors.size(); ++colorIndex) {
@@ -463,6 +480,7 @@ void buildProjectionSection(
         bool const retained = bucket == RenderBucket::Blend
             && captureProjectionTransparency(transparent->terrain, *tessellator.mMeshData);
         if (retained) {
+            hideProjectionBottomFaces(transparent->terrain, coveredBottoms);
             for (auto const& glass : glassRanges) {
                 std::array<float, 3> const cell{static_cast<float>(glass.position.x - origin.x),
                     static_cast<float>(glass.position.y - origin.y), static_cast<float>(glass.position.z - origin.z)};
@@ -481,18 +499,34 @@ void buildProjectionSection(
                     auto const index = state.expectedWorldBlockIndices->find(neighbor);
                     // Exact block state includes glass color. Hidden layers,
                     // different colors, real/wrong neighbors and partial faces stay visible.
-                    quad.hidden = block != state.expectedWorldBlocks->end() && block->second == glass.block
+                    quad.hidden = quad.hidden || (block != state.expectedWorldBlocks->end() && block->second == glass.block
                         && index != state.expectedWorldBlockIndices->end()
-                        && state.renderCorrectionState(index->second) == CorrectionState::Missing;
+                        && state.renderCorrectionState(index->second) == CorrectionState::Missing);
                 }
             }
         }
+        bool const filterNative = !retained && !coveredBottoms.empty();
         auto mesh = tessellator.end(
-            retained ? Tessellator::UploadMode::Never : uploadMode,
+            retained || filterNative ? Tessellator::UploadMode::Never : uploadMode,
             meshNames[bucketIndex],
             SupplementaryFieldAutoGenerationMode{1}
         );
-        destination = retained ? nullptr : std::make_unique<mce::Mesh>(std::move(mesh));
+        if (retained) {
+            destination.reset();
+        } else if (filterNative) {
+            // End the native tessellator before compacting CPU fields, so its
+            // vertex counters and quad bookkeeping never need private fixes.
+            auto& data = mesh.mMeshData.get();
+            cullProjectionBottomFaces(data, coveredBottoms);
+            if (data.mPositions.get().empty()) destination.reset();
+            else if (uploadMode == Tessellator::UploadMode::Never)
+                destination = std::make_unique<mce::Mesh>(std::move(mesh));
+            else {
+                auto buffers = tessellator.mBufferResourceService.lock();
+                if (!buffers) throw std::runtime_error("Projection mesh buffer service expired");
+                destination = std::make_unique<mce::Mesh>(buffers, std::move(data), false, meshNames[bucketIndex]);
+            }
+        } else destination = std::make_unique<mce::Mesh>(std::move(mesh));
     }
 
     detail::buildLiquidGeometry(
@@ -501,6 +535,7 @@ void buildProjectionSection(
     detail::buildBlockEntityPlaceholderSectionMesh(
         state,
         tessellator,
+        region,
         section,
         uploadMode,
         sectionBuildSettings,
@@ -644,17 +679,9 @@ void buildLiquidGeometry(
             };
             auto const sideIsCovered = [&](int dx, int dz) {
                 if (neighborIsSameLiquid(dx, 0, dz)) return true;
-                auto const key = std::tuple{worldPosition.x + dx, worldPosition.y, worldPosition.z + dz};
-                auto const block = state.expectedWorldBlocks->find(key);
-                if (block == state.expectedWorldBlocks->end() || !block->second
-                    || !block->second->getBlockType().mIsOpaqueFullBlock) return false;
-                auto const index = state.expectedWorldBlockIndices->find(key);
-                if (index == state.expectedWorldBlockIndices->end()) return false;
-                auto const correction = state.renderCorrectionState(index->second);
-                // Only cells with a projected model may hide this face. Their
-                // visibility changes already rebuild both neighboring sections;
-                // real-world occlusion remains handled by the depth test.
-                return correction == CorrectionState::Missing || correction == CorrectionState::Unknown;
+                return projectionFaceCovered(state, region,
+                    BlockPos{worldPosition.x + dx, worldPosition.y, worldPosition.z + dz},
+                    state.sections[section].worldOcclusionDependent);
             };
 
             // Flow-aware surface. Source and submerged cells stay full;
@@ -749,10 +776,10 @@ void buildLiquidGeometry(
                 vertex(p3, uD, vD);
             };
 
-            auto const* bottom = neighborEntry(0, -1, 0);
-            bool const bottomIsSolid = bottom && bottom->block && !bottom->block->isAir();
             bool const bottomIsSameLiquid = neighborIsSameLiquid(0, -1, 0);
-            if (!bottomIsSolid && !bottomIsSameLiquid) {
+            if (!bottomIsSameLiquid && !projectionFaceCovered(state, region,
+                    BlockPos{worldPosition.x, worldPosition.y - 1, worldPosition.z},
+                    state.sections[section].worldOcclusionDependent)) {
                 addQuad(
                     {x0, y0, z1}, u0_s, v1_s,
                     {x0, y0, z0}, u0_s, v0_s,
@@ -793,6 +820,12 @@ void buildLiquidGeometry(
             if (!sideIsCovered( 1,  0)) addSideFace(x1, z0, yc10, x1, z1, yc11, ewColor);
         }
         bool const retained = captureProjectionTransparency(geometry, *tessellator.mMeshData);
+        if (retained) {
+            // Only bottom quads from this generator have a downward normal.
+            // Their backfaces are unnecessary when looking down through water.
+            for (auto& quad : geometry.quads)
+                if (quad.vertices[0].normal[1] < 0.0f) quad.facingNormal = {0.0f, -1.0f, 0.0f};
+        }
         tessellator.end(
             Tessellator::UploadMode::Never,
             "LHoloLiquidGeometry",
@@ -809,6 +842,7 @@ void buildLiquidGeometry(
 void buildBlockEntityPlaceholderSectionMesh(
     ProjectionState&                      state,
     Tessellator&                          tessellator,
+    BlockSource&                          region,
     std::size_t                           section,
     Tessellator::UploadMode               uploadMode,
     ProjectionSectionBuildSettings const& settings,
@@ -892,7 +926,10 @@ void buildBlockEntityPlaceholderSectionMesh(
             bool const southFront = frontFace == static_cast<int>(Facing::Name::South);
             bool const westFront = frontFace == static_cast<int>(Facing::Name::West);
             bool const eastFront = frontFace == static_cast<int>(Facing::Name::East);
-            addFace({x0,y0,z1}, {x0,y0,z0}, {x1,y0,z0}, {x1,y0,z1}, false); // bottom
+            BlockPos const below{state.anchor.x + settings.offsetX + p.x,
+                state.anchor.y + settings.offsetY + p.y - 1, state.anchor.z + settings.offsetZ + p.z};
+            if (!projectionFaceCovered(state, region, below, state.sections[section].worldOcclusionDependent))
+                addFace({x0,y0,z1}, {x0,y0,z0}, {x1,y0,z0}, {x1,y0,z1}, false); // bottom
             addFace({x0,y1,z0}, {x0,y1,z1}, {x1,y1,z1}, {x1,y1,z0}, false); // top
             addFace({x0,y0,z0}, {x0,y1,z0}, {x1,y1,z0}, {x1,y0,z0}, northFront); // north
             addFace({x1,y0,z1}, {x1,y1,z1}, {x0,y1,z1}, {x0,y0,z1}, southFront); // south

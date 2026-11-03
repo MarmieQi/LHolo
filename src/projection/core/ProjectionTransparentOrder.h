@@ -19,6 +19,13 @@ struct ProjectionTransparentFaceKey {
     bool singleSided{};
 };
 
+inline bool projectionFaceVisible(ProjectionTransparentFaceKey const& face, std::array<float, 3> const& eye) {
+    if (!face.singleSided) return true;
+    float const side = face.normal[0] * (eye[0] - face.center[0])
+        + face.normal[1] * (eye[1] - face.center[1]) + face.normal[2] * (eye[2] - face.center[2]);
+    return side > 0.0f;
+}
+
 // Only a complete unit-square boundary can hide a neighboring cube face.
 inline std::optional<std::array<int, 3>> projectionUnitFaceNeighbor(
     std::array<std::array<float, 3>, 4> const& vertices, std::array<float, 3> const& cell
@@ -61,12 +68,7 @@ inline std::vector<std::uint32_t> projectionTransparentOrder(
     order.reserve(faces.size());
     for (std::uint32_t index = 0; index < faces.size(); ++index) {
         auto const& face = faces[index];
-        if (eye && face.singleSided) {
-            float const side = face.normal[0] * ((*eye)[0] - face.center[0])
-                + face.normal[1] * ((*eye)[1] - face.center[1])
-                + face.normal[2] * ((*eye)[2] - face.center[2]);
-            if (!(side > 0.0f)) continue;
-        }
+        if (eye && !projectionFaceVisible(face, *eye)) continue;
         order.push_back(index);
     }
     std::sort(order.begin(), order.end(), [&](auto a, auto b) {

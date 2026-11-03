@@ -60,9 +60,14 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         markAllSectionsDirty(state, false, result.geometryTransformChanged);
     }
     if (result.placementMoved && !result.geometryTransformChanged) {
-        // Local geometry survives an XYZ move, but a task already sampling the
-        // previous world position must not be accepted.
-        for (auto& sectionState : state.sections) {
+        // World-dependent face visibility must be sampled at the new origin.
+        // Other local geometry survives the move; in-flight old snapshots do not.
+        for (std::size_t i = 0; i < state.sections.size(); ++i) {
+            auto& sectionState = state.sections[i];
+            if (sectionState.worldOcclusionDependent) {
+                markSectionDirty(state, i, false);
+                continue;
+            }
             ++sectionState.requestedRevision;
             if (sectionState.buildInFlight) sectionState.dirty = true;
         }
@@ -81,6 +86,7 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
     // LayerRange changes only invalidate sections containing blocks whose
     // visibility crossed the old/new boundary.
     if (result.layerChanged && !result.geometryTransformChanged) {
+        std::vector<bool> changedSections(state.sections.size());
         auto const oldLayerVisible = [&](structure::LoadedStructure::RenderBlock const& entry) {
             if (!state.cachedLayerDisplayMode || !state.cachedLayerAxis) return false;
             auto const layer = *state.cachedLayerAxis == structure::LayerAxis::X
@@ -94,8 +100,22 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
             auto const& entry = state.structure->renderBlocks[index];
             auto const visible = layerIsVisible(entry);
             if (oldLayerVisible(entry) == visible) continue;
-            markSectionDirty(state, state.correctionStates.section(index), false);
+            auto const section = state.correctionStates.section(index);
+            changedSections[section] = true;
+            markSectionDirty(state, section, false);
             state.correctionStates.setVisible(index, visible);
+        }
+        // A visible support can disappear across a section boundary when the
+        // display slice changes. Update its neighbors once per changed section.
+        constexpr int neighbors[6][3]{{-1,0,0}, {1,0,0}, {0,-1,0}, {0,1,0}, {0,0,-1}, {0,0,1}};
+        for (std::size_t i = 0; i < changedSections.size(); ++i) {
+            if (!changedSections[i]) continue;
+            auto const [x,y,z] = state.localSectionKeys[i];
+            for (auto const& d : neighbors) {
+                auto const found = state.localSectionIndices.find(std::tuple{x+d[0],y+d[1],z+d[2]});
+                if (found != state.localSectionIndices.end() && !changedSections[found->second])
+                    markSectionDirty(state, found->second, false);
+            }
         }
     }
 

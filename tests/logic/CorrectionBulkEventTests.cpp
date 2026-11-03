@@ -1,5 +1,6 @@
 #include "projection/correction/CorrectionWorkQueues.h"
 #include "projection/core/ProjectionRules.h"
+#include "projection/core/ProjectionWorldBounds.h"
 
 #include <chrono>
 #include <cstdio>
@@ -21,6 +22,10 @@ int runCorrectionBulkEventTests() {
     // Compare mixed enqueue/consume/transfer operations with an independent
     // coordinate map, including lower bits arriving after the cursor advanced.
     CorrectionEventQueue queue;
+    ProjectionWorldBounds const bounds{{-2,0,-2},{2,3,2}};
+    auto const neighborBounds = bounds.withNeighborMargin();
+    check(!bounds.intersects({0,-1,0},{0,-1,0}) && neighborBounds.intersects({0,-1,0},{0,-1,0})
+        && !neighborBounds.intersects({0,-2,0},{0,-2,0}));
     std::map<CorrectionPosition, std::uint64_t> reference;
     std::uint32_t random = 701;
     auto next = [&] { random = random * 1664525U + 1013904223U; return random; };

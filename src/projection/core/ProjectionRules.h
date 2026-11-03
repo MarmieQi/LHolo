@@ -102,7 +102,7 @@ ProjectionWorldBounds projectionSectionCellWorldBounds(SubChunkKey const& key,
 // cells (maximum exclusive). A local 16^3 tile need not align to the world grid.
 std::optional<ProjectionCellBox> projectionSectionLocalIntersection(
     std::array<int, 3> const& section, structure::LoadedStructure const& loaded,
-    BlockPos const& origin, int mirror, int rotation);
+    BlockPos const& origin, int mirror, int rotation, int padding = 0);
 
 bool isLayerVisible(
     int layer,

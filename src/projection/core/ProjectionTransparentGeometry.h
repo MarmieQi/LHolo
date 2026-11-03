@@ -18,8 +18,8 @@ struct ProjectionTransparentVertex {
 struct ProjectionTransparentQuad {
     std::array<ProjectionTransparentVertex, 4> vertices;
     std::array<float, 3> center{};
-    // Nonzero only for complete glass cube faces; points out of the cell,
-    // independently of native triangle winding or lighting normals.
+    // Nonzero for faces with explicit single-sided visibility: complete glass
+    // cube faces and liquid bottoms. Independent of shader lighting normals.
     std::array<float, 3> facingNormal{};
     bool hidden{};
 };
@@ -37,9 +37,9 @@ struct ProjectionTransparentCache {
     std::vector<ProjectionTransparentQuad const*> faces;
     std::vector<ProjectionTransparentFaceKey> keys;
     std::vector<std::uint32_t> order;
+    std::vector<std::uint32_t> singleSidedFaces;
     std::array<float, 3> axis{};
     std::array<float, 3> eye{};
-    bool hasSingleSided{};
     bool hasAxis{};
     std::unique_ptr<mce::Mesh> mesh;
 };

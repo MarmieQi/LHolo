@@ -138,7 +138,7 @@ BlockPos inverseTransformStructurePosition(
 
 std::optional<ProjectionCellBox> projectionSectionLocalIntersection(
     std::array<int, 3> const& section, structure::LoadedStructure const& loaded,
-    BlockPos const& origin, int mirror, int rotation
+    BlockPos const& origin, int mirror, int rotation, int padding
 ) {
     bool rotated = (rotation & 1) != 0;
     std::array<int, 3> size{rotated ? loaded.sizeZ : loaded.sizeX, loaded.sizeY, rotated ? loaded.sizeX : loaded.sizeZ};
@@ -146,8 +146,8 @@ std::optional<ProjectionCellBox> projectionSectionLocalIntersection(
     std::array<int, 3> lo{}, hi{};
     for (int axis = 0; axis < 3; ++axis) {
         auto base = static_cast<long long>(section[axis]) * 16;
-        auto minimum = std::max(base, offset[axis]);
-        auto maximum = std::min(base + 15, offset[axis] + size[axis] - 1);
+        auto minimum = std::max(base - padding, offset[axis]);
+        auto maximum = std::min(base + 15 + padding, offset[axis] + size[axis] - 1);
         if (minimum > maximum) return std::nullopt;
         lo[axis] = static_cast<int>(minimum - offset[axis]);
         hi[axis] = static_cast<int>(maximum - offset[axis]);

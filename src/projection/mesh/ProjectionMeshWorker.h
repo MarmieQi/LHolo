@@ -35,6 +35,7 @@ struct AsyncSectionBuildResult {
     std::size_t   section{};
     ProjectionBounds meshBounds;
     ProjectionBiomeRefresh biomeRefresh;
+    bool worldOcclusionDependent{};
     bool          success{};
     bool          correctionOnly{};
     std::string   failureReason;

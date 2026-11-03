@@ -133,6 +133,7 @@ void uploadCompletedProjectionMeshes(ProjectionState& root, Tessellator& tessell
                     state.transparentSections[section] = std::move(result.transparentGeometry);
                     state.blockEntityPlaceholderSectionMeshes[section] = std::move(blockEntityPlaceholder);
                     state.sections[section].modelDirty = false;
+                    state.sections[section].worldOcclusionDependent = result.worldOcclusionDependent;
                 }
                 state.warningFillSectionMeshes[section] = std::move(warningFill);
                 state.correctionOutlineSectionMeshes[section] = std::move(correctionOutline);

@@ -116,6 +116,7 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
                                          {origin[0] + (rotated ? root.structure->sizeZ : root.structure->sizeX),
                                           origin[1] + root.structure->sizeY,
                                           origin[2] + (rotated ? root.structure->sizeX : root.structure->sizeZ)}};
+            bounds = bounds.withNeighborMargin();
             for (auto& event : events)
                 root.correctionEvents.push(std::move(event).clipped(bounds.minimum, bounds.maximum));
             for (auto const& chunk : chunks) {

@@ -1,4 +1,5 @@
 #include "projection/core/ProjectionTransparentOrder.h"
+#include "projection/core/ProjectionBottomFace.h"
 #include <cstdio>
 
 int runProjectionTransparentOrderTests() {
@@ -35,5 +36,18 @@ int runProjectionTransparentOrderTests() {
     check(projectionUnitFaceNeighbor(square, {0, 0, 0}) == std::array<int, 3>{1, 0, 0}, "full cube shared boundary");
     square[2][2] = 0.5f;
     check(!projectionUnitFaceNeighbor(square, {0, 0, 0}), "partial face must not hide a neighbor");
+    std::array<std::array<float, 3>, 4> bottom{{{0.25f,0,0.75f},{0.25f,0,0.25f},
+        {0.75f,0,0.25f},{0.75f,0,0.75f}}};
+    check(projectionBottomFace(bottom, {0,0,0}), "partial model bottom covered by full support");
+    std::reverse(bottom.begin(), bottom.end());
+    check(!projectionBottomFace(bottom, {0,0,0}), "upward decoration preserved");
+    std::reverse(bottom.begin(), bottom.end());
+    bottom[0][1] = 0.00001f;
+    check(!projectionBottomFace(bottom, {0,0,0}), "raised or sloped faces are not coplanar bottoms");
+    bottom[0][1] = 0; bottom[0][0] = -0.25f;
+    check(!projectionBottomFace(bottom, {0,0,0}), "face outside support footprint preserved");
+    ProjectionTransparentFaceKey const liquidBottom{{0.5f,0,0.5f},0,{0,-1,0},true};
+    check(!projectionFaceVisible(liquidBottom, {0.5f,3,0.5f})
+        && projectionFaceVisible(liquidBottom, {0.5f,-1,0.5f}), "floating liquid bottom visible only from below");
     return failures;
 }

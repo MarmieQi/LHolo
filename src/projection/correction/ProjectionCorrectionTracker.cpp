@@ -96,7 +96,9 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
         std::size_t section;
         bool models;
     };
-    std::array<DirtySection, CorrectionQuantum * 7> dirtySections;
+    // Existing correction updates touch at most seven sections per cell;
+    // world-neighbor dependencies add six. A loaded tile overlaps at most 27.
+    std::array<DirtySection, CorrectionQuantum * 13 + 27> dirtySections;
     std::size_t dirtyCount{};
     auto const markDirty = [&](std::size_t section, bool models = false) {
         assert(dirtyCount < dirtySections.size());
@@ -249,7 +251,8 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
                 auto const neighbor = state.expectedWorldBlockIndices->find(
                     std::tuple{position.x + delta[0], position.y + delta[1], position.z + delta[2]});
                 if (neighbor != state.expectedWorldBlockIndices->end()) {
-                    markDirty(state.correctionStates.section(neighbor->second), models);
+                    auto const section = state.correctionStates.section(neighbor->second);
+                    markDirty(section, models || state.sections[section].worldOcclusionDependent);
                 }
             }
         }
@@ -334,7 +337,21 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
             BlockPos{static_cast<int>(x), static_cast<int>(y), static_cast<int>(z)}, *state.structure, mirrorMode,
             rotationTurns);
     };
-    auto const checkWorld = [&](BlockPos const& world, std::uint64_t destroyedAt) {
+    auto const invalidateWorldNeighbors = [&](BlockPos const& world) {
+        constexpr int neighbors[6][3]{{-1,0,0}, {1,0,0}, {0,-1,0}, {0,1,0}, {0,0,-1}, {0,0,1}};
+        for (auto const& d : neighbors) {
+            auto const found = state.expectedWorldBlockIndices->find(
+                std::tuple{world.x + d[0], world.y + d[1], world.z + d[2]});
+            if (found == state.expectedWorldBlockIndices->end()) continue;
+            auto const section = state.correctionStates.section(found->second);
+            auto const& target = state.sections[section];
+            if (target.worldOcclusionDependent || target.buildInFlight) markDirty(section, true);
+        }
+    };
+    auto const checkWorld = [&](BlockPos const& world, std::uint64_t destroyedAt, bool neighborEvent = false) {
+        // Halo events invalidate dependent geometry but never count as extras
+        // or expand the structure's correction/placement domain.
+        if (neighborEvent) invalidateWorldNeighbors(world);
         auto localResult = localFromWorld(world);
         if (!localResult)
             return;
@@ -357,13 +374,28 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
                 break;
             auto event = *state.correctionEvents.front();
             state.correctionEvents.pop();
-            checkWorld(BlockPos{event.position[0], event.position[1], event.position[2]}, event.destroyedAt);
+            checkWorld(BlockPos{event.position[0], event.position[1], event.position[2]}, event.destroyedAt, true);
         }
     } else if (work == CorrectionWorkKind::Loaded) {
         if (auto refresh = state.correctionSubChunks.front()) {
             auto limit = std::min(CorrectionQuantum, 4096 - refresh->cell);
             std::size_t processed{};
             while (processed < limit && budget.tryConsume()) {
+                if (refresh->cell == 0 && processed == 0) {
+                    BlockPos const origin{state.anchor.x + offsetX, state.anchor.y + offsetY, state.anchor.z + offsetZ};
+                    if (auto box = projectionSectionLocalIntersection(refresh->position, *state.structure,
+                            origin, mirrorMode, rotationTurns, 1)) {
+                        for (int x = box->minimum[0] / 16; x <= (box->maximum[0] - 1) / 16; ++x)
+                            for (int y = box->minimum[1] / 16; y <= (box->maximum[1] - 1) / 16; ++y)
+                                for (int z = box->minimum[2] / 16; z <= (box->maximum[2] - 1) / 16; ++z) {
+                                    auto const found = state.localSectionIndices.find(std::tuple{x,y,z});
+                                    if (found == state.localSectionIndices.end()) continue;
+                                    auto const& target = state.sections[found->second];
+                                    if (target.worldOcclusionDependent || target.buildInFlight)
+                                        markDirty(found->second, true);
+                                }
+                    }
+                }
                 auto cell = refresh->cell + processed++;
                 checkWorld(BlockPos{refresh->position[0] * 16 + static_cast<int>(cell >> 8),
                                     refresh->position[1] * 16 + static_cast<int>((cell >> 4) & 15),

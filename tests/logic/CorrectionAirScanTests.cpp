@@ -221,6 +221,10 @@ int runCorrectionAirScanTests() {
                     }
             check(!projectionSectionLocalIntersection({1000000, 100, 1000000}, loaded, origin, mirror, rotation));
         }
+    check(!projectionSectionLocalIntersection({0,0,0}, loaded, BlockPos{0,16,0}, 0, 0));
+    auto groundNeighbor = projectionSectionLocalIntersection({0,0,0}, loaded, BlockPos{0,16,0}, 1, 1, 1);
+    check(groundNeighbor && groundNeighbor->minimum == Position{2,0,4}
+        && groundNeighbor->maximum == Position{19,1,21});
     std::printf("CorrectionAirScanTests: %d checks, %d failures\n", checks, failures);
     return failures;
 }

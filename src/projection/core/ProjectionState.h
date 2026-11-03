@@ -62,6 +62,7 @@ struct SectionState {
     bool prefetchVisible{true};
     bool    dirty{};
     bool    modelDirty{true};
+    bool    worldOcclusionDependent{};
     bool    incrementalDirty{};
     bool    interactiveDirty{};
     bool    buildInFlight{};

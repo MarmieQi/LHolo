@@ -11,6 +11,7 @@
 class Block;
 class BlockActor;
 class BlockPos;
+class BlockSource;
 
 namespace lholo::projection::detail {
 
@@ -18,7 +19,8 @@ class ScopedTessellationBlocks {
 public:
     explicit ScopedTessellationBlocks(
         ExpectedBlockMap const&      blocks,
-        ExpectedBlockActorMap const& blockActors
+        ExpectedBlockActorMap const& blockActors,
+        bool* worldDependency = nullptr
     );
     ~ScopedTessellationBlocks();
     bool biomeSampleFailed() const;
@@ -30,6 +32,7 @@ private:
     ExpectedBlockMap const*      mPreviousBlocks{};
     ExpectedBlockActorMap const* mPreviousBlockActors{};
     bool mPreviousBiomeSampleFailed{};
+    bool* mPreviousWorldDependency{};
 };
 
 // Vanilla BlockType::connectionUpdate recomputes a block's flattened
@@ -54,5 +57,7 @@ void markTessellationBiomeSampleFailed();
 
 Block const*      findTessellationBlock(BlockPos const& position);
 BlockActor const* findTessellationBlockActor(BlockPos const& position);
+// Read the actual region while inside a projected tessellation scope.
+Block const& readRealTessellationBlock(BlockSource& region, BlockPos const& position);
 
 } // namespace lholo::projection::detail

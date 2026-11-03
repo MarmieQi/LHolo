@@ -67,7 +67,7 @@ mce::Mesh* prepareProjectionTransparency(ProjectionState& state, BaseActorRender
         cache.faces.clear();
         cache.keys.clear();
         cache.sources.clear();
-        cache.hasSingleSided = false;
+        cache.singleSidedFaces.clear();
         cache.sections = candidates;
         for (auto section : candidates) {
             auto source = state.transparentSections[section];
@@ -80,7 +80,7 @@ mce::Mesh* prepareProjectionTransparency(ProjectionState& state, BaseActorRender
                     cache.faces.push_back(&quad);
                     bool const singleSided = quad.facingNormal != std::array<float, 3>{};
                     cache.keys.push_back({quad.center, id, quad.facingNormal, singleSided});
-                    cache.hasSingleSided = cache.hasSingleSided || singleSided;
+                    if (singleSided) cache.singleSidedFaces.push_back(static_cast<std::uint32_t>(cache.keys.size() - 1));
                 }
             };
             append(source->terrain, false);
@@ -101,11 +101,21 @@ mce::Mesh* prepareProjectionTransparency(ProjectionState& state, BaseActorRender
     // is common to all faces, so only these coefficients affect their order.
     std::array<float, 3> const axis{clip[0][3], clip[1][3], clip[2][3]};
     std::array<float, 3> eye{};
-    if (cache.hasSingleSided) {
+    if (!cache.singleSidedFaces.empty()) {
         auto const inverse = glm::inverse(*camera.viewMatrixStack->top()._m * *camera.worldMatrixStack->top()._m);
         eye = {inverse[3].x, inverse[3].y, inverse[3].z};
     }
-    if (!changed && cache.hasAxis && cache.axis == axis && cache.eye == eye) return cache.mesh.get();
+    if (!changed && cache.hasAxis && cache.axis == axis) {
+        bool const sameVisibility = cache.eye == eye || std::all_of(cache.singleSidedFaces.begin(), cache.singleSidedFaces.end(),
+            [&](auto index) {
+                auto const& key = cache.keys[index];
+                return projectionFaceVisible(key, eye) == projectionFaceVisible(key, cache.eye);
+            });
+        if (sameVisibility) {
+            cache.eye = eye;
+            return cache.mesh.get();
+        }
+    }
     if (cache.faces.size() > static_cast<std::size_t>(std::numeric_limits<int>::max() / 4))
         throw std::length_error("Projection transparent vertex count exceeds the engine limit");
     auto order = projectionTransparentOrder(cache.keys, axis, eye);

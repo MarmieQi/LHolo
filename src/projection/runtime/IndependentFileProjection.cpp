@@ -59,7 +59,7 @@ void distributeIndependentFileEvents(ProjectionState& root,
     for (auto& file : root.files) {
         // Route only relevant facts; don't scan unrelated world subchunks in
         // every file's original correction tracker.
-        auto bounds = fileBounds(*file);
+        auto bounds = fileBounds(*file).withNeighborMargin();
         for (auto const& change : changes)
             file->correctionEvents.push(change.clipped(bounds.minimum, bounds.maximum));
         for (auto const& chunk : chunks) {

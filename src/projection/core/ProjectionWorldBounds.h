@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <limits>
 
 namespace lholo::projection::detail {
 
@@ -8,6 +9,15 @@ namespace lholo::projection::detail {
 // event routing safe at negative positions and near the integer world limits.
 struct ProjectionWorldBounds {
     std::array<long long, 3> minimum{}, maximum{};
+    ProjectionWorldBounds withNeighborMargin() const {
+        auto result = *this;
+        for (int axis = 0; axis < 3; ++axis) {
+            if (minimum[axis] >= maximum[axis]) return {};
+            if (result.minimum[axis] != std::numeric_limits<long long>::min()) --result.minimum[axis];
+            if (result.maximum[axis] != std::numeric_limits<long long>::max()) ++result.maximum[axis];
+        }
+        return result;
+    }
     bool intersects(std::array<long long, 3> const& lo, std::array<long long, 3> const& hi) const {
         for (int axis = 0; axis < 3; ++axis)
             if (minimum[axis] >= maximum[axis] || hi[axis] < minimum[axis] || lo[axis] >= maximum[axis])
