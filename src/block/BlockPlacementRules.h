@@ -15,6 +15,7 @@
 class Block;
 class BlockActor;
 class ItemStack;
+class ItemStackBase;
 class CompoundTag;
 class Level;
 class BlockType;
@@ -100,6 +101,10 @@ struct PlacementPart {
 // Builds the neutral inventory item used to place a block. World orientation
 // states are intentionally not copied into the item stack.
 [[nodiscard]] ItemStack makePlacementItem(Block const& block);
+
+// Native NBT loading may leave count/valid set with no resolved Item (missing
+// add-ons). isNull() alone does not protect name, identity or renderer calls.
+[[nodiscard]] bool hasUsableItem(ItemStackBase const& item);
 
 // Resolves the real inventory item represented by a block. Must run on the game
 // tick thread because it touches the Bedrock item registry/localization data.

@@ -220,10 +220,11 @@ void cacheFailedPlan(FailedPlanKey const& key, std::uint64_t now) {
 // sameItemAndAuxAndBlockData never matched a ghost that does.
 ItemFind findItemSlot(Player& player, Block const& block) {
     ItemStack const want = block::makePlacementItem(block);
+    if (!block::hasUsableItem(want)) return {-1, nullptr};
     auto& inventory = player.getInventory();
     for (int slot = 0; slot < kInventorySlots; ++slot) {
         auto const& item = inventory.getItem(slot);
-        if (item.getIdAux() == want.getIdAux()) return {slot, &item};
+        if (block::hasUsableItem(item) && item.getIdAux() == want.getIdAux()) return {slot, &item};
     }
     return {-1, nullptr};
 }
@@ -239,13 +240,14 @@ InventorySnapshot snapshotInventory(Player& player) {
     auto& inventory = player.getInventory();
     for (int slot = 0; slot < kInventorySlots; ++slot) {
         auto const& item = inventory.getItem(slot);
-        snapshot.emplace(item.getIdAux(), ItemFind{slot, &item});
+        if (block::hasUsableItem(item)) snapshot.emplace(item.getIdAux(), ItemFind{slot, &item});
     }
     return snapshot;
 }
 
 ItemFind findItemSlot(InventorySnapshot const& snapshot, Block const& block) {
     ItemStack const want = block::makePlacementItem(block);
+    if (!block::hasUsableItem(want)) return {-1, nullptr};
     auto const [first, last] = snapshot.equal_range(want.getIdAux());
     for (auto it = first; it != last; ++it) {
         if (it->second.item->getIdAux() == want.getIdAux()) return it->second;
@@ -556,7 +558,8 @@ bool wouldMergeClickedSlab(Block const& ghost, Block const& support) {
 
     ItemInstance const ghostItem = ghost.getBlockType().asItemInstance(ghost, nullptr);
     ItemInstance const supportItem = support.getBlockType().asItemInstance(support, nullptr);
-    return ghostItem.getIdAux() == supportItem.getIdAux();
+    return block::hasUsableItem(ghostItem) && block::hasUsableItem(supportItem)
+        && ghostItem.getIdAux() == supportItem.getIdAux();
 }
 
 // RuntimeId is intentionally retained for ordinary blocks. For the three

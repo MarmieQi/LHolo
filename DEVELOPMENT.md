@@ -788,6 +788,8 @@ Worker 初始化失败，或构建/上传连续失败三次后，本次游戏会
 
 材料 HUD 的 `materialHudStackConversion` 是独立持久化布尔偏好，默认关闭；OreUI 材料 HUD 页通过现有 SettingsActions 字段通路即时修改。关闭只显示缺失总数，开启使用 `43x64+34` 格式并按物品实际堆叠上限换算，不同时显示总数。格式化位于 `ui/MaterialFormat`，原生 HUD 与编辑示例共用；材料业务统计与菜单材料清单保持原有行为。显示项数通过 `materialHudMaxItems` 持久化，范围 1～50、默认 5，只对当前页排序；数量独立存入 HudLine 并在 NativeHudPainter 统一右对齐，材料名称完整显示，面板按每行名称与数量的实际合计宽度自适应，列间距为字高的 0.8 倍，不将不同材料的最长名称和最长数量额外相加留白；超过视口宽度时同比例缩小文字、图标和间距；视口高度限制继续生效。材料图标通过完整 ItemStack 保留原生附加值与用户数据；后台计数以 Block 指针及不可变 NBT 来源指针为键，保留同一方块状态下的所有物品变体。游戏线程先按去掉顶层 x/y/z 的源 NBT 内容合并计数，再经临时 BlockActor 和原生 asItemInstance 取得床/旗帜等物品；同内容不同坐标只解析和比较一次，源 NBT 不修改，不另存重复的物品解析缓存。材料清单与材料 HUD 按原生物品 ID 和 hasSameAuxValue 分组，背包计数共用 block::sameMaterialItem；旗帜使用 BannerBlockActor::getBannerType 和 BannerItem::getPatternAndColorPairsFromItemStack 读取原生类型与图案，不比较缺省字段写法或自定义名称，其他物品比较 hasSameUserData。MaterialRequirement::itemPrototype 持有只读物品身份，HUD 复用它绘制图标，不反向依赖 UI 数据。不逐帧建物品、不扫描真实世界。最终审计删除无调用的 formatStackCount、完整物品接入后重复的 aux 转发/缓存及仅测试消费的布局输出，保留默认关闭的堆叠换算；旧 C++ 菜单已移除，ImGui 动作提示及后端暂留。
 
+物品适配统一通过 `block::hasUsableItem` 检查数量、原生 Item 弱引用及 `isNull()`；缺失 Addon 或异常 NBT 可能留下数量/valid 有值而 Item 未解析的对象，不能只依赖 `isNull()`。三条方块转物品候选均在读取名称、堆叠数量或序列化前校验，保存失败或重建后的 ItemStack 无效则继续既有回退，只有有效的只读物品原型才能发布。材料列表、缺失材料 HUD 与瞄准物品共用此通路；背包比较、自动放置和原生图标绘制也在各自入口使用同一校验。完全无法解析时保留材料文字与数量，不发布无效原型，图标使用已有占位行为，自动放置不匹配无效物品。有效 Addon 和床/旗帜 NBT 保留原生处理，不按命名空间过滤、不修改源 NBT。校验不查询注册表、不分配内存，复用现有统计/图标缓存。用户已于 2026-11-03 确认本次崩溃修复实机测试通过。
+
 纠错扫描同时维护：
 
 - `progressCorrect` 与正确计数。

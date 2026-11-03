@@ -1,4 +1,5 @@
 #include "ui/hud/NativeHudIcons.h"
+#include "block/BlockPlacementRules.h"
 #include "render/ScopedShaderColor.h"
 #include "ll/api/memory/Hook.h"
 #include "ll/api/mod/NativeMod.h"
@@ -98,7 +99,7 @@ void prepareItems() {
         }
         auto item = std::make_shared<ItemStack>();
         if (!id.empty()) item->reinit(std::string_view{id}, 1, 0);
-        IconItem resolved = item->isNull() ? nullptr : std::move(item);
+        IconItem resolved = block::hasUsableItem(*item) ? std::move(item) : nullptr;
         std::lock_guard lock(cacheMutex);
         if (cacheEpoch != epoch || !active.load()) continue;
         // Null entries cache unsupported IDs too, avoiding repeated lookups.
@@ -151,7 +152,7 @@ LL_TYPE_INSTANCE_HOOK(HudIconTextFlush, ll::memory::HookPriority::Normal,
         ScreenState restore(screen);
         std::optional<BaseActorRenderContext> actors;
         for (auto const& icon : frame->icons) {
-            if (!icon.item) {
+            if (!icon.item || !block::hasUsableItem(*icon.item)) {
                 auto const inset = icon.draw.size * 0.25f;
                 drawRectangle({icon.draw.x + inset, icon.draw.x + icon.draw.size - inset,
                     icon.draw.y + inset, icon.draw.y + icon.draw.size - inset}, mce::Color{0.5f, 0.5f, 0.5f, 1.0f}, 1, 1);

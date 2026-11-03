@@ -22,6 +22,7 @@
 #include "mc/world/level/block/states/BuiltInBlockStates.h"
 
 #include <cstddef>
+#include <utility>
 
 namespace lholo::block {
 
@@ -53,7 +54,12 @@ PlacementPart placementPart(Block const& block) {
     return {};
 }
 
+bool hasUsableItem(ItemStackBase const& item) {
+    return item.mCount > 0 && item.mItem.get() != nullptr && !item.isNull();
+}
+
 bool sameMaterialItem(ItemStack const& left, ItemStack const& right) {
+    if (!hasUsableItem(left) || !hasUsableItem(right)) return false;
     auto const type = left.getTypeName();
     if (type != right.getTypeName() || !left.hasSameAuxValue(right)) return false;
     if (type == "minecraft:banner") {
@@ -75,6 +81,7 @@ ItemStack makePlacementItem(Block const& block) {
     // remaining route is default construction followed by reinit().
     ItemStack item;
     item.reinit(name, 1, 0);
+    if (!hasUsableItem(item)) return {};
     return item;
 }
 
@@ -94,51 +101,50 @@ std::string stripMinecraftFormatting(std::string_view text) {
     return out;
 }
 
+namespace {
+
+PlacementItem describeItem(std::shared_ptr<ItemStack const> item) {
+    if (!item || !hasUsableItem(*item)) return {};
+    auto id = item->getTypeName();
+    if (id.empty()) return {};
+    auto name = stripMinecraftFormatting(item->getHoverName());
+    if (name.empty()) name = id;
+    int const size = static_cast<int>(item->getMaxStackSize());
+    return {std::move(name), std::move(id), size > 0 ? size : 64, true, std::move(item)};
+}
+
+PlacementItem describeItem(ItemInstance const& item) {
+    if (!hasUsableItem(item)) return {};
+    auto tag = item.save(SaveContext{});
+    if (!tag) return {};
+    // Validate the reconstructed stack as well as the native pick result.
+    return describeItem(std::make_shared<ItemStack>(ItemStack::fromTag(*tag)));
+}
+
+} // namespace
+
 PlacementItem resolvePlacementItem(Block const& block, BlockActor const* blockActor) {
-    // 1. Bedrock native polymorphic resolution: BlockType::asItemInstance(block, blockActor)
-    // Mojang implements this virtual method on all BlockType subclasses (crops, signs, redstone, etc.)
+    // Each native candidate is checked before reading names or serializing.
+    // Ordinary C++ failures advance to the next candidate; fail-fast calls
+    // must be prevented by validation, not caught after the fact.
     try {
-        ItemInstance const pickItem = block.getBlockType().asItemInstance(block, blockActor);
-        if (!pickItem.isNull()) {
-            int const size = static_cast<int>(pickItem.getMaxStackSize());
-            return {
-                stripMinecraftFormatting(pickItem.getHoverName()),
-                pickItem.getTypeName(),
-                size > 0 ? size : 64,
-                true,
-                std::make_shared<ItemStack>(ItemStack::fromTag(*pickItem.save(SaveContext{}))),
-            };
+        auto result = describeItem(block.getBlockType().asItemInstance(block, blockActor));
+        if (result.valid) return result;
+    } catch (...) {}
+
+    try {
+        auto item = makePlacementItem(block);
+        if (hasUsableItem(item)) {
+            auto result = describeItem(std::make_shared<ItemStack>(item));
+            if (result.valid) return result;
         }
+    } catch (...) {}
+
+    try {
+        return describeItem(ItemInstance{block});
     } catch (...) {
+        return {};
     }
-
-    // 2. Try makePlacementItem
-    ItemStack const placeItem = makePlacementItem(block);
-    if (!placeItem.isNull()) {
-        int const size = static_cast<int>(placeItem.getMaxStackSize());
-        return {
-            stripMinecraftFormatting(placeItem.getHoverName()),
-            placeItem.getTypeName(),
-            size > 0 ? size : 64,
-            true,
-            std::make_shared<ItemStack>(placeItem),
-        };
-    }
-
-    // 3. Native Block -> ItemInstance conversion
-    ItemInstance const gameItem{block};
-    if (!gameItem.isNull()) {
-        int const size = static_cast<int>(gameItem.getMaxStackSize());
-        return {
-            stripMinecraftFormatting(gameItem.getHoverName()),
-            gameItem.getTypeName(),
-            size > 0 ? size : 64,
-            true,
-            std::make_shared<ItemStack>(ItemStack::fromTag(*gameItem.save(SaveContext{}))),
-        };
-    }
-
-    return {};
 }
 
 PlacementItem resolvePlacementItem(Block const& block, CompoundTag const& nbt, Level& level) {

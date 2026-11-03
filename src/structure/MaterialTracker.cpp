@@ -84,8 +84,10 @@ std::string localizedBlockName(Block const& block, std::string_view localeCode) 
     if (auto* itemPtr = item.get()) {
         ItemStack itemStack;
         itemStack.reinit(*itemPtr, 1, 0);
-        auto const name = itemStack.getName();
-        if (!name.empty() && name != typeName) return name;
+        if (block::hasUsableItem(itemStack)) {
+            auto const name = itemStack.getName();
+            if (!name.empty() && name != typeName) return name;
+        }
     }
 
     auto const translationKey = block.buildDescriptionName();
@@ -258,7 +260,7 @@ std::vector<int> collectInventoryAvailability(
     auto& inventory = player.getInventory();
     for (int slot = 0; slot < kInventorySlots; ++slot) {
         auto const& item = inventory.getItem(slot);
-        if (!item.isNull()) inventoryItems[item.getTypeName()].push_back(&item);
+        if (block::hasUsableItem(item)) inventoryItems[item.getTypeName()].push_back(&item);
     }
 
     std::vector<int> available(requirements.size(), 0);
