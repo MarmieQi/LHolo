@@ -25,6 +25,9 @@
 #include "mc/deps/minecraft_renderer/renderer/BedrockTextureData.h"
 #include "mc/deps/minecraft_renderer/renderer/IsMissingTexture.h"
 #include "mc/world/actor/Actor.h"
+#include "mc/world/level/block/Block.h"
+#include "mc/world/level/block/BlockType.h"
+#include "mc/world/level/block/actor/BlockActorType.h"
 
 namespace lholo::projection::detail {
 namespace {
@@ -87,13 +90,12 @@ bool prepareProjectionState(
     state.initialCorrectionScan.reset(state.structure->renderBlocks.size());
     state.progressCorrect.resize(state.structure->renderBlocks.size(), 0);
     state.progressErrorKind.resize(state.structure->renderBlocks.size(), 0);
-    state.sourceProgress.resize(state.structure->sourceFiles.size());
-    for (auto const& block:state.structure->renderBlocks) if (block.sourceIndex>=0) {
-        auto& progress=state.sourceProgress[block.sourceIndex]; ++progress.total; ++progress.visibleTotal;
-    }
-    state.blockActorRendererAvailable = std::make_shared<std::vector<uchar>>(
-        state.structure->renderBlocks.size(), 0
-    );
+    std::unordered_set<Block const *> actorBlocks;
+    state.structure->renderBlocks.forEachStoredValue([&](auto const &cell) {
+        if (cell.block && cell.block->getBlockType().getBlockEntityType() != BlockActorType::Undefined)
+            actorBlocks.insert(cell.block);
+    });
+    state.fileProgress.total = state.fileProgress.visibleTotal = state.structure->renderBlocks.size();
     // Force the first render pass to build the transformed virtual-world lookup.
     state.cachedRotation = -1;
     state.cachedMirror = -1;
@@ -101,6 +103,8 @@ bool prepareProjectionState(
     std::vector<Vec3> centers;
     for (std::size_t index = 0; index < state.structure->renderBlocks.size(); ++index) {
         auto const& entry = state.structure->renderBlocks[index];
+        if (actorBlocks.contains(entry.block))
+            state.blockActorIndices.push_back(index);
         auto const key = std::tuple{entry.x / 16, entry.y / 16, entry.z / 16};
         auto [found, inserted] = state.localSectionIndices.try_emplace(
             key, state.sectionBlockIndices.size()

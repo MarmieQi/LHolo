@@ -2,7 +2,6 @@
 #include "structure/StructureLoader.h"
 #include "structure/LayerSettings.h"
 #include <array>
-#include <functional>
 #include <span>
 namespace lholo::structure {
 struct CompositionFile {
@@ -16,9 +15,7 @@ struct Composition {
     std::shared_ptr<LoadedStructure> loaded;
     std::array<int, 3> origin{};
 };
-using BlockTransform = std::function<Block const*(Block const*, int mirror, int rotation)>;
-// Normalize loaded source-file slices once, before either composition path.
+// Normalize loaded source-file slices once, before publishing the task view.
 // Unloaded files retain their settings until their dimensions are available.
 void normalizeCompositionLayers(std::span<CompositionFile> files);
-Composition composeTask(std::span<CompositionFile const>, BlockTransform const&);
 } // namespace lholo::structure

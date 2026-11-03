@@ -13,9 +13,6 @@
 #include "structure/IndependentTaskFiles.h"
 #include "structure/StructureUiState.h"
 #include "structure/formats/StructureFormatLoaders.h"
-#include "mc/world/level/block/states/VanillaBlockStateTransformUtils.h"
-#include "mc/util/Mirror.h"
-#include "mc/util/Rotation.h"
 #include <unordered_map>
 #include <limits>
 #include <algorithm>
@@ -260,16 +257,7 @@ bool startTaskComposition(std::string taskId, std::uint64_t revision, StructureL
                 }
                 result->errorFileId.clear();
                 normalizeCompositionLayers(result->files);
-                result->composition =
-                    composeTaskProjection(result->files, [](Block const* block, int mirror, int rotation) -> Block const* {
-                        if (!block || (mirror == 0 && rotation == 0))
-                            return block;
-                        constexpr Rotation rotations[]{Rotation::None, Rotation::Clockwise90,
-                                                       Rotation::Clockwise180, Rotation::CounterClockwise90};
-                        constexpr Mirror mirrors[]{Mirror::None, Mirror::Z, Mirror::X};
-                        return VanillaBlockStateTransformUtils::transformBlock(*block, rotations[rotation],
-                                                                               mirrors[mirror]);
-                    });
+                result->composition = composeTaskProjection(result->files);
                 std::array<int, 3> base{result->request.origin.x, result->request.origin.y,
                                         result->request.origin.z};
                 auto const& composed = *result->composition.loaded;

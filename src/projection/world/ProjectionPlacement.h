@@ -7,7 +7,11 @@
 #pragma once
 
 #include "structure/LayerDisplayTypes.h"
+#include <cstddef>
+#include <span>
+#include <unordered_set>
 
+class BlockActor;
 class BlockActorRenderDispatcher;
 class BlockSource;
 class LegacyStructureSettings;
@@ -28,6 +32,11 @@ struct ProjectionPlacementSettings {
     bool identityTransform{};
     bool resetCorrectionScan{};
 };
+
+void pairProjectedChests(BlockSource &, ProjectionState &,
+                         std::unordered_set<BlockActor const *> const *created = nullptr);
+void rebuildProjectedBlockActors(ProjectionState &, BlockActorRenderDispatcher &, LegacyStructureSettings const &,
+                                 ProjectionPlacementSettings const &, std::span<std::size_t const>, bool replaceAll);
 
 void rebuildProjectionPlacement(
     ProjectionState&                   state,

@@ -7,6 +7,7 @@
 
 #include "projection/core/ProjectionRules.h"
 #include "projection/core/ProjectionVisibilityRules.h"
+#include "structure/LayerVisibility.h"
 #include "structure/StructureTransform.h"
 #include <algorithm>
 
@@ -160,28 +161,9 @@ bool isLayerVisible(
     int secondaryMaterialIndex,
     structure::LayerAxis layerAxis
 ) {
-    if (layerAxis == structure::LayerAxis::Material) {
-        // Full material view is still a full projection view. Extra world
-        // blocks have no schematic material index, but correction must not
-        // disappear merely because the UI grouping is set to materials.
-        if (layerDisplayMode == structure::LayerDisplayMode::All) return true;
-        auto const materialVisible = [&](int index) {
-            if (index < 0) return false;
-            switch (layerDisplayMode) {
-            case structure::LayerDisplayMode::Single: return index == displayLayer;
-            case structure::LayerDisplayMode::UpToCurrent: return index <= displayLayer;
-            case structure::LayerDisplayMode::FromCurrent: return index >= displayLayer;
-            default: return true;
-            }
-        };
-        return materialVisible(materialIndex) || materialVisible(secondaryMaterialIndex);
-    }
-    switch (layerDisplayMode) {
-    case structure::LayerDisplayMode::Single: return layer == displayLayer;
-    case structure::LayerDisplayMode::UpToCurrent: return layer <= displayLayer;
-    case structure::LayerDisplayMode::FromCurrent: return layer >= displayLayer;
-    default: return true;
-    }
+    return structure::layerCellVisible(
+        {layerAxis, layerDisplayMode, displayLayer}, layerAxis == structure::LayerAxis::X ? layer : 0,
+        layerAxis == structure::LayerAxis::Y ? layer : 0, materialIndex, secondaryMaterialIndex);
 }
 
 } // namespace lholo::projection::detail

@@ -41,22 +41,10 @@ void ensureStructureBoundsMesh(
     Tessellator&     tessellator,
     int              rotationTurns
 ) {
-    // Cache 24 line vertices per visible file in one GPU batch. Bounds are
-    // independent of winner cells, slicing and the selected editor file.
+    // Each file owns its full local bounds, independent of overlap winners,
+    // slicing and the selected editor file.
     if (state.structureBoundsMesh) return;
 
-    if (state.structure->composed) {
-        std::vector<render::BoxWireframeBounds> boxes;
-        boxes.reserve(state.structure->sourceBounds.size());
-        for (auto const& bounds : state.structure->sourceBounds)
-            boxes.push_back({
-                {static_cast<float>(bounds.minimum[0]), static_cast<float>(bounds.minimum[1]),
-                 static_cast<float>(bounds.minimum[2])},
-                {static_cast<float>(bounds.maximum[0]), static_cast<float>(bounds.maximum[1]),
-                 static_cast<float>(bounds.maximum[2])}});
-        state.structureBoundsMesh = render::buildBoxWireframesMesh(tessellator, boxes, "LHoloFileBounds");
-        return;
-    }
 
     auto const rotated = rotationTurns == 1 || rotationTurns == 3;
     auto const width = static_cast<float>(
@@ -168,8 +156,10 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
                                      } else if (kind == CorrectionWorkKind::Loaded) {
                                          if (auto chunk = state.correctionSubChunks.front())
                                              return CorrectionPriority{0, distance(chunk->position, 16)};
+                                         if (!state.taskAirRefresh.empty())
+                                             return CorrectionPriority{0, fileDistances[file]};
                                      } else if (kind == CorrectionWorkKind::Initial) {
-                                         if (!state.correctionScan.empty())
+                                         if (!state.correctionScan.empty() || !state.taskSectionRefresh.empty())
                                              return CorrectionPriority{0, fileDistances[file]};
                                       } else if (!state.extraScan.complete()) {
                                          return CorrectionPriority{0, fileDistances[file]};
@@ -194,6 +184,8 @@ void processProjectionOpaqueFrames(ProjectionState& root, std::span<ProjectionFr
         if (changes.errors)
             publishErrorProgress(state.progressWrongTypeCount, state.progressWrongStateCount, state.progressExtraCount);
     }
+    if (root.structure->independentFiles)
+        invalidateIndependentFileNeighbors(root);
     auto micros = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(CorrectionFrameBudget::Clock::now() - started).count());
     ++root.correctionFrames;

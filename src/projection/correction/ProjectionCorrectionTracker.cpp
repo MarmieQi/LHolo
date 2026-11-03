@@ -113,8 +113,11 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
 
     auto const updateCorrection = [&](std::size_t index) {
         auto const& entry = state.structure->renderBlocks[index];
-        auto const visible = isLayerVisible(layerAxis == structure::LayerAxis::X ? entry.x : entry.y, layerDisplayMode,
-                                            displayLayer, entry.materialIndex, entry.liquidMaterialIndex, layerAxis);
+        auto const visible =
+            state.fileTransform
+                ? state.refreshTaskCellVisibility(index)
+                : isLayerVisible(layerAxis == structure::LayerAxis::X ? entry.x : entry.y, layerDisplayMode,
+                                 displayLayer, entry.materialIndex, entry.liquidMaterialIndex, layerAxis);
         auto const transformed = transformStructurePosition(entry, *state.structure, mirrorMode, rotationTurns);
         BlockPos const position{state.anchor.x + offsetX + transformed.x, state.anchor.y + offsetY + transformed.y,
                                 state.anchor.z + offsetZ + transformed.z};
@@ -179,19 +182,15 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
         auto const nowCorrect = nextState == CorrectionState::Correct;
         auto const previousState = state.correctionStates.get(index);
         auto const wasCorrect = previousState == CorrectionState::Correct;
-        if (nowCorrect != wasCorrect) {
-            if (entry.sourceIndex >= 0) {
-                auto& progress = state.sourceProgress[entry.sourceIndex];
-                if (nowCorrect) {
-                    ++progress.placed;
-                    if (visible)
-                        ++progress.visiblePlaced;
-                } else {
-                    --progress.placed;
-                    if (visible)
-                        --progress.visiblePlaced;
-                }
+        if (state.fileTransform) {
+            if (visible && nextState != previousState) {
+                removeTaskCellProgress(state.fileProgress, previousState);
+                addTaskCellProgress(state.fileProgress, nextState);
+                ++state.progressRevision;
             }
+            state.progressCorrect[index] = nowCorrect ? 1 : 0;
+        }
+        if (!state.fileTransform && nowCorrect != wasCorrect) {
             state.progressCorrect[index] = nowCorrect ? 1 : 0;
             ++state.progressRevision;
             if (nowCorrect)
@@ -211,18 +210,7 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
                                    : nextState == CorrectionState::WrongState ? uchar{2}
                                                                               : uchar{0};
         auto const previousErrorKind = state.progressErrorKind[index];
-        if (nextErrorKind != previousErrorKind) {
-            if (entry.sourceIndex >= 0) {
-                auto& progress = state.sourceProgress[entry.sourceIndex];
-                if (previousErrorKind == 1)
-                    --progress.wrongType;
-                if (previousErrorKind == 2)
-                    --progress.wrongState;
-                if (nextErrorKind == 1)
-                    ++progress.wrongType;
-                if (nextErrorKind == 2)
-                    ++progress.wrongState;
-            }
+        if (!state.fileTransform && nextErrorKind != previousErrorKind) {
             if (previousErrorKind == 1)
                 --state.progressWrongTypeCount;
             else if (previousErrorKind == 2)
@@ -231,9 +219,9 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
                 ++state.progressWrongTypeCount;
             else if (nextErrorKind == 2)
                 ++state.progressWrongStateCount;
-            state.progressErrorKind[index] = nextErrorKind;
             changes.errors = true;
         }
+        state.progressErrorKind[index] = nextErrorKind;
         state.initialCorrectionScan.record(index);
         // Store truth even in hidden layers; visibility only affects mesh
         // consumption. Their world events must still maintain total progress.
@@ -241,6 +229,8 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
         if (!visible)
             return;
         if (stateChanged) {
+            if (state.fileTransform)
+                state.taskNeighborChanges.emplace_back(position.x, position.y, position.z);
             bool models = correctionNeedsModelUpdate(previousState, nextState);
             markDirty(state.correctionStates.section(index), models);
             // A missing-cell shell omits faces shared with adjacent missing
@@ -263,18 +253,10 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
         bool empty = worldReader.empty(worldPosition);
         if (empty)
             ++state.correctionEmptyFastCells;
-        bool const isExtra = !empty && !region.getBlock(worldPosition).isAir();
+        bool const isExtra = !empty && !region.getBlock(worldPosition).isAir() &&
+                             state.worldLookup->ownsAir(std::tuple{worldPosition.x, worldPosition.y, worldPosition.z});
         auto const detected = state.detectedExtraBlockPositions.find(key);
         if (isExtra != (detected != state.detectedExtraBlockPositions.end())) {
-            auto source =
-                structure::coveringSource(*state.structure, localPosition.x, localPosition.y, localPosition.z);
-            if (source >= 0) {
-                auto& progress = state.sourceProgress[source];
-                if (isExtra)
-                    ++progress.extra;
-                else
-                    --progress.extra;
-            }
             if (isExtra) {
                 state.detectedExtraBlockPositions.insert(key);
                 ++state.detectedExtraSectionCounts[localSectionKey(localPosition)];
@@ -287,6 +269,8 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
                 --state.progressExtraCount;
             }
             changes.errors = true;
+            if (state.fileTransform)
+                state.fileProgress.extra = state.progressExtraCount;
         }
 
         bool const shouldRender = isExtra && visible;
@@ -312,6 +296,8 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
         // This cell is absent from the projected-world map. Native connection
         // tessellators can therefore read its real block through the fallback.
         markDirty(section, true);
+        if (state.fileTransform)
+            state.taskNeighborChanges.emplace_back(worldPosition.x, worldPosition.y, worldPosition.z);
         constexpr int neighbors[6][3] = {{-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}};
         for (auto const& delta : neighbors) {
             BlockPos const neighbor{
@@ -358,7 +344,7 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
         auto const& local = *localResult;
         auto found = findCell(local.x, local.y, local.z);
         if (found) {
-            if (destroyedAt)
+            if (destroyedAt && state.worldLookup->owns(*found))
                 state.pendingBrokenCells.push_back({world.x, world.y, world.z, destroyedAt});
             updateCorrection(*found);
         } else if (isStructureCellCovered(*state.structure, local)) {
@@ -377,6 +363,8 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
             checkWorld(BlockPos{event.position[0], event.position[1], event.position[2]}, event.destroyedAt, true);
         }
     } else if (work == CorrectionWorkKind::Loaded) {
+        if (state.correctionSubChunks.empty() && !state.taskAirRefresh.empty())
+            state.correctionSubChunks.push(state.taskAirRefresh.take());
         if (auto refresh = state.correctionSubChunks.front()) {
             auto limit = std::min(CorrectionQuantum, 4096 - refresh->cell);
             std::size_t processed{};
@@ -405,6 +393,16 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
             if (processed)
                 state.correctionSubChunks.advance(processed);
         }
+    } else if (work == CorrectionWorkKind::Initial && !state.taskSectionRefresh.empty()) {
+        auto section = state.taskSectionRefresh.section();
+        auto const &indices = state.sectionBlockIndices[section];
+        auto offset = state.taskSectionRefresh.offset();
+        auto limit = std::min(CorrectionQuantum, indices.size() - offset);
+        std::size_t processed{};
+        while (processed < limit && budget.tryConsume())
+            state.refreshTaskCellVisibility(indices[offset + processed++]);
+        if (processed)
+            state.taskSectionRefresh.advance(processed, indices.size());
     } else if (work == CorrectionWorkKind::Initial) {
         bool rotated = (rotationTurns & 1) != 0;
         auto relative = [](float camera, int anchor, int offset, int size) {

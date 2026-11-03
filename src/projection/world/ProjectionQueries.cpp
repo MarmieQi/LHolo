@@ -5,7 +5,6 @@
 
 #include "projection/core/ProjectionInternalTypes.h"
 #include "projection/core/ProjectionState.h"
-#include "structure/StructureSession.h"
 
 #include <algorithm>
 #include <cmath>
@@ -24,8 +23,6 @@ ProjectionQuery queryProjectionCell(
     auto const key = std::tuple{worldPosition.x, worldPosition.y, worldPosition.z};
     auto const foundIndex = state.worldLookup->indexAt(key);
     if (!foundIndex) return {nullptr, false};
-    if (state.structure->composed && state.structure->renderBlocks[*foundIndex].sourceIndex
-        != structure::detail::StructureSession::getInstance().selectedSourceFor(*state.structure)) return {nullptr,false};
     Block const* block = state.worldLookup->blockAt(key);
     // Liquids have no normal block item, so they are never a valid place target.
     if (block && block->getBlockType().mMaterial.mLiquid) block = nullptr;
@@ -39,7 +36,6 @@ std::vector<RangeCandidate> queryMissingProjectionCells(
     float                  radius
 ) {
     std::vector<RangeCandidate> result;
-    auto source=state.structure->composed ? structure::detail::StructureSession::getInstance().selectedSourceFor(*state.structure) : -1;
     // Only visit cells in the axis-aligned box around the center: with a small
     // radius this is far cheaper than walking the whole virtual-world map.
     int const r = static_cast<int>(std::ceil(radius));
@@ -56,8 +52,6 @@ std::vector<RangeCandidate> queryMissingProjectionCells(
                 auto const key = std::tuple{x, y, z};
                 auto const foundIndex = state.worldLookup->indexAt(key);
                 if (!foundIndex) continue;
-                if (state.structure->composed && state.structure->renderBlocks[*foundIndex].sourceIndex
-                    != source) continue;
                 if (state.renderCorrectionState(*foundIndex) != CorrectionState::Missing) continue;
                 float const dx = static_cast<float>(x) + 0.5f - center.x;
                 float const dy = static_cast<float>(y) + 0.5f - center.y;

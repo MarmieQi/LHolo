@@ -33,6 +33,19 @@ void markAllSectionsDirty(ProjectionState& state, bool incremental, bool models 
     }
 }
 
+void cacheSettings(ProjectionState &state, ProjectionInvalidationSettings const &settings) {
+    state.cachedRotation = settings.rotationTurns;
+    state.cachedMirror = settings.mirrorMode;
+    state.cachedOffsetX = settings.offsetX;
+    state.cachedOffsetY = settings.offsetY;
+    state.cachedOffsetZ = settings.offsetZ;
+    state.cachedLayerDisplayMode = settings.layerDisplayMode;
+    state.cachedDisplayLayer = settings.displayLayer;
+    state.cachedLayerAxis = settings.layerAxis;
+    state.cachedCorrectionFillOpacity = settings.correctionFillOpacity;
+    state.cachedCorrectionOutlineOpacity = settings.correctionOutlineOpacity;
+}
+
 } // namespace
 
 ProjectionInvalidationResult reconcileProjectionInvalidation(
@@ -53,6 +66,56 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         || std::abs(state.cachedCorrectionOutlineOpacity - settings.correctionOutlineOpacity) > 0.0001f;
     if (!result.geometryTransformChanged && !result.placementMoved && !result.layerChanged
         && !correctionStyleChanged) {
+        return result;
+    }
+
+    if (state.fileTransform) {
+        // Task files keep their source/section layout. Per-cell visibility and
+        // ownership refresh through resumable section jobs after publication.
+        bool const resetWorld = result.geometryTransformChanged || result.placementMoved;
+        if (resetWorld || correctionStyleChanged) {
+            for (std::size_t i = 0; i < state.sections.size(); ++i) {
+                bool models = result.geometryTransformChanged ||
+                              (result.placementMoved && (state.sections[i].worldOcclusionDependent ||
+                                                         state.correctionStates.sectionHasResolvedCells(i)));
+                markSectionDirty(state, i, false, models);
+                if (!resetWorld)
+                    continue;
+                state.warningFillSectionMeshes[i].reset();
+                state.correctionOutlineSectionMeshes[i].reset();
+                state.wrongFillSectionMeshes[i].reset();
+                state.wrongOutlineSectionMeshes[i].reset();
+                state.sectionExtraBlockPositions[i].clear();
+                if (result.geometryTransformChanged) {
+                    for (auto &mesh : state.sections[i].meshes)
+                        mesh.reset();
+                    state.sections[i].residentBytes = 0;
+                    state.blockEntityPlaceholderSectionMeshes[i].reset();
+                }
+            }
+        }
+        if (result.geometryTransformChanged || result.placementMoved) {
+            state.correctionStates.fill(CorrectionState::Missing);
+            state.fileProgress.placed = state.fileProgress.visiblePlaced = 0;
+            state.fileProgress.wrongType = state.fileProgress.wrongState = state.fileProgress.extra = 0;
+            state.progressExtraCount = 0;
+            state.detectedExtraBlockPositions.clear();
+            state.detectedExtraSectionCounts.clear();
+            state.extraBlockPositions.clear();
+            state.taskAirRefresh.clear();
+            state.extraScan.reset();
+            if (result.geometryTransformChanged) {
+                state.transparentSections.clear();
+                state.transparentCache = {};
+                state.structureBoundsMesh.reset();
+            }
+            ++state.drawMeshRevision;
+        }
+        if (result.placementViewChanged()) {
+            state.hasResidencyCamera = false;
+            ++state.progressRevision;
+        }
+        cacheSettings(state, settings);
         return result;
     }
 
@@ -122,16 +185,7 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
     if (result.placementViewChanged()) {
         state.hasResidencyCamera = false;
     }
-    state.cachedRotation = settings.rotationTurns;
-    state.cachedMirror = settings.mirrorMode;
-    state.cachedOffsetX = settings.offsetX;
-    state.cachedOffsetY = settings.offsetY;
-    state.cachedOffsetZ = settings.offsetZ;
-    state.cachedLayerDisplayMode = settings.layerDisplayMode;
-    state.cachedDisplayLayer = settings.displayLayer;
-    state.cachedLayerAxis = settings.layerAxis;
-    state.cachedCorrectionFillOpacity = settings.correctionFillOpacity;
-    state.cachedCorrectionOutlineOpacity = settings.correctionOutlineOpacity;
+    cacheSettings(state, settings);
 
     if (result.placementViewChanged()) {
         state.detectedExtraBlockPositions.clear();
@@ -139,7 +193,6 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         state.extraBlockPositions.clear();
         for (auto& positions : state.sectionExtraBlockPositions) positions.clear();
         state.progressExtraCount = 0;
-        for (auto& p:state.sourceProgress) p.extra=0;
         state.extraScan.reset();
         markAllSectionsDirty(state, false);
         publishErrorProgress(
@@ -170,7 +223,6 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         ++state.progressRevision;
         std::fill(state.progressErrorKind.begin(), state.progressErrorKind.end(), 0);
         state.progressCorrectCount = 0;
-        for (auto& p:state.sourceProgress) { p.placed=0; p.visiblePlaced=0; p.wrongType=0; p.wrongState=0; p.extra=0; }
         state.progressVisibleCorrectCount = 0;
         state.progressWrongTypeCount = 0;
         state.progressWrongStateCount = 0;
@@ -180,20 +232,11 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
 
     if (result.geometryTransformChanged || result.layerChanged) {
         state.progressVisibleCorrectCount = 0;
-        for (auto& progress : state.sourceProgress) {
-            progress.visibleTotal = 0;
-            progress.visiblePlaced = 0;
-        }
         std::uint64_t visibleTotal{};
         for (std::size_t index = 0; index < state.structure->renderBlocks.size(); ++index) {
             auto const& entry = state.structure->renderBlocks[index];
             if (!layerIsVisible(entry)) continue;
             ++visibleTotal;
-            if (entry.sourceIndex >= 0) {
-                auto& progress = state.sourceProgress[entry.sourceIndex];
-                ++progress.visibleTotal;
-                if (state.progressCorrect[index] != 0) ++progress.visiblePlaced;
-            }
             if (state.progressCorrect[index] != 0) {
                 ++state.progressVisibleCorrectCount;
             }

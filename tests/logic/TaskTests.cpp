@@ -1,11 +1,13 @@
-#include "structure/TaskComposer.h"
+#include "TaskComposerOracle.h"
+#include "nlohmann/json.hpp"
+#include "oreui/TaskProtocol.h"
 #include "structure/IndependentTaskFiles.h"
 #include "structure/StructureSession.h"
+#include "structure/TaskComposer.h"
+#include "structure/TaskProjectionView.h"
 #include "tasks/TaskCatalog.h"
 #include "tasks/TaskStore.h"
 #include "tasks/TaskStoreWriter.h"
-#include "oreui/TaskProtocol.h"
-#include "nlohmann/json.hpp"
 #include <cstdio>
 #include <fstream>
 #include <set>
@@ -54,17 +56,19 @@ int runTaskTests() {
         source->regions = {{0, 0, 0, 12, 34, 7}};
         slices[0].slice = {structure::LayerAxis::Y, structure::LayerDisplayMode::Single, 88};
         structure::normalizeCompositionLayers(slices);
-        auto independent = structure::composeTaskProjection(slices, [](Block const* b, int, int) { return b; });
+        auto independent = structure::composeTaskProjection(slices);
         check(independent.loaded->independentFiles
             && independent.loaded->independentFiles->files[0].slice.layer == 33,
             "independent projection receives the corrected layer before publication");
         auto empty = std::make_shared<structure::LoadedStructure>();
         empty->sizeX = empty->sizeY = empty->sizeZ = 1;
         slices.push_back({"overlap", empty, true});
-        auto composed = structure::composeTaskProjection(slices, [](Block const* b, int, int) { return b; });
-        check(!composed.loaded->independentFiles && composed.loaded->renderBlocks.size() == 1
-            && composed.loaded->renderBlocks[0].block == stone,
-            "overlapping composition keeps the final valid layer instead of filtering the source away");
+        auto composed = structure::composeTaskProjection(slices);
+        structure::TaskProjectionView view(slices);
+        auto owner = view.ownerAt(0, {0, 33, 0});
+        check(composed.loaded->independentFiles && composed.loaded->renderBlocks.empty() && owner && owner->file == 0 &&
+                  owner->index == 0,
+              "overlapping independent view keeps the final valid layer");
     }
     auto first = std::make_shared<structure::LoadedStructure>();
     first->sizeX = 3;
@@ -87,7 +91,7 @@ int runTaskTests() {
         return p;
     };
     auto result = structure::composeTask(files, copy);
-    auto boundsInTask = [](structure::Composition const& composition, std::size_t index) {
+    auto boundsInTask = [](structure::OracleComposition const &composition, std::size_t index) {
         auto const& bounds = composition.loaded->sourceBounds.at(index);
         return std::array<long long, 6>{bounds.minimum[0] + composition.origin[0],
             bounds.minimum[1] + composition.origin[1], bounds.minimum[2] + composition.origin[2],

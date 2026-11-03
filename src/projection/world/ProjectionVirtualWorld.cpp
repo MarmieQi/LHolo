@@ -72,6 +72,8 @@ Block const* findTessellationBlock(BlockPos const& position) {
 }
 
 BlockActor const* findTessellationBlockActor(BlockPos const& position) {
+    if (gTessellationBlocks && gTessellationBlocks->task())
+        return gTessellationBlocks->taskActorAt(std::tuple{position.x, position.y, position.z});
     if (!gTessellationBlockActors) return nullptr;
     auto const found = gTessellationBlockActors->find(
         std::tuple{position.x, position.y, position.z}

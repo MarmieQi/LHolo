@@ -1,9 +1,14 @@
 #include "projection/runtime/IndependentFileProjection.h"
+#include "mc/client/game/IClientInstance.h"
+#include "mc/client/player/LocalPlayer.h"
+#include "mc/client/renderer/BaseActorRenderContext.h"
 #include "projection/core/ProjectionState.h"
+#include "projection/core/ProjectionWorldBounds.h"
 #include "projection/runtime/ProjectionLifecycle.h"
+#include "projection/world/ProjectionPlacement.h"
+#include "projection/world/ProjectionTaskBlockActors.h"
 #include "structure/IndependentTaskFiles.h"
 #include "structure/StructureGeneration.h"
-#include "projection/core/ProjectionWorldBounds.h"
 
 namespace lholo::projection::detail {
 namespace {
@@ -54,6 +59,122 @@ bool updateIndependentFiles(ProjectionState& root, BaseActorRenderContext& conte
     root.structureGeneration = loaded->generation;
     return true;
 }
+void publishIndependentFileViews(ProjectionState &root, BaseActorRenderContext &context) {
+    auto definitions = root.structure->independentFiles->files;
+    for (auto const &file : root.files) {
+        auto it =
+            std::find_if(definitions.begin(), definitions.end(), [&](auto const &f) { return f.id == file->fileId; });
+        auto const &t = *file->fileTransform;
+        it->x = root.anchor.x + t.offsetX;
+        it->y = root.anchor.y + t.offsetY;
+        it->z = root.anchor.z + t.offsetZ;
+        it->rotation = t.rotation;
+        it->mirror = t.mirror;
+        it->slice = {*file->cachedLayerAxis, *file->cachedLayerDisplayMode, file->cachedDisplayLayer};
+    }
+    if (root.taskWorld && root.taskWorld->placements->matches(definitions))
+        return;
+    auto placements = std::make_shared<structure::TaskProjectionView const>(definitions);
+    auto next = std::make_shared<TaskWorldLookups>();
+    next->placements = placements;
+    next->files.resize(definitions.size());
+    next->actors.resize(definitions.size());
+    std::vector<std::weak_ptr<ProjectionState>> runtimes(definitions.size());
+    for (auto const &file : root.files) {
+        auto index = *placements->fileIndex(file->fileId);
+        next->files[index] = file->localWorldLookup;
+        next->actors[index] = file->expectedWorldBlockActors;
+        runtimes[index] = file;
+    }
+    auto createdActors = refreshTaskBlockActors(root, context, *next);
+    for (auto const &file : root.files) {
+        auto index = *placements->fileIndex(file->fileId);
+        file->worldLookup = file->localWorldLookup->withTask(next, index);
+        file->taskRuntimeFiles = runtimes;
+        auto changed = placements->changedBounds(index, root.taskWorld ? root.taskWorld->placements.get() : nullptr);
+        if (changed.empty())
+            continue;
+        ++file->progressRevision;
+        file->hasResidencyCamera = false;
+        auto previous = root.taskWorld ? root.taskWorld->placements->fileIndex(file->fileId) : std::nullopt;
+        bool ownWorldChanged = !previous;
+        if (previous) {
+            auto const &old = root.taskWorld->placements->files()[*previous];
+            auto const &current = definitions[index];
+            ownWorldChanged = old.loaded != current.loaded || old.x != current.x || old.y != current.y ||
+                              old.z != current.z || old.rotation != current.rotation || old.mirror != current.mirror;
+        }
+        std::vector<std::size_t> affected;
+        for (auto const &world : changed) {
+            auto local = placements->localIntersection(index, world);
+            if (local.empty())
+                continue;
+            visitTaskSections(local, file->localSectionKeys, file->localSectionIndices,
+                              [&](std::size_t section) { affected.push_back(section); });
+            // Its own move already restarts that file's air scan. Unchanged
+            // neighbors revisit only old/new interactions through the work lane.
+            if (!ownWorldChanged)
+                file->taskAirRefresh.request(world);
+        }
+        std::sort(affected.begin(), affected.end());
+        affected.erase(std::unique(affected.begin(), affected.end()), affected.end());
+        for (auto section : affected) {
+            auto &value = file->sections[section];
+            value.dirty = value.modelDirty = value.incrementalDirty = value.interactiveDirty = true;
+            value.biomeRefresh = {};
+            ++value.requestedRevision;
+            if (!file->sectionBlockIndices[section].empty() && !ownWorldChanged)
+                file->taskSectionRefresh.request(section);
+        }
+    }
+    // Pair only fresh objects. Unchanged actors may still be read by old
+    // workers and must never acquire pointers into this new version.
+    if (!createdActors.empty()) {
+        auto &region = context.mClientInstance.getLocalPlayer()->getDimensionBlockSource();
+        for (auto const &file : root.files)
+            pairProjectedChests(region, *file, &createdActors);
+    }
+    root.taskWorld = std::move(next);
+}
+
+void invalidateIndependentFileNeighbors(ProjectionState &root) {
+    constexpr int neighbors[6][3]{{-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}};
+    for (auto const &source : root.files) {
+        if (source->taskNeighborChanges.empty())
+            continue;
+        std::sort(source->taskNeighborChanges.begin(), source->taskNeighborChanges.end());
+        auto end = std::unique(source->taskNeighborChanges.begin(), source->taskNeighborChanges.end());
+        auto index = source->worldLookup->fileIndex();
+        for (auto foreign : root.taskWorld->placements->neighbors(index)) {
+            if (foreign == index)
+                continue;
+            auto target = source->taskRuntimeFiles[foreign].lock();
+            assert(target);
+            std::vector<std::size_t> sections;
+            for (auto it = source->taskNeighborChanges.begin(); it != end; ++it) {
+                auto [x, y, z] = *it;
+                for (auto const &d : neighbors) {
+                    auto local = root.taskWorld->placements->localCell(foreign, {x + d[0], y + d[1], z + d[2]});
+                    if (!local)
+                        continue;
+                    auto found =
+                        target->localSectionIndices.find({(*local)[0] / 16, (*local)[1] / 16, (*local)[2] / 16});
+                    if (found != target->localSectionIndices.end())
+                        sections.push_back(found->second);
+                }
+            }
+            std::sort(sections.begin(), sections.end());
+            sections.erase(std::unique(sections.begin(), sections.end()), sections.end());
+            for (auto section : sections) {
+                auto &value = target->sections[section];
+                value.dirty = value.modelDirty = value.incrementalDirty = true;
+                ++value.requestedRevision;
+            }
+        }
+        source->taskNeighborChanges.clear();
+    }
+}
+
 void distributeIndependentFileEvents(ProjectionState& root,
     std::span<CorrectionEventBatch const> changes, std::span<SubChunkKey const> chunks) {
     for (auto& file : root.files) {

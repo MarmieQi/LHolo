@@ -485,7 +485,7 @@ void renderProjectionFrame(BaseActorRenderContext& renderContext, bool renderAlp
                                 for (int axis=0;axis<3;++axis)
                                     if (origin[axis]<std::numeric_limits<int>::min()
                                         || origin[axis]+extent[axis]-1>std::numeric_limits<int>::max()) fits=false;
-                                if (fits && structure::independentTaskPlacement(candidate,state.structure->independentFiles->files))
+                                if (fits)
                                     selected->fileTransform=live;
                             }
                         }
@@ -495,6 +495,7 @@ void renderProjectionFrame(BaseActorRenderContext& renderContext, bool renderAlp
                         targets.reserve(state.files.size());
                         for (auto const& file : state.files)
                             if (auto target = prepareProjectionOpaqueFrame(*file, renderContext)) targets.push_back(std::move(*target));
+                        publishIndependentFileViews(state, renderContext);
                         processProjectionOpaqueFrames(state, targets, renderContext, renderCameraPosition(renderContext));
                         for (auto const& target : targets) renderProjection(*target.state, renderContext, false);
                     } else {

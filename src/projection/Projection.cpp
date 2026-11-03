@@ -101,18 +101,13 @@ bool isDimensionSuspended() {
 }
 
 BuildProgress getBuildProgress() {
-    return detail::ProjectionSession::getInstance().withLockedState([](detail::ProjectionState& state, overlay::BoundsWireframe&) {
-        if (!state.enabled || !state.structure || !state.structure->composed) return detail::getPublishedBuildProgress();
-        if (state.structure->independentFiles) {
-            auto* file=detail::selectedFileProjection(state);
-            if (!file) return BuildProgress{};
-            return BuildProgress{file->progressCorrectCount,file->structure->renderBlocks.size(),
-                file->progressVisibleCorrectCount,file->progressVisibleTotal,
-                file->progressWrongTypeCount,file->progressWrongStateCount,file->progressExtraCount};
-        }
-        auto source=structure::detail::StructureSession::getInstance().selectedSourceFor(*state.structure);
-        return source>=0 && source<static_cast<int>(state.sourceProgress.size()) ? state.sourceProgress[source] : BuildProgress{};
-    });
+    return detail::ProjectionSession::getInstance().withLockedState(
+        [](detail::ProjectionState &state, overlay::BoundsWireframe &) {
+            if (!state.enabled || !state.structure || !state.structure->independentFiles)
+                return detail::getPublishedBuildProgress();
+            auto *file = detail::selectedFileProjection(state);
+            return file ? file->fileProgress : BuildProgress{};
+        });
 }
 
 std::optional<MaterialProgressKey> getMaterialProgressKey() {
@@ -122,9 +117,8 @@ std::optional<MaterialProgressKey> getMaterialProgressKey() {
             auto* selected=detail::selectedFileProjection(root);
             if (!root.enabled || !selected) return std::nullopt;
             auto& state=*selected;
-            if (!state.enabled || !state.structure
-                || !state.cachedLayerDisplayMode || !state.cachedLayerAxis
-                || !state.initialCorrectionScan.complete()) {
+            if (!state.enabled || !state.structure || !state.cachedLayerDisplayMode || !state.cachedLayerAxis ||
+                !state.initialCorrectionScan.complete() || !state.taskSectionRefresh.empty()) {
                 return std::nullopt;
             }
             return MaterialProgressKey{
@@ -134,7 +128,6 @@ std::optional<MaterialProgressKey> getMaterialProgressKey() {
                 *state.cachedLayerDisplayMode,
                 state.cachedDisplayLayer,
                 *state.cachedLayerAxis,
-                state.structure->composed ? structure::detail::StructureSession::getInstance().selectedSourceFor(*state.structure) : -1,
             };
         }
     );
@@ -149,17 +142,17 @@ std::optional<MaterialProgressSnapshot> captureMaterialProgress(
             auto* selected=detail::selectedFileProjection(root);
             if (!root.enabled || !selected) return std::nullopt;
             auto& state=*selected;
-            auto const matches = state.enabled && state.structure
-                && state.initialCorrectionScan.complete()
-                && state.structureGeneration == expected.structureGeneration
-                && state.activationGeneration == expected.activationGeneration
-                && state.progressRevision == expected.progressRevision
-                && state.cachedLayerDisplayMode == expected.layerDisplayMode
-                && state.cachedDisplayLayer == expected.displayLayer
-                && state.cachedLayerAxis == expected.layerAxis
-                && (!state.structure->composed || structure::detail::StructureSession::getInstance().selectedSourceFor(*state.structure)==expected.selectedSource);
+            auto const matches = state.enabled && state.structure && state.initialCorrectionScan.complete() &&
+                                 state.structureGeneration == expected.structureGeneration &&
+                                 state.activationGeneration == expected.activationGeneration &&
+                                 state.progressRevision == expected.progressRevision &&
+                                 state.cachedLayerDisplayMode == expected.layerDisplayMode &&
+                                 state.cachedDisplayLayer == expected.displayLayer &&
+                                 state.cachedLayerAxis == expected.layerAxis;
             if (!matches) return std::nullopt;
-            return MaterialProgressSnapshot{expected, state.structure, state.progressCorrect};
+            auto task = state.worldLookup->task();
+            return MaterialProgressSnapshot{expected, state.structure, state.progressCorrect,
+                                            task ? task->placements : nullptr, state.worldLookup->fileIndex()};
         }
     );
 }

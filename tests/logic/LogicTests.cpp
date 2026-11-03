@@ -43,6 +43,7 @@ int runCaptureFacetLifetimeTests();
 int runNativeHudTests();
 int runTaskTests();
 int runIndependentTaskFilesTests();
+int runTaskProjectionViewTests();
 int runTaskActionsTests();
 int runStructurePreviewTests();
 int runStructureReadQueueTests();
@@ -1031,6 +1032,7 @@ int main(int argc, char** argv) {
     LHOLO_CHECK(runNativeHudTests() == 0);
     LHOLO_CHECK(runTaskTests() == 0);
     LHOLO_CHECK(runIndependentTaskFilesTests() == 0);
+    LHOLO_CHECK(runTaskProjectionViewTests() == 0);
     LHOLO_CHECK(runTaskActionsTests() == 0);
     LHOLO_CHECK(runStructurePreviewTests() == 0);
     LHOLO_CHECK(runStructureReadQueueTests() == 0);

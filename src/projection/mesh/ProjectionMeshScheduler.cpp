@@ -216,7 +216,41 @@ void scheduleProjectionMeshBuild(ProjectionState& state, Tessellator& tessellato
         snapshot->extraBlockPositions.insert(positions.begin(), positions.end());
     }
     snapshot->correctionSnapshot.emplace(state.correctionStates.capture(correctionSections));
-    snapshot->worldLookup = state.worldLookup;
+    auto sectionWorld = projectionSectionCellWorldBounds(state.localSectionKeys[section], *state.structure,
+                                                         {static_cast<long long>(state.anchor.x) + settings.offsetX,
+                                                          static_cast<long long>(state.anchor.y) + settings.offsetY,
+                                                          static_cast<long long>(state.anchor.z) + settings.offsetZ},
+                                                         settings.mirrorMode, settings.rotationTurns, 2);
+    snapshot->worldLookup = state.worldLookup->forSection({sectionWorld.minimum, sectionWorld.maximum});
+    if (auto const &task = state.worldLookup->task()) {
+        auto self = state.worldLookup->fileIndex();
+        auto const &box = sectionWorld;
+        for (auto foreign : snapshot->worldLookup->candidateFiles()) {
+            if (foreign == self)
+                continue;
+            auto local = task->placements->localIntersection(foreign, {box.minimum, box.maximum});
+            if (local.empty())
+                continue;
+            auto other = state.taskRuntimeFiles[foreign].lock();
+            assert(other);
+            std::vector<std::size_t> pages;
+            for (int x = static_cast<int>(local.minimum[0] / 16); x <= (local.maximum[0] - 1) / 16; ++x)
+                for (int y = static_cast<int>(local.minimum[1] / 16); y <= (local.maximum[1] - 1) / 16; ++y)
+                    for (int z = static_cast<int>(local.minimum[2] / 16); z <= (local.maximum[2] - 1) / 16; ++z) {
+                        auto it = other->localSectionIndices.find({x, y, z});
+                        if (it != other->localSectionIndices.end())
+                            pages.push_back(it->second);
+                    }
+            ProjectionState::NeighborCorrection captured{foreign, other->correctionStates.capture(pages), {}};
+            for (auto page : pages)
+                for (auto const &[x, y, z] : other->sectionExtraBlockPositions[page]) {
+                    auto p = task->placements->worldCell(foreign, structure::StructureBlock{x, y, z});
+                    captured.extrasWorld.emplace(static_cast<int>(p[0]), static_cast<int>(p[1]),
+                                                 static_cast<int>(p[2]));
+                }
+            snapshot->neighborCorrections.push_back(std::move(captured));
+        }
+    }
     snapshot->expectedWorldBlockActors = state.expectedWorldBlockActors;
     snapshot->sections.resize(1);
     snapshot->sections[0].meshBounds = state.sections[section].meshBounds;
@@ -273,6 +307,8 @@ void scheduleProjectionMeshBuild(ProjectionState& state, Tessellator& tessellato
         result.section = section;
         result.snapshotPrepareMicros = snapshotPrepareMicros;
         result.correctionSnapshotBytes = snapshot->correctionSnapshot->retainedBytes();
+        for (auto const &neighbor : snapshot->neighborCorrections)
+            result.correctionSnapshotBytes += neighbor.states.retainedBytes();
         result.snapshotDataMicros = snapshotDataMicros;
         result.chunkViewMicros = chunkViewMicros;
         auto const workerStarted = std::chrono::steady_clock::now();

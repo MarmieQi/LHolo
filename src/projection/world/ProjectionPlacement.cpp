@@ -38,9 +38,8 @@
 #include "mc/world/level/levelgen/structure/LegacyStructureSettings.h"
 
 namespace lholo::projection::detail {
-namespace {
-
-void pairProjectedChests(BlockSource& region, ProjectionState& state) {
+void pairProjectedChests(BlockSource &region, ProjectionState &state,
+                         std::unordered_set<BlockActor const *> const *created) {
     constexpr std::array<std::pair<int, int>, 4> horizontalNeighbors{{
         {-1, 0},
         {1, 0},
@@ -51,19 +50,26 @@ void pairProjectedChests(BlockSource& region, ProjectionState& state) {
     ScopedTessellationBlocks projectedWorld{
         *state.worldLookup, *state.expectedWorldBlockActors
     };
+    ScopedRegionWriteSuppression noWorldWrites;
     for (auto const& [key, actor] : *state.expectedWorldBlockActors) {
+        if (created && !created->contains(actor.get()))
+            continue;
         if (actor->mType != BlockActorType::Chest) continue;
+        if (!state.worldLookup->indexAt(key))
+            continue;
         auto* chest = static_cast<ChestBlockActor*>(actor.get());
         if (chest->mLargeChestPaired != nullptr) continue;
 
         auto const [x, y, z] = key;
         for (auto const [dx, dz] : horizontalNeighbors) {
             BlockPos const neighbor{x + dx, y, z + dz};
-            auto const found = state.expectedWorldBlockActors->find(
-                std::tuple{neighbor.x, neighbor.y, neighbor.z}
-            );
-            if (found == state.expectedWorldBlockActors->end()
-                || found->second->mType != BlockActorType::Chest) {
+            auto *found = state.worldLookup->task()
+                              ? state.worldLookup->taskActorAt(std::tuple{neighbor.x, neighbor.y, neighbor.z})
+                              : [&]() -> BlockActor const * {
+                auto it = state.expectedWorldBlockActors->find(std::tuple{neighbor.x, neighbor.y, neighbor.z});
+                return it == state.expectedWorldBlockActors->end() ? nullptr : it->second.get();
+            }();
+            if (!found || found->mType != BlockActorType::Chest || (created && !created->contains(found))) {
                 continue;
             }
 
@@ -73,48 +79,21 @@ void pairProjectedChests(BlockSource& region, ProjectionState& state) {
     }
 }
 
-} // namespace
-
-void rebuildProjectionPlacement(
-    ProjectionState&                   state,
-    BlockSource&                       region,
-    BlockActorRenderDispatcher&        dispatcher,
-    LegacyStructureSettings const&     transformSettings,
-    ProjectionPlacementSettings const& settings
-) {
-    ++state.drawMeshRevision; // invalidate before mutating layout/centers
-    for (auto& section : state.sections) section.biomeRefresh = {};
-    state.biomeRefreshCursor = state.biomeRefreshVisibleCursor = 0;
-    // A moved placement keeps local GPU geometry. The immutable coordinate
-    // view follows the new origin without allocating per-cell world maps.
-    state.blockTessellator = std::make_unique<BlockTessellator>(&region);
-
-    // Publish a new immutable virtual-world version. In-flight workers keep
-    // the previous view alive without observing a partially rebuilt placement.
-    auto const totalBlocks = state.structure->renderBlocks.size();
-    ProjectionWorldLookup::BlockTransforms transformedBlocks;
-    state.structure->renderBlocks.forEachStoredValue([&](auto const& cell) {
-        for (auto value : {cell.block, cell.liquid}) {
-            if (!value || transformedBlocks.contains(value)) continue;
-            transformedBlocks.emplace(value, transformExpectedBlock(value, transformSettings, settings.identityTransform));
-        }
-    });
-    state.worldLookup = std::make_shared<ProjectionWorldLookup>(state.structure,
-        std::array<long long, 3>{static_cast<long long>(state.anchor.x) + settings.offsetX,
-                                static_cast<long long>(state.anchor.y) + settings.offsetY,
-                                static_cast<long long>(state.anchor.z) + settings.offsetZ},
-        settings.mirrorMode, settings.rotationTurns,
-        structure::LayerSettings{settings.layerAxis,settings.layerDisplayMode,settings.displayLayer},
-        std::move(transformedBlocks));
-    state.expectedWorldBlockActors = std::make_shared<ExpectedBlockActorMap>();
-    state.projectedBlockActors.clear();
-    // Workers retain the previous immutable availability version while layout
-    // changes publish a fresh one, just like the coordinate view above.
-    state.blockActorRendererAvailable = std::make_shared<std::vector<uchar>>(totalBlocks, 0);
-    std::vector<Vec3> centerSums(state.sections.size(), Vec3{});
-    std::vector<std::size_t> centerCounts(state.sections.size(), 0);
-
-    for (std::size_t index = 0; index < state.structure->renderBlocks.size(); ++index) {
+void rebuildProjectedBlockActors(ProjectionState &state, BlockActorRenderDispatcher &dispatcher,
+                                 LegacyStructureSettings const &transformSettings,
+                                 ProjectionPlacementSettings const &settings, std::span<std::size_t const> indices,
+                                 bool replaceAll) {
+    auto actors = replaceAll ? std::make_shared<ExpectedBlockActorMap>()
+                             : std::make_shared<ExpectedBlockActorMap>(*state.expectedWorldBlockActors);
+    auto available = replaceAll ? std::make_shared<std::unordered_set<std::size_t>>()
+                                : std::make_shared<std::unordered_set<std::size_t>>(*state.blockActorRendererAvailable);
+    if (replaceAll) {
+        state.projectedBlockActors.clear();
+    } else {
+        std::unordered_set<std::size_t> replacing(indices.begin(), indices.end());
+        std::erase_if(state.projectedBlockActors, [&](auto const &p) { return replacing.contains(p.structureIndex); });
+    }
+    for (auto index : indices) {
         auto const& entry = state.structure->renderBlocks[index];
         auto const visible = isLayerVisible(
             settings.layerAxis == structure::LayerAxis::X ? entry.x : entry.y,
@@ -124,7 +103,6 @@ void rebuildProjectionPlacement(
             entry.liquidMaterialIndex,
             settings.layerAxis
         );
-        state.correctionStates.setVisible(index, visible);
         if (!visible) continue;
         auto const transformed = transformStructurePosition(
             entry, *state.structure, settings.mirrorMode, settings.rotationTurns
@@ -138,50 +116,76 @@ void rebuildProjectionPlacement(
             state.anchor.z + settings.offsetZ + transformed.z
         };
         auto const worldKey = std::tuple{worldPosition.x, worldPosition.y, worldPosition.z};
-        if (transformedBlock) {
-            if (transformedBlock->getBlockType().getBlockEntityType() != BlockActorType::Undefined) {
-                auto blockActor = VanillaBlockActorFactory::createBlockActor(
-                    worldPosition, transformedBlock->getBlockType()
-                );
-                if (blockActor) {
-                    if (entry.blockEntityNbt) {
-                        NewUniqueIdsDataLoadHelper dataLoadHelper;
-                        dataLoadHelper.mLevel = state.level;
-                        blockActor->load(*state.level, *entry.blockEntityNbt, dataLoadHelper);
-                        blockActor->mPosition = worldPosition;
-                    }
-                    auto* actor = blockActor.get();
-                    state.expectedWorldBlockActors->emplace(worldKey, std::move(blockActor));
-                    auto* renderComponent = actor->_getRenderComponent();
-                    if (renderComponent
-                        && dispatcher.mRenderers.get()[renderComponent->getRendererId()]) {
-                        state.projectedBlockActors.push_back({
-                            worldPosition, transformedBlock, actor, index
-                        });
-                        (*state.blockActorRendererAvailable)[index] = 1;
-                    }
-                }
+        actors->erase(worldKey);
+        available->erase(index);
+        auto blockActor = VanillaBlockActorFactory::createBlockActor(worldPosition, transformedBlock->getBlockType());
+        if (blockActor) {
+            if (entry.blockEntityNbt) {
+                NewUniqueIdsDataLoadHelper dataLoadHelper;
+                dataLoadHelper.mLevel = state.level;
+                blockActor->load(*state.level, *entry.blockEntityNbt, dataLoadHelper);
+                blockActor->mPosition = worldPosition;
+            }
+            auto *actor = blockActor.get();
+            actors->insert_or_assign(worldKey, std::move(blockActor));
+            auto *renderComponent = actor->_getRenderComponent();
+            if (renderComponent && dispatcher.mRenderers.get()[renderComponent->getRendererId()]) {
+                state.projectedBlockActors.push_back({worldPosition, transformedBlock, actor, index});
+                available->insert(index);
             }
         }
-        auto const section = state.correctionStates.section(index);
-        centerSums[section] += Vec3{
-            static_cast<float>(transformed.x) + 0.5f,
-            static_cast<float>(transformed.y) + 0.5f,
-            static_cast<float>(transformed.z) + 0.5f
-        };
-        ++centerCounts[section];
     }
 
-    pairProjectedChests(region, state);
-    for (std::size_t section = 0; section < state.sections.size(); ++section) {
-        state.sections[section].buildBounds = projectionSectionBounds(
-            state.localSectionKeys[section], *state.structure, settings.mirrorMode, settings.rotationTurns
-        );
-        if (centerCounts[section] != 0) {
-            state.sections[section].center
-                = centerSums[section] / static_cast<float>(centerCounts[section]);
-        }
+    state.expectedWorldBlockActors = std::move(actors);
+    state.blockActorRendererAvailable = std::move(available);
+}
+
+void rebuildProjectionPlacement(ProjectionState &state, BlockSource &region, BlockActorRenderDispatcher &dispatcher,
+                                LegacyStructureSettings const &transformSettings,
+                                ProjectionPlacementSettings const &settings) {
+    ++state.drawMeshRevision; // invalidate before mutating layout/centers
+    for (auto &section : state.sections)
+        section.biomeRefresh = {};
+    state.biomeRefreshCursor = state.biomeRefreshVisibleCursor = 0;
+    // A moved placement keeps local GPU geometry. The immutable coordinate
+    // view follows the new origin without allocating per-cell world maps.
+    state.blockTessellator = std::make_unique<BlockTessellator>(&region);
+
+    // Publish a new immutable virtual-world version. In-flight workers keep
+    // the previous view alive without observing a partially rebuilt placement.
+    auto const totalBlocks = state.structure->renderBlocks.size();
+    std::array<long long, 3> origin{static_cast<long long>(state.anchor.x) + settings.offsetX,
+                                    static_cast<long long>(state.anchor.y) + settings.offsetY,
+                                    static_cast<long long>(state.anchor.z) + settings.offsetZ};
+    structure::LayerSettings layers{settings.layerAxis, settings.layerDisplayMode, settings.displayLayer};
+    if (state.localWorldLookup && state.localWorldLookup->hasTransform(settings.mirrorMode, settings.rotationTurns)) {
+        state.localWorldLookup = state.localWorldLookup->relocated(origin, layers);
+    } else {
+        ProjectionWorldLookup::BlockTransforms transformedBlocks;
+        state.structure->renderBlocks.forEachStoredValue([&](auto const &cell) {
+            for (auto value : {cell.block, cell.liquid}) {
+                if (!value || transformedBlocks.contains(value))
+                    continue;
+                transformedBlocks.emplace(value,
+                                          transformExpectedBlock(value, transformSettings, settings.identityTransform));
+            }
+        });
+        state.localWorldLookup = std::make_shared<ProjectionWorldLookup>(
+            state.structure, origin, settings.mirrorMode, settings.rotationTurns, layers, std::move(transformedBlocks));
     }
+    state.worldLookup = state.localWorldLookup;
+    rebuildProjectedBlockActors(state, dispatcher, transformSettings, settings, state.blockActorIndices, true);
+
+    // Bounds centers are stable under visibility changes and require no scan
+    // over tens of millions of cells when only the placement origin changes.
+    for (std::size_t section = 0; section < state.sections.size(); ++section) {
+        auto &value = state.sections[section];
+        value.buildBounds = projectionSectionBounds(state.localSectionKeys[section], *state.structure,
+                                                    settings.mirrorMode, settings.rotationTurns);
+        value.center = (value.buildBounds.minimum + value.buildBounds.maximum) / 2.0f;
+    }
+    if (!state.fileTransform)
+        pairProjectedChests(region, state);
     auto* stateAddress = &state;
     auto* regionAddress = &region;
     state.blockTessellator->mCachedGetBlock.get()

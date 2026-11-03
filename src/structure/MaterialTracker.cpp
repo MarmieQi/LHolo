@@ -2,9 +2,10 @@
 // Copyright (C) 2026  MarmieQi
 
 #include "structure/MaterialTracker.h"
+#include "structure/IndependentTaskFiles.h"
 #include "structure/MaterialCounts.h"
 #include "structure/MaterialUnits.h"
-#include "structure/IndependentTaskFiles.h"
+#include "structure/TaskProjectionView.h"
 
 #include "block/BlockPlacementRules.h"
 #include "projection/Projection.h"
@@ -241,8 +242,9 @@ MaterialHudResult countMaterialHud(MaterialHudInput input, MaterialUnitOwners co
     auto const& blocks = input.structure->renderBlocks;
     result.counts = collectRawMaterials(blocks, owners, [&](std::size_t index) {
         if (input.progressCorrect[index] != 0) return false;
+        if (input.taskView)
+            return input.taskView->owns(input.taskFile, index);
         auto const& entry = blocks[index];
-        if (input.structure->composed && entry.sourceIndex!=input.key.selectedSource) return false;
         auto const layer = input.key.layerAxis == LayerAxis::X ? entry.x : entry.y;
         return projection::isLayerVisible(
             layer, input.key.layerDisplayMode, input.key.displayLayer,
@@ -333,18 +335,16 @@ void processPendingMaterialList(LocalPlayer& player) {
     auto const loaded = StructureSession::getInstance().loaded();
     auto const source=StructureSession::getInstance().selectedSource();
     std::vector<MaterialRequirement> materials;
-    if (loaded && loaded->composed) {
+    if (loaded && loaded->independentFiles) {
         if (auto const* file=independentTaskFile(*loaded,source); file && file->visible && file->loaded) {
-            materials = collectMaterials(file->loaded->renderBlocks, player.getLocaleCode(), player.getLevel(),
-                [&](std::size_t index) {
-                    auto const& entry = file->loaded->renderBlocks[index];
-                    return projection::isLayerVisible(file->slice.axis==LayerAxis::X ? entry.x : entry.y,
-                        file->slice.mode,file->slice.layer,entry.materialIndex,entry.liquidMaterialIndex,file->slice.axis);
-                });
-        } else materials = collectMaterials(loaded->renderBlocks, player.getLocaleCode(), player.getLevel(),
-            [&](std::size_t index) { return loaded->renderBlocks[index].sourceIndex == source; });
-    } else if (loaded) materials = collectMaterials(loaded->renderBlocks, player.getLocaleCode(), player.getLevel(),
-        [](std::size_t) { return true; });
+            TaskProjectionView view(loaded->independentFiles->files);
+            materials =
+                collectMaterials(file->loaded->renderBlocks, player.getLocaleCode(), player.getLevel(),
+                                 [&](std::size_t index) { return view.owns(static_cast<std::size_t>(source), index); });
+        }
+    } else if (loaded)
+        materials = collectMaterials(loaded->renderBlocks, player.getLocaleCode(), player.getLevel(),
+                                     [](std::size_t) { return true; });
     // Loading another structure can overlap this game-thread calculation. Never
     // publish a completed list for a structure that is no longer active.
     if (StructureSession::getInstance().loaded() != loaded || StructureSession::getInstance().selectedSource()!=source) {

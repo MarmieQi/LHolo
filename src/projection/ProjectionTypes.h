@@ -19,6 +19,7 @@ class CompoundTag;
 
 namespace lholo::structure {
 struct LoadedStructure;
+class TaskProjectionView;
 }
 
 namespace lholo::projection {
@@ -42,7 +43,6 @@ struct MaterialProgressKey {
     structure::LayerDisplayMode layerDisplayMode{structure::LayerDisplayMode::All};
     int           displayLayer{};
     structure::LayerAxis        layerAxis{structure::LayerAxis::Y};
-    int selectedSource{-1};
 
     bool operator==(MaterialProgressKey const&) const = default;
 };
@@ -51,6 +51,8 @@ struct MaterialProgressSnapshot {
     MaterialProgressKey                         key;
     std::shared_ptr<structure::LoadedStructure const> structure;
     std::vector<unsigned char>                  progressCorrect;
+    std::shared_ptr<structure::TaskProjectionView const> taskView;
+    std::size_t taskFile{};
 };
 
 // Easy-place support: one locked lookup of the projected virtual world.

@@ -1,10 +1,11 @@
-#include "structure/StructureBlocks.h"
-#include "structure/formats/LitematicNbt.h"
-#include "structure/MaterialCounts.h"
-#include "structure/TaskComposer.h"
-#include "projection/world/ProjectionWorldLookup.h"
+#include "TaskComposerOracle.h"
 #include "projection/core/ProjectionResidencyBudget.h"
 #include "projection/core/ProjectionRules.h"
+#include "projection/world/ProjectionWorldLookup.h"
+#include "structure/MaterialCounts.h"
+#include "structure/StructureBlocks.h"
+#include "structure/TaskComposer.h"
+#include "structure/formats/LitematicNbt.h"
 
 #include <cstdio>
 #include <limits>

@@ -61,33 +61,33 @@ int runCorrectionStateStoreTests() {
     check(store.copiedBytes() == 0);
     store.set(centerCell, CorrectionState::WrongType);
     check(store.copiedBytes() == pageBytes);
-    check(old.renderState(centerCell) == CorrectionState::Missing);
+    check(old.rawState(centerCell) == CorrectionState::Missing);
     store.set(centerCell, CorrectionState::WrongState);
     store.setVisible(centerCell, false);
     check(store.copiedBytes() == pageBytes);
     check(store.get(centerCell) == CorrectionState::WrongState);
-    check(store.renderState(centerCell) == CorrectionState::Correct);
+    check(!store.visible(centerCell));
     auto hidden = store.capture(neighborhood);
-    check(hidden.renderState(centerCell) == CorrectionState::Correct);
+    check(hidden.rawState(centerCell) == CorrectionState::WrongState);
     store.setVisible(centerCell, true);
     check(store.copiedBytes() == 2 * pageBytes);
-    check(store.renderState(centerCell) == CorrectionState::WrongState);
-    check(hidden.renderState(centerCell) == CorrectionState::Correct);
+    check(store.get(centerCell) == CorrectionState::WrongState);
+    check(hidden.rawState(centerCell) == CorrectionState::WrongState);
     store.set(neighborCell, CorrectionState::Correct);
     check(store.copiedBytes() == 3 * pageBytes);
-    check(old.renderState(neighborCell) == CorrectionState::Missing);
+    check(old.rawState(neighborCell) == CorrectionState::Missing);
     auto changed = store.capture(neighborhood);
-    check(changed.renderState(centerCell) == CorrectionState::WrongState);
-    check(changed.renderState(neighborCell) == CorrectionState::Correct);
+    check(changed.rawState(centerCell) == CorrectionState::WrongState);
+    check(changed.rawState(neighborCell) == CorrectionState::Correct);
     // Transform reset and replacement never mutate an already published view.
     store.fill(CorrectionState::Missing);
-    check(changed.renderState(centerCell) == CorrectionState::WrongState);
-    check(changed.renderState(neighborCell) == CorrectionState::Correct);
+    check(changed.rawState(centerCell) == CorrectionState::WrongState);
+    check(changed.rawState(neighborCell) == CorrectionState::Correct);
     store.initialize({}, 0);
-    check(changed.renderState(centerCell) == CorrectionState::WrongState);
+    check(changed.rawState(centerCell) == CorrectionState::WrongState);
 
-    // Every rendering state and both visibility values must match the previous
-    // renderer's hidden-as-correct view without corrupting actual truth.
+    // Visibility never overwrites world truth; worker snapshots retain the
+    // raw result even when active ownership changes.
     std::vector<std::vector<std::size_t>> small{{0}, {}, {1, 2, 3}};
     store.initialize(small, 4);
     std::array<std::size_t, 3> smallSections{0, 1, 2};
@@ -98,8 +98,8 @@ int runCorrectionStateStoreTests() {
             store.setVisible(3, visible);
             auto snapshot = store.capture(smallSections);
             check(store.get(3) == state);
-            check(store.renderState(3) == (visible ? state : CorrectionState::Correct));
-            check(snapshot.renderState(3) == store.renderState(3));
+            check(store.visible(3) == visible);
+            check(snapshot.rawState(3) == store.get(3));
         }
     }
     store.setVisible(3, true);
@@ -109,8 +109,8 @@ int runCorrectionStateStoreTests() {
     store.set(3,
               CorrectionState::Correct); // World event while the layer is hidden.
     store.setVisible(3, true);
-    check(store.renderState(3) == CorrectionState::Correct);
-    check(beforeHide.renderState(3) == CorrectionState::WrongType);
+    check(store.get(3) == CorrectionState::Correct);
+    check(beforeHide.rawState(3) == CorrectionState::WrongType);
 
     // Concurrent worker reads observe one immutable version while the owner
     // changes truth, visibility and eventually replaces the entire layout.
@@ -120,7 +120,7 @@ int runCorrectionStateStoreTests() {
     auto reader = std::async(std::launch::async, [snapshot = std::move(stable), signal = std::move(started)]() mutable {
         signal.wait();
         for (int iteration = 0; iteration < 20000; ++iteration)
-            if (snapshot.renderState(3) != CorrectionState::Correct)
+            if (snapshot.rawState(3) != CorrectionState::Correct)
                 return false;
         return true;
     });

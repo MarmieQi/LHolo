@@ -13,9 +13,9 @@ namespace lholo::projection::detail {
 bool projectionFaceCovered(ProjectionState const& state, BlockSource& region,
     BlockPos const& neighbor, bool& worldDependent) {
     auto const key = std::tuple{neighbor.x, neighbor.y, neighbor.z};
-    auto const index = state.worldLookup->indexAt(key);
+    auto const index = state.worldLookup->ownerAt(key);
     if (index) {
-        auto const correction = state.renderCorrectionState(*index);
+        auto const correction = state.correctionAtWorld(key);
         if (correction == CorrectionState::Missing || correction == CorrectionState::Unknown) {
             auto const block = state.worldLookup->blockAt(key);
             if (block && block->getBlockType().mIsOpaqueFullBlock) return true;

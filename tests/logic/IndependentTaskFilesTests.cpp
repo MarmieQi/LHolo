@@ -1,7 +1,9 @@
-#include "structure/IndependentTaskFiles.h"
+#include "TaskComposerOracle.h"
 #include "projection/mesh/ProjectionBuildCompletionQueue.h"
 #include "projection/runtime/IndependentFileFrame.h"
 #include "projection/runtime/ProjectionDimensionRules.h"
+#include "structure/IndependentTaskFiles.h"
+#include "structure/TaskProjectionView.h"
 #include <array>
 #include <cstdio>
 #include <limits>
@@ -74,15 +76,15 @@ int runIndependentTaskFilesTests() {
         return b;
     };
     std::vector<CompositionFile> files{{"A", raw, true}, {"B", raw, true, 30}};
-    auto independent = composeTaskProjection(files, transform);
+    auto independent = composeTaskProjection(files);
     check(hasVisibleTaskFiles(*independent.loaded), "independent membership does not depend on merged cell count");
     auto outsideDimension = files;
     for (auto& file : outsideDimension) file.visible = false;
-    auto emptyView = composeTaskProjection(outsideDimension, transform);
+    auto emptyView = composeTaskProjection(outsideDimension);
     check(!hasVisibleTaskFiles(*emptyView.loaded), "other-dimension cached files do not count as visible");
     auto missingFiles = files;
     for (auto& file : missingFiles) file.loaded.reset();
-    check(!hasVisibleTaskFiles(*composeTaskProjection(missingFiles, transform).loaded),
+    check(!hasVisibleTaskFiles(*composeTaskProjection(missingFiles).loaded),
           "visible but unloaded files do not count as an active projection");
     {
         using namespace lholo::projection::detail;
@@ -93,7 +95,7 @@ int runIndependentTaskFilesTests() {
               "old view cannot resume in a different dimension");
         check(classifyDimensionActivation(true, originalGeneration, 0, emptyView.loaded->generation, 1) == DimensionActivationStatus::Rebuilding,
               "new empty view completes transition without restoring visible files");
-        auto returned = composeTaskProjection(files, transform);
+        auto returned = composeTaskProjection(files);
         check(classifyDimensionActivation(true, emptyView.loaded->generation, 1, returned.loaded->generation, 0)
                   == DimensionActivationStatus::Rebuilding && hasVisibleTaskFiles(*returned.loaded),
               "returning task generation retains restoration status and visible membership");
@@ -114,12 +116,13 @@ int runIndependentTaskFilesTests() {
           "duplicate path entries share raw data but retain file identity");
     auto moving = files[0];
     moving.x = 5;
-    check(independentTaskPlacement(moving, files), "live movement in free space needs no composition");
+    check(composeTaskProjection(std::array{moving, files[1]}).loaded->independentFiles != nullptr,
+          "live movement keeps independent data");
     moving.x = 29;
-    check(!independentTaskPlacement(moving, files),
-          "live movement into another file leaves independent branch");
+    check(composeTaskProjection(std::array{moving, files[1]}).loaded->independentFiles != nullptr,
+          "live movement into another file also keeps independent data");
     files[0].x = -400;
-    auto moved = composeTaskProjection(files, transform);
+    auto moved = composeTaskProjection(files);
     check(moved.origin == std::array<int, 3>{0, 0, 0}, "moving A preserves task anchor");
     check(independentTaskFile(*moved.loaded, 1)->x == 30 &&
               independentTaskFile(*moved.loaded, 1)->loaded ==
@@ -128,50 +131,47 @@ int runIndependentTaskFilesTests() {
     check(transformed == 0, "XYZ edits of disjoint files have zero block transformation work");
     files[0].x = 0;
     files[1].x = 4;
-    check(composeTaskProjection(files, transform).loaded->independentFiles != nullptr,
+    check(composeTaskProjection(files).loaded->independentFiles != nullptr,
           "one empty block between boxes stays independent");
     files[1].x = 3;
-    check(!composeTaskProjection(files, transform).loaded->independentFiles,
-          "touching faces retain shared neighbor models");
+    check(composeTaskProjection(files).loaded->independentFiles != nullptr,
+          "touching faces retain independent source data");
     files[1].x = 2;
-    auto overlap = composeTaskProjection(files, transform);
+    auto overlap = composeTaskProjection(files);
     auto oracle = composeTask(files, transform);
-    check(hasVisibleTaskFiles(*overlap.loaded), "merged task reports visible files");
+    check(hasVisibleTaskFiles(*overlap.loaded), "overlapping task reports visible files");
     auto emptySliceFiles = files;
     for (auto& file : emptySliceFiles) file.slice = {LayerAxis::Y, LayerDisplayMode::Single, 100};
     auto emptySlice = composeTask(emptySliceFiles, transform);
-    check(emptySlice.loaded->renderBlocks.empty() && hasVisibleTaskFiles(*emptySlice.loaded),
+    check(emptySlice.loaded->renderBlocks.empty() &&
+              hasVisibleTaskFiles(*composeTaskProjection(emptySliceFiles).loaded),
           "empty display slice does not mean files disappeared from dimension");
-    check(!hasVisibleTaskFiles(*composeTask({}, transform).loaded), "empty merged view has no visible files");
-    check(!overlap.loaded->independentFiles &&
-              overlap.loaded->renderBlocks.size() == oracle.loaded->renderBlocks.size(),
-          "overlap uses established composition");
+    check(!hasVisibleTaskFiles(*composeTaskProjection({}).loaded), "empty merged view has no visible files");
+    check(overlap.loaded->independentFiles && overlap.loaded->renderBlocks.empty(),
+          "overlap never expands or merges source data");
     files[1].x = 0;
     files[1].y = 3;
-    check(composeTaskProjection(files, transform).loaded->independentFiles != nullptr,
-          "separation on Y is sufficient");
+    check(composeTaskProjection(files).loaded->independentFiles != nullptr, "separation on Y is sufficient");
     files[1].y = 0;
     files[1].z = 7;
-    check(composeTaskProjection(files, transform).loaded->independentFiles != nullptr,
-          "separation on Z is sufficient");
+    check(composeTaskProjection(files).loaded->independentFiles != nullptr, "separation on Z is sufficient");
     files[1].z = 0;
     files[1].x = 5;
-    check(composeTaskProjection(files, transform).loaded->independentFiles != nullptr,
-          "unrotated width is three");
+    check(composeTaskProjection(files).loaded->independentFiles != nullptr, "unrotated width is three");
     files[0].rotation = 1;
-    check(!composeTaskProjection(files, transform).loaded->independentFiles,
-          "90-degree rotation swaps width/depth before AABB test");
+    check(composeTaskProjection(files).loaded->independentFiles != nullptr,
+          "90-degree rotated overlap remains independent");
     files[0].rotation = 2;
     files[0].mirror = 2;
-    check(composeTaskProjection(files, transform).loaded->independentFiles != nullptr,
+    check(composeTaskProjection(files).loaded->independentFiles != nullptr,
           "180-degree rotation and mirror preserve extents");
     files[1].x = 0;
     files[1].visible = false;
-    auto hidden = composeTaskProjection(files, transform);
+    auto hidden = composeTaskProjection(files);
     check(hidden.loaded->independentFiles != nullptr && hidden.loaded->sourceFiles.size() == 2,
           "hidden file retains identity without participating in overlap");
     files[0].visible = false;
-    check(composeTaskProjection(files, transform).loaded->independentFiles != nullptr,
+    check(composeTaskProjection(files).loaded->independentFiles != nullptr,
           "all hidden remains an empty independent task");
     check(!independentTaskFile(*hidden.loaded, -1) && !independentTaskFile(*hidden.loaded, 2),
           "source bounds validated");
@@ -179,7 +179,7 @@ int runIndependentTaskFilesTests() {
     files[0].x = std::numeric_limits<int>::max();
     bool rejected{};
     try {
-        composeTaskProjection(files, transform);
+        composeTaskProjection(files);
     } catch (...) {
         rejected = true;
     }

@@ -495,12 +495,10 @@ void buildProjectionSection(
                     auto const neighbor = std::tuple{glass.position.x + (*offset)[0],
                         glass.position.y + (*offset)[1], glass.position.z + (*offset)[2]};
                     auto const block = state.worldLookup->blockAt(neighbor);
-                    auto const index = state.worldLookup->indexAt(neighbor);
                     // Exact block state includes glass color. Hidden layers,
                     // different colors, real/wrong neighbors and partial faces stay visible.
-                    quad.hidden = quad.hidden || (block && block == glass.block
-                        && index
-                        && state.renderCorrectionState(*index) == CorrectionState::Missing);
+                    quad.hidden = quad.hidden || (block && block == glass.block &&
+                                                  state.correctionAtWorld(neighbor) == CorrectionState::Missing);
                 }
             }
         }
@@ -659,19 +657,14 @@ void buildLiquidGeometry(
             float const v1_f = uvSetFlow ? uvSetFlow->_v1 : v1_s;
             float const dv_f = v1_f - v0_f;
 
-            auto const neighborEntry = [&](int dx, int dy, int dz)
-                -> std::optional<structure::LoadedStructure::RenderBlock> {
-                auto const found = state.worldLookup->indexAt(std::tuple{
-                    worldPosition.x + dx, worldPosition.y + dy, worldPosition.z + dz
-                });
-                return !found
-                    ? std::nullopt : std::optional{state.structure->renderBlocks[*found]};
+            auto const neighborEntry = [&](int dx, int dy, int dz) {
+                return state.worldLookup->cellAt(
+                    std::tuple{worldPosition.x + dx, worldPosition.y + dy, worldPosition.z + dz});
             };
             auto const neighborIsSameLiquid = [&](int dx, int dy, int dz) {
                 auto const neighbor = neighborEntry(dx, dy, dz);
                 if (!neighbor || !neighbor->liquid) return false;
-                auto const* transformed = transformExpectedBlock(neighbor->liquid, sectionTransformSettings, identityTransform);
-                if (!transformed) return false;
+                auto const *transformed = neighbor->liquid;
                 auto const isLavaNeighbor = transformed->getTypeName().find("lava") != std::string::npos
                     || transformed->getBlockType().mMaterial.mSuperHot;
                 return isLavaNeighbor == isLava;
@@ -690,15 +683,18 @@ void buildLiquidGeometry(
             // a surface that slopes downhill, showing the flow direction.
             constexpr float surface = 8.0f / 9.0f;
             auto const columnHeight = [&](int dx, int dz) -> float {
-                auto const n = (dx == 0 && dz == 0) ? std::optional{entry} : neighborEntry(dx, 0, dz);
-                if (!n) return 0.0f;
-                if (!n->liquid) return -1.0f;
-                auto const* t = transformExpectedBlock(n->liquid, sectionTransformSettings, identityTransform);
-                if (!t) return -1.0f;
+                auto const n = neighborEntry(dx, 0, dz);
+                if (!n)
+                    return 0.0f;
+                if (!n->liquid)
+                    return -1.0f;
+                auto const *t = n->liquid;
                 auto const isLavaNeighbor = t->getTypeName().find("lava") != std::string::npos
                     || t->getBlockType().mMaterial.mSuperHot;
-                if (isLavaNeighbor != isLava) return -1.0f;
-                if (neighborIsSameLiquid(dx, 1, dz)) return 1.0f;  // submerged
+                if (isLavaNeighbor != isLava)
+                    return -1.0f;
+                if (neighborIsSameLiquid(dx, 1, dz))
+                    return 1.0f; // submerged
                 return getFluidHeight(getLiquidDepth(*t));
             };
             auto const cornerHeight = [&](int dx, int dz) -> float {
@@ -863,7 +859,8 @@ void buildBlockEntityPlaceholderSectionMesh(
     std::vector<std::size_t> blockEntityIndices;
     for (auto const index : failedTessellationIndices) {
         if (state.renderCorrectionState(index) != CorrectionState::Missing) continue;
-        if ((*state.blockActorRendererAvailable)[index]) continue;
+        if (state.blockActorRendererAvailable->contains(index))
+            continue;
         blockEntityIndices.push_back(index);
     }
     if (!blockEntityIndices.empty()) {
@@ -967,16 +964,7 @@ void buildCorrectionSectionMeshes(
             state.anchor.y + settings.offsetY + p.y + dy,
             state.anchor.z + settings.offsetZ + p.z + dz
         };
-        auto const expected = state.worldLookup->indexAt(std::tuple{world.x, world.y, world.z});
-        auto priority = !expected
-            ? 0 : correctionPriority(state.renderCorrectionState(*expected));
-        auto const local = inverseTransformStructurePosition(
-            BlockPos{p.x + dx, p.y + dy, p.z + dz}, *state.structure, settings.mirrorMode, settings.rotationTurns
-        );
-        if (state.extraBlockPositions.contains(std::tuple{local.x, local.y, local.z})) {
-            priority = std::max(priority, 2);
-        }
-        return priority;
+        return correctionPriority(state.correctionAtWorld(std::tuple{world.x, world.y, world.z}));
     };
     auto appendShell = [&](BlockPos const& local, int priority, std::uint32_t color, std::size_t bucket) {
         auto const p = transformStructurePosition(local, *state.structure, settings.mirrorMode, settings.rotationTurns);
@@ -996,6 +984,12 @@ void buildCorrectionSectionMeshes(
             correction == CorrectionState::Missing ? 0 : 1);
     }
     for (auto const& [x, y, z] : state.sectionExtraBlockPositions[section]) {
+        auto p = transformStructurePosition(BlockPos{x, y, z}, *state.structure, settings.mirrorMode,
+                                            settings.rotationTurns);
+        if (!state.worldLookup->ownsAir(std::tuple{state.anchor.x + settings.offsetX + p.x,
+                                                   state.anchor.y + settings.offsetY + p.y,
+                                                   state.anchor.z + settings.offsetZ + p.z}))
+            continue;
         appendShell(BlockPos{x, y, z}, 2, ExtraColorAbgrRgb, 1);
     }
     auto addVertex = [&](Vec3 const& v) {

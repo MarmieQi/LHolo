@@ -37,13 +37,6 @@ struct IndependentTaskFiles;
 inline constexpr std::uint64_t kProjectionLifecycleHintDurationMs = 2500;
 
 struct LoadedStructure {
-    struct FileBounds {
-        int sourceIndex{-1};
-        // Full-file box in composite-local space; maximum is exclusive.
-        // Keep wide coordinates because slicing can leave bounds outside the
-        // normalized occupied area. This is display data, not air coverage.
-        std::array<long long, 3> minimum{}, maximum{};
-    };
     struct RegionBox {
         int x{};
         int y{};
@@ -69,7 +62,6 @@ struct LoadedStructure {
     bool                                 composed{};
     std::shared_ptr<IndependentTaskFiles const> independentFiles;
     std::vector<std::string>              sourceFiles;
-    std::vector<FileBounds>               sourceBounds;
     // Cells covered by the source format. mcstructure contributes one box;
     // litematic contributes one per region so gaps between regions are not
     // mistaken for schematic air by projection correction.
@@ -81,8 +73,6 @@ struct LoadedStructure {
     using RenderBlock = StructureBlock;
     StructureBlocks                      renderBlocks;
 };
-// The first covering region owns schematic air; solid/liquid winners keep their own sourceIndex.
-int coveringSource(LoadedStructure const&, int x, int y, int z);
 
 bool shouldShowProjectedBlockName();
 bool handleGuiHotkeyKeyDown(unsigned int virtualKey);

@@ -7,12 +7,14 @@
 #pragma once
 
 #include "projection/correction/BannerCorrection.h"
-#include "projection/correction/CorrectionScanProgress.h"
-#include "projection/correction/CorrectionStateStore.h"
-#include "projection/correction/CorrectionScanScheduler.h"
-#include "projection/correction/CorrectionWorkQueues.h"
-#include "projection/correction/CorrectionCellMask.h"
 #include "projection/correction/CorrectionAirScan.h"
+#include "projection/correction/CorrectionCellMask.h"
+#include "projection/correction/CorrectionScanProgress.h"
+#include "projection/correction/CorrectionScanScheduler.h"
+#include "projection/correction/CorrectionStateStore.h"
+#include "projection/correction/CorrectionWorkQueues.h"
+#include "projection/runtime/TaskSectionRefresh.h"
+#include <unordered_set>
 
 #include "projection/core/ProjectionInternalTypes.h"
 #include "projection/world/ProjectionWorldLookup.h"
@@ -80,6 +82,20 @@ struct ProjectionState {
     std::string fileId;
     std::optional<structure::detail::StructureTransformSnapshot> fileTransform;
     std::vector<std::shared_ptr<ProjectionState>> files;
+    std::vector<SubChunkKey> taskNeighborChanges;
+    TaskSectionRefresh taskSectionRefresh;
+    TaskAirRefresh taskAirRefresh;
+    BuildProgress fileProgress;
+    std::vector<std::weak_ptr<ProjectionState>> taskRuntimeFiles;
+    struct NeighborCorrection {
+        std::size_t file;
+        CorrectionStateStore::Snapshot states;
+        std::set<SubChunkKey> extrasWorld;
+    };
+    std::vector<NeighborCorrection> neighborCorrections;
+    std::shared_ptr<TaskWorldLookups const> taskWorld;
+    std::shared_ptr<ProjectionWorldLookup const> localWorldLookup;
+    std::vector<std::size_t> blockActorIndices;
     CorrectionEventQueue correctionEvents;
     CorrectionSubChunkQueue correctionSubChunks;
     CorrectionWorkCursor correctionWorkCursor;
@@ -106,8 +122,12 @@ struct ProjectionState {
     // Both builders share this read boundary. Only the active state is mutable;
     // a worker retains a bounded, immutable neighborhood instead of all cells.
     CorrectionState renderCorrectionState(std::size_t index) const {
-        return correctionSnapshot ? correctionSnapshot->renderState(index) : correctionStates.renderState(index);
+        if (!worldLookup->owns(index))
+            return CorrectionState::Correct;
+        return correctionSnapshot ? correctionSnapshot->rawState(index) : correctionStates.get(index);
     }
+    CorrectionState correctionAtWorld(ProjectionWorldLookup::Key const &) const;
+    bool refreshTaskCellVisibility(std::size_t index);
     // One byte per structure block. This is updated by the existing bounded
     // correction scan, so the HUD never performs its own world-block queries.
     std::vector<uchar>              progressCorrect;
@@ -118,15 +138,13 @@ struct ProjectionState {
     // 0 = no placement error, 1 = wrong block type, 2 = wrong state/direction.
     // Updating one byte and two counters keeps the HUD O(1) per frame.
     std::vector<uchar>              progressErrorKind;
-    std::shared_ptr<std::vector<uchar>> blockActorRendererAvailable{
-        std::make_shared<std::vector<uchar>>()
-    };
+    std::shared_ptr<std::unordered_set<std::size_t>> blockActorRendererAvailable{
+        std::make_shared<std::unordered_set<std::size_t>>()};
     std::uint64_t                   progressCorrectCount{};
     std::uint64_t                   progressVisibleCorrectCount{};
     std::uint64_t                   progressWrongTypeCount{};
     std::uint64_t                   progressWrongStateCount{};
     std::uint64_t                   progressExtraCount{};
-    std::vector<BuildProgress>       sourceProgress;
     CorrectionScanScheduler         correctionScan;
     CorrectionScanProgress          initialCorrectionScan;
     CorrectionAirScan               extraScan;

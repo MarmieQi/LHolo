@@ -98,8 +98,7 @@ int runTaskActionsTests() {
                 cache[requestedPaths[i]] = loaded;
             }
             structure::normalizeCompositionLayers(requested->files);
-            requested->composition = structure::composeTaskProjection(requested->files,
-                [](Block const* b, int, int) { return b; });
+            requested->composition = structure::composeTaskProjection(requested->files);
         } else {
             requested->error = "Missing file";
             requested->errorFileId = requested->files.back().id;

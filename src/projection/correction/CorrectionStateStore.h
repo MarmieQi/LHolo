@@ -21,9 +21,11 @@ class CorrectionStateStore {
         std::uint32_t slot{};
     };
     struct Page {
+        std::uint64_t epoch{};
         std::vector<CorrectionState> states;
         std::vector<std::uint64_t> visible;
         std::size_t visibleCount{};
+        std::size_t nonMissingCount{};
 
         bool isVisible(std::size_t slot) const { return (visible[slot / 64] & (std::uint64_t{1} << (slot % 64))) != 0; }
         std::size_t byteSize() const {
@@ -47,16 +49,17 @@ public:
         };
         std::shared_ptr<Layout const> mLayout;
         std::vector<Entry> mPages;
+        std::uint64_t mEpoch{};
+        CorrectionState mDefault{CorrectionState::Missing};
 
-    public:
-        CorrectionState renderState(std::size_t index) const {
+      public:
+        CorrectionState rawState(std::size_t index) const {
             auto const location = (*mLayout)[index];
             auto const found =
                 std::lower_bound(mPages.begin(), mPages.end(), location.section,
-                                 [](Entry const& entry, std::size_t section) { return entry.section < section; });
+                                 [](Entry const &entry, std::size_t section) { return entry.section < section; });
             assert(found != mPages.end() && found->section == location.section);
-            return found->page->isVisible(location.slot) ? found->page->states[location.slot]
-                                                         : CorrectionState::Correct;
+            return found->page->epoch == mEpoch ? found->page->states[location.slot] : mDefault;
         }
         std::size_t retainedBytes() const {
             std::size_t bytes{};
@@ -86,25 +89,39 @@ public:
         }
         mLayout = std::move(layout);
         mCopiedBytes = 0;
+        mEpoch = 0;
+        mDefault = CorrectionState::Missing;
     }
 
     CorrectionState get(std::size_t index) const {
         auto const location = (*mLayout)[index];
-        return mPages[location.section]->states[location.slot];
-    }
-    CorrectionState renderState(std::size_t index) const {
-        auto const location = (*mLayout)[index];
         auto const& page = *mPages[location.section];
-        return page.isVisible(location.slot) ? page.states[location.slot] : CorrectionState::Correct;
+        return page.epoch == mEpoch ? page.states[location.slot] : mDefault;
+    }
+    bool visible(std::size_t index) const {
+        auto p = (*mLayout)[index];
+        return mPages[p.section]->isVisible(p.slot);
     }
     std::size_t section(std::size_t index) const { return (*mLayout)[index].section; }
     bool sectionVisible(std::size_t section) const { return mPages[section]->visibleCount != 0; }
+    bool sectionHasResolvedCells(std::size_t section) const {
+        if (section >= mPages.size())
+            return false; // extra-only Sections have no state page
+        auto const &page = *mPages[section];
+        return page.epoch == mEpoch ? page.nonMissingCount != 0 : mDefault != CorrectionState::Missing;
+    }
 
     bool set(std::size_t index, CorrectionState value) {
         auto const location = (*mLayout)[index];
-        if (mPages[location.section]->states[location.slot] == value)
+        auto previous = get(index);
+        if (previous == value)
             return false;
-        writablePage(location.section).states[location.slot] = value;
+        auto &page = writablePage(location.section);
+        if (previous != CorrectionState::Missing)
+            --page.nonMissingCount;
+        if (value != CorrectionState::Missing)
+            ++page.nonMissingCount;
+        page.states[location.slot] = value;
         return true;
     }
     void setVisible(std::size_t index, bool visible) {
@@ -122,14 +139,15 @@ public:
             word &= ~mask;
     }
     void fill(CorrectionState value) {
-        for (std::size_t section = 0; section < mPages.size(); ++section) {
-            auto& states = writablePage(section).states;
-            std::fill(states.begin(), states.end(), value);
-        }
+        // Placement resets are O(1); old worker pages retain their own epoch.
+        ++mEpoch;
+        mDefault = value;
     }
     Snapshot capture(std::span<std::size_t const> sections) const {
         Snapshot snapshot;
         snapshot.mLayout = mLayout;
+        snapshot.mEpoch = mEpoch;
+        snapshot.mDefault = mDefault;
         snapshot.mPages.reserve(sections.size());
         for (auto section : sections) {
             // Extra-only correction sections have no expected-block state page.
@@ -152,11 +170,18 @@ private:
             mCopiedBytes += page->byteSize();
             page = std::make_shared<Page>(*page);
         }
+        if (page->epoch != mEpoch) {
+            std::fill(page->states.begin(), page->states.end(), mDefault);
+            page->epoch = mEpoch;
+            page->nonMissingCount = mDefault == CorrectionState::Missing ? 0 : page->states.size();
+        }
         return *page;
     }
     std::shared_ptr<Layout const> mLayout;
     std::vector<std::shared_ptr<Page>> mPages;
     std::uint64_t mCopiedBytes{};
+    std::uint64_t mEpoch{};
+    CorrectionState mDefault{CorrectionState::Missing};
 };
 
 } // namespace lholo::projection::detail

@@ -1,15 +1,21 @@
 // Real-file storage benchmark, without Minecraft or native block conversion.
 // Uses the production gzip/NBT reader and compact cell store. It deliberately
 // does not construct the old multi-gigabyte maps just to measure an OOM.
-#include "structure/formats/LitematicInput.h"
+#include "structure/IndependentTaskFiles.h"
 #include "structure/StructureBlocks.h"
+#include "structure/TaskProjectionView.h"
+#include "structure/formats/LitematicInput.h"
 #include <Windows.h>
+
+// PSAPI declarations require the Windows base types above.
 #include <Psapi.h>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <set>
+#include <tuple>
 
 using namespace lholo::structure;
 using namespace lholo::structure::detail;
@@ -109,14 +115,55 @@ int wmain(int argc, wchar_t** argv) try {
         checksum ^= *found;
     }
     auto querySeconds = seconds()-loadSeconds;
+    auto cellCount = storage.size(), storageBytes = storage.storageBytes();
+    auto palace = std::make_shared<LoadedStructure>();
+    palace->sizeX = size[0];
+    palace->sizeY = size[1];
+    palace->sizeZ = size[2];
+    palace->renderBlocks = std::move(storage);
+    palace->regions = {{0, 0, 0, size[0], size[1], size[2]}};
+    auto smallSource = std::make_shared<LoadedStructure>();
+    smallSource->sizeX = smallSource->sizeY = smallSource->sizeZ = 16;
+    smallSource->renderBlocks = {{0, 0, 0, reinterpret_cast<Block const *>(1)}};
+    smallSource->regions = {{0, 0, 0, 16, 16, 16}};
+    std::vector<CompositionFile> taskFiles{{"small", smallSource, true, size[0] - 8, 32, 32},
+                                           {"palace", palace, true},
+                                           {"unrelated", palace, true, 100000}};
+    auto previous = std::make_shared<TaskProjectionView const>(taskFiles);
+    constexpr int moves = 1000;
+    auto moveStarted = std::chrono::steady_clock::now();
+    std::size_t maxSections{};
+    for (int move = 0; move < moves; ++move) {
+        taskFiles[0].x = size[0] - 8 + (move & 1);
+        auto view = std::make_shared<TaskProjectionView const>(taskFiles);
+        auto lightweight = composeTaskProjection(taskFiles);
+        if (!lightweight.loaded->renderBlocks.empty() || !view->changedBounds(2, previous.get()).empty())
+            throw std::runtime_error("Move touched unrelated storage");
+        std::set<std::tuple<int, int, int>> sections;
+        for (auto const &box : view->changedBounds(1, previous.get())) {
+            auto local = view->localIntersection(1, box);
+            for (int x = static_cast<int>(local.minimum[0] / 16); x <= (local.maximum[0] - 1) / 16; ++x)
+                for (int y = static_cast<int>(local.minimum[1] / 16); y <= (local.maximum[1] - 1) / 16; ++y)
+                    for (int z = static_cast<int>(local.minimum[2] / 16); z <= (local.maximum[2] - 1) / 16; ++z)
+                        sections.emplace(x, y, z);
+        }
+        maxSections = std::max(maxSections, sections.size());
+        previous = std::move(view);
+    }
+    auto moveSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - moveStarted).count();
+    if (palace->renderBlocks.storageBytes() != storageBytes || palace->renderBlocks.size() != cellCount)
+        throw std::runtime_error("Moving mutated compact source storage");
     PROCESS_MEMORY_COUNTERS_EX memory{};
     GetProcessMemoryInfo(GetCurrentProcess(),reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory),sizeof(memory));
     std::printf("{\n  \"compressedBytes\": %zu,\n  \"inflatedBytes\": %zu,\n  \"cells\": %zu,\n"
-        "  \"compactStorageBytes\": %zu,\n  \"expandedCellBytesOnly\": %zu,\n"
-        "  \"peakWorkingSetBytes\": %zu,\n  \"currentWorkingSetBytes\": %zu,\n"
-        "  \"parseAndCountSeconds\": %.3f,\n  \"loadAndSortSeconds\": %.3f,\n"
-        "  \"lookupCount\": %zu,\n  \"lookupSeconds\": %.3f,\n  \"checksum\": %zu\n}\n",
-        compressedSize,inflatedSize,storage.size(),storage.storageBytes(),storage.size()*sizeof(StructureBlock),
-        memory.PeakWorkingSetSize,memory.WorkingSetSize,parseSeconds,loadSeconds,queries,querySeconds,checksum);
+                "  \"compactStorageBytes\": %zu,\n  \"expandedCellBytesOnly\": %zu,\n"
+                "  \"peakWorkingSetBytes\": %zu,\n  \"currentWorkingSetBytes\": %zu,\n"
+                "  \"parseAndCountSeconds\": %.3f,\n  \"loadAndSortSeconds\": %.3f,\n"
+                "  \"lookupCount\": %zu,\n  \"lookupSeconds\": %.3f,\n  \"checksum\": %zu,\n"
+                "  \"taskMoveCount\": %d,\n  \"taskMoveMetadataSeconds\": %.6f,\n"
+                "  \"maxNeighborCandidateSections\": %zu,\n  \"mergedTaskCells\": 0\n}\n",
+                compressedSize, inflatedSize, cellCount, storageBytes, cellCount * sizeof(StructureBlock),
+                memory.PeakWorkingSetSize, memory.WorkingSetSize, parseSeconds, loadSeconds, queries, querySeconds,
+                checksum, moves, moveSeconds, maxSections);
     return 0;
 } catch (std::exception const& error) { std::fprintf(stderr,"%s\n",error.what()); return 1; }
