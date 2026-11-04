@@ -38,6 +38,8 @@ StructureReadQueue 最多持有一个正在执行的读取和一个取消后重�
 
 私有区块根源使用 NetworkChunkSource(Dimension&)；禁止 ChunkSource(nullptr)。源没有真实世界父源，边界外不回退世界，仅开放私有区块视图、不启动世界生成任务。
 
+26.60 已移除 `LevelChunk::setExtraBlockSimple` 的独立符号；液体副层通过私有 `BlockSource::setExtraBlockSimple` 写入同一预览源。原生方块源构造仍使用 `publicSource=false`、`allowClientTickingChanges=false`、`markChangedBlocksForSaving=false`，不调用真实世界方块源。界面字体复用 `ui/NativeFont`，保留游戏字体覆盖。
+
 原生 StructureVolumeRenderer 的公开 render wrapper 会重新取得维度主方块源。仅在本线程的 LHolo 自有渲染器作用域、且维度一致时，将这一入口定向到私有源；方块网格与方块实体遍历也限定在同一源。作用域外、其他渲染器和其他线程沿用 origin。关闭原版真实方块监听，退出调用清理临时源指针。
 
 不直接调用 _render 或离屏捕获接口：当前 SDK 的捕获请求声明不完整，不能猜测 optional 参数 ABI。私有符号适配集中在 Renderer，游戏版本升级需重新核对。

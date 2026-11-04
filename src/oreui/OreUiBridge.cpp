@@ -19,7 +19,7 @@
 #include "ll/api/mod/NativeMod.h"
 #include "mc/client/gui/oreui/binding/Binder.h"
 #include "mc/client/gui/oreui/binding/QueryRegistry.h"
-#include "mc/client/gui/oreui/binding/ViewContextFactory.h"
+#include "mc/client/gui/oreui/binding/BindingRegistryFactory.h"
 #include "mc/client/gui/oreui/binding/interface/IHandlerFactory.h"
 #include "mc/client/gui/oreui/views/View.h"
 #include "mc/external/gameface/cohtml/IEventHandler.h"
@@ -163,8 +163,8 @@ bool installMenuBridge() {
     intentInstalled = MenuIntentActivation::hook() == 0;
     if (!intentInstalled) { uninstallMenuBridge(); return false; }
     if (!registered) {
-        OreUI::Detail::ViewContextFactory::_queryStorage().push_back(
-            [](OreUI::Detail::QueryRegistry& registry, OreUI::Detail::ViewContextFactory&) {
+        OreUI::Detail::BindingRegistryFactory::_queryStorage().push_back(
+            [](OreUI::Detail::QueryRegistry& registry, OreUI::Detail::BindingRegistryFactory&, OreUI::FocusShortcutRegistry&) {
                 struct QueryDefinition { char const* name; MenuQuery action; };
                 for (auto const& definition : {
                     QueryDefinition{"lholo.menu.ready", MenuQuery::Ready},

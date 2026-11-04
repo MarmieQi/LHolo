@@ -1,6 +1,8 @@
 # OreUI 迁移收尾审计（2026-10-25）
 
-范围：当前工作区的 OreUI 页面、应用 hooks、桥接/协议、设置与投影动作队列、文件选择服务、输入捕获、构建和部署边界。核对旧 ImGui 行为和当前目标版本 SDK。没有对投影网格算法、所有游戏 Hook 或全仓库并发行为作完整形式验证。
+本文保留 26.51 基线的历史审查依据；当前 26.60 适配状态、运行时哈希和接口维护见 [迁移说明](OREUI_MIGRATION.md) 与 `tools/oreui/runtime/source.json`。文中的旧版地址与哈希不能作为当前版本适配参数。
+
+范围：审查时工作区的 OreUI 页面、应用 hooks、桥接/协议、设置与投影动作队列、文件选择服务、输入捕获、构建和部署边界。核对旧 ImGui 行为和当前目标版本 SDK。没有对投影网格算法、所有游戏 Hook 或全仓库并发行为作完整形式验证。
 
 用户已反馈部署版本的功能实测通过；以下区分代码审查、隔离测试与仍需专项验证的事项。
 
@@ -21,7 +23,7 @@
 | Windows 对话框 | [Microsoft Common Item Dialog](https://learn.microsoft.com/en-us/windows/win32/shell/common-file-dialog) | 新异步浏览/保存使用 IFileOpenDialog/IFileSaveDialog、STA COM、RAII 和同线程取消；worker 不持有世界/Scene/View。旧 ImGui 对话框按渐进迁移约束保留。 |
 | 私有 JS 符号 | tools/oreui/runtime_adapter.js、build_menu.py、安装版本原版 bundle | 符号集中适配，SHA256 不匹配拒绝生成；核实当前 hash 为 abf73f19e4d7c952d0de4ec366a0669b241560f1af319f3e0c9cbbb23142e5cc。 |
 
-本地构建固定 LeviLamina 26.51.0/client，目标 Minecraft 1.26.51.01；其它版本须重新核对 ABI、Hook、资源和私有符号。
+该历史审查的本地构建固定 LeviLamina 26.51.0/client，目标 Minecraft 1.26.51.01；其它版本须重新核对 ABI、Hook、资源和私有符号。
 
 ## 本轮修复
 

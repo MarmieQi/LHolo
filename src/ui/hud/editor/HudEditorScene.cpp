@@ -125,8 +125,8 @@ void processScene(ClientInstance& client) {
     opened = true;
 }
 LL_TYPE_INSTANCE_HOOK(HudEditorUpdate, ll::memory::HookPriority::Normal,
-    ClientInstance, &ClientInstance::$update, bool, bool initialized) {
-    bool const result = origin(initialized);
+    ClientInstance, &ClientInstance::$update, bool, bool initialized, bool allowGameUpdate) {
+    bool const result = origin(initialized, allowGameUpdate);
     if (!opened && !requested.load()) return result;
     auto client = ll::service::getClientInstance();
     if (client && &client.get() == this) processScene(*this);

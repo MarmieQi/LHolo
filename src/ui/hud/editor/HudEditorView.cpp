@@ -1,6 +1,7 @@
 #include "ui/hud/editor/HudEditorView.h"
 #include "ui/hud/editor/HudEditor.h"
 #include "ui/hud/NativeHudPainter.h"
+#include "ui/NativeFont.h"
 #include "i18n/Translator.h"
 #include "mc/client/game/ClientInstance.h"
 #include "mc/client/gui/Font.h"
@@ -22,7 +23,9 @@ void drawHudEditorView(UIRenderContext& context, ClientInstance& client) {
     auto const width = frame.width, height = frame.height, lineHeight = frame.lineHeight;
     auto const border = std::max(0.5f, lineHeight / 18.0f);
     auto fontHandle = client.$getFontHandle();
-    auto& font = fontHandle.getFont();
+    auto const fontOwner = resolveNativeFont(fontHandle);
+    if (!fontOwner) return;
+    auto& font = *fontOwner;
     auto const view = hudEditorSnapshot();
     using i18n::TextKey;
     auto text = [&](std::string value, float x, float y, float textWidth, mce::Color color) {

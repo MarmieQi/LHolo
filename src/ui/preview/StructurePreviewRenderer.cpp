@@ -215,7 +215,7 @@ void StructurePreviewRenderer::render(MinecraftUIRenderContext& context, ClientI
             ChunkBlockPos const local{pos, static_cast<short>(s.baseY)};
             auto const layers = previewStorageLayers(entry.block,entry.liquid);
             if (layers.primary) chunk->setBlockSimple(local, *layers.primary);
-            if (layers.extra) chunk->setExtraBlockSimple(local, *layers.extra);
+            if (layers.extra) s.region->setExtraBlockSimple(pos, *layers.extra);
             if (entry.block && entry.block->getBlockType().getBlockEntityType() != BlockActorType::Undefined) {
                 s.stage = "create-block-entity";
                 auto actor = VanillaBlockActorFactory::createBlockActor(pos, entry.block->getBlockType());

@@ -121,8 +121,8 @@ bool ensureRoute(OreUI::Router& router) {
 // Client update runs with and without a world; opening must not depend on an
 // existing OreUI View (the title screen may use a different UI implementation).
 LL_TYPE_INSTANCE_HOOK(MenuClientUpdate, ll::memory::HookPriority::Normal,
-    ClientInstance, &ClientInstance::$update, bool, bool isInitFinished) {
-    auto const result = origin(isInitFinished);
+    ClientInstance, &ClientInstance::$update, bool, bool isInitFinished, bool allowGameUpdate) {
+    auto const result = origin(isInitFinished, allowGameUpdate);
     auto client = ll::service::getClientInstance();
     if (active.load() && client && &client.get() == this) {
         try { processMenuScreen(); }

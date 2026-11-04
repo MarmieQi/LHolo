@@ -4,7 +4,7 @@
     "name": "LHolo UI",
     "description": "LHolo OreUI menu resources",
     "uuid": "0a39de84-4bf1-4166-87ee-256940996c77",
-    "min_engine_version": [1, 26, 51]
+    "min_engine_version": [1, 26, 60]
   },
   "modules": [
     {

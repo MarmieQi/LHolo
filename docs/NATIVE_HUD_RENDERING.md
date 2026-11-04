@@ -1,17 +1,19 @@
 # 原生 HUD
 
-目标环境：Minecraft Bedrock Windows `1.26.51.01`、LeviLamina `26.51.0/client`。普通投影 HUD、材料显示 HUD 与独立写入进度 HUD 使用同一原版渲染入口和游戏字体，菜单内的 HUD 设置继续由 OreUI 提供。2026-10-26 用户确认普通/材料 HUD、图标、间距及多语言留白测试通过；下方清单保留作为后续版本回归范围。
+目标环境：Minecraft Bedrock Windows `1.26.60.05`、LeviLamina `26.60.0/client`，接口核对和本机构建已通过，用户已反馈本次适配测试通过。普通投影 HUD、材料显示 HUD 与独立写入进度 HUD 使用同一原版渲染入口和游戏字体，菜单内的 HUD 设置继续由 OreUI 提供。2026-10-26 用户确认普通/材料 HUD、图标、间距及多语言留白在旧版测试通过；下方专项清单继续保留，字体覆盖与不同分辨率仍需按目标环境验证。
 
 ## 接口依据
 
 使用目标版本 SDK 的原生接口声明：
 
-- [ScreenView](https://github.com/LiteLDev/LeviLamina/blob/v26.51.0/src-client/mc/client/gui/screens/ScreenView.h)：`render(UIRenderContext&)` 与 `getScreenName()`。
-- [UIRenderContext](https://github.com/LiteLDev/LeviLamina/blob/v26.51.0/src-client/mc/client/gui/controls/UIRenderContext.h)：文字测量、`drawText`、`flushText`、`fillRectangle` 和绘制范围查询。
-- [ClientInstance](https://github.com/LiteLDev/LeviLamina/blob/v26.51.0/src-client/mc/client/game/ClientInstance.h)、[FontHandle](https://github.com/LiteLDev/LeviLamina/blob/v26.51.0/src-client/mc/client/gui/FontHandle.h)：获取当前游戏字体；`Font::getWrapHeight` 提供行高基础。
-- [TextMeasureData](https://github.com/LiteLDev/LeviLamina/blob/v26.51.0/src-client/mc/client/gui/TextMeasureData.h) 与 `CaretMeasureData`：文本缩放、阴影、对齐及光标参数。
+- [ScreenView](https://github.com/LiteLDev/LeviLamina/blob/v26.60.0/src-client/mc/client/gui/screens/ScreenView.h)：`render(UIRenderContext&)` 与 `getScreenName()`。
+- [UIRenderContext](https://github.com/LiteLDev/LeviLamina/blob/v26.60.0/src-client/mc/client/gui/controls/UIRenderContext.h)：文字测量、`drawText`、`flushText`、`fillRectangle` 和绘制范围查询。
+- [ClientInstance](https://github.com/LiteLDev/LeviLamina/blob/v26.60.0/src-client/mc/client/game/ClientInstance.h)、[FontHandle](https://github.com/LiteLDev/LeviLamina/blob/v26.60.0/src-client/mc/client/gui/FontHandle.h)：获取当前游戏字体；`Font::getWrapHeight` 提供行高基础。
+- [TextMeasureData](https://github.com/LiteLDev/LeviLamina/blob/v26.60.0/src-client/mc/client/gui/TextMeasureData.h) 与 `CaretMeasureData`：文本缩放、阴影、对齐及光标参数。
 
 这些是目标版本生成的接口声明，版本更新时须重新核对 ABI 和实机行为。
+
+26.60 不再提供 `FontHandle::getFont` 符号。共用 `ui/NativeFont` 按当前客户端原生 `MinecraftUIRenderContext::drawDebugText` 的内联路径解析字体：先检查句柄的非拥有引用，再按非 INVALID 的字体 ID 查询仓库 `mLoadedFonts`，索引不可用时使用句柄 `mDefaultFont`。不能只读取默认字体而忽略仓库中的覆盖。返回的强引用仅在本次绘制保活，引用失效时跳过绘制；HUD、布局编辑器与结构预览共用该适配，不保留客户端/字体仓库指针，不硬编码地址或成员偏移。
 
 ## 分层
 
@@ -66,7 +68,7 @@ Hook 先执行原版 `ScreenView::render`，只在 `hud_screen` 的渲染调用�
 
 原生材料解析保留已解析物品的 aux 附加值和完整物品数据，经 MaterialRequirement → HudLine → HudIconDraw 传入绘制。蓝图有方块实体 NBT 时，MaterialCounts 按 Block 与不可变 NBT 来源指针保留各自数量，后台不读取注册表或调用游戏物品接口。游戏线程先以移除顶层 x/y/z 后的源 NBT 内容合并计数，通过 VanillaBlockActorFactory 创建未注册到世界的临时实体并调用原生 load，再交给 BlockType::asItemInstance(block, actor)；相同内容的多个坐标只解析一次，不修改源 NBT。BedBlock 和 BannerBlock 均提供该虚函数覆盖；不自行维护染料映射或旗帜图案协议。ItemInstance 通过原生 save(SaveContext{Clone}) / ItemStack::fromTag 转为只读共享 ItemStack，保留原生返回的颜色、图案及其他用户数据，HUD 直接绘制该物品，不重新按裸 ID 构造。MaterialRequirement::itemPrototype 作为业务层只读物品原型，同时供分组、库存匹配及 HUD 图标消费。材料分组和背包可用数量共用 block::sameMaterialItem，使用已声明的 getTypeName、hasSameAuxValue 区分物品与附加值，旗帜再比较 BannerBlockActor::getBannerType 与 BannerItem::getPatternAndColorPairsFromItemStack 的原生结果，忽略缺省字段写法和自定义名称等无关 NBT；其他物品使用 hasSameUserData，不按显示名称合并，也不自行解释旗帜颜色或图案。样本和物品随原有快照清理。材料分层仍沿用解析阶段的既有方块类别编号，OreUI 清单图标由 MaterialIconData 使用当前 View 客户端的 ScopedItemRegistry 作用域和原生 ItemRendererDataHelpers::setItemRendererBindings 提取 PropertyBag，并向 GeometryAtlas 传递包含完整视觉属性的独立 id，防止同一物品 ID 的变体共用图标；材料清单变体编号不混入投影切片。仅开发示例、液体等没有原生物品的回退通路使用原版 `reinit(id, 1, 0)` 在主本地玩家的 tickWorld 回调中准备，缓存和待处理队列仅服务无原生物品的回退通路，以完整物品 ID 标识；正常材料直接使用完整物品，不再保留附加值转发和独立变体缓存两套状态。渲染线程只提交可见图标 ID 请求并读取准备好的只读对象，不访问物品注册表；缓存按结构代际失效，额外 epoch 拒绝清理前尚未完成的结果。缓存最多保留约 64 个身份，超过时整体更新；HUD 无图标、无世界、暂停显示或卸载时清理，不持有跨帧 ClientInstance、LocalPlayer 或渲染上下文。
 
-图标绘制依据目标 SDK 的 [ItemRenderer::renderGuiItemNew](https://github.com/LiteLDev/LeviLamina/blob/v26.51.0/src-client/mc/client/renderer/actor/ItemRenderer.h)、[BaseActorRenderContext](https://github.com/LiteLDev/LeviLamina/blob/v26.51.0/src-client/mc/client/renderer/BaseActorRenderContext.h) 与 [MinecraftUIRenderContext](https://github.com/LiteLDev/LeviLamina/blob/v26.51.0/src-client/mc/client/renderer/screen/MinecraftUIRenderContext.h)。HUD 的同步文字 flush 建立只在本次调用有效的请求范围；匹配的具体 MinecraftUIRenderContext::flushText Hook 先提交文字，再使用该上下文的 ScreenContext 绘制图标，避免将通用 UIRenderContext 强制向下转换。其他文字刷新只调用原版。
+图标绘制依据目标 SDK 的 [ItemRenderer::renderGuiItemNew](https://github.com/LiteLDev/LeviLamina/blob/v26.60.0/src-client/mc/client/renderer/actor/ItemRenderer.h)、[BaseActorRenderContext](https://github.com/LiteLDev/LeviLamina/blob/v26.60.0/src-client/mc/client/renderer/BaseActorRenderContext.h) 与 [MinecraftUIRenderContext](https://github.com/LiteLDev/LeviLamina/blob/v26.60.0/src-client/mc/client/renderer/screen/MinecraftUIRenderContext.h)。HUD 的同步文字 flush 建立只在本次调用有效的请求范围；匹配的具体 MinecraftUIRenderContext::flushText Hook 先提交文字，再使用该上下文的 ScreenContext 绘制图标，避免将通用 UIRenderContext 强制向下转换。其他文字刷新只调用原版。
 
 图标高度随现有字体行高，名称列增加图标宽度和间隔，参与面板测宽，材料名称完整保留，超出视口宽度时整体缩放；不增加行高。窄窗口放不下图标时优先保留文字。首次等待 tick 准备、未知物品或没有原生库存图标的方块（包括可能无法解析的水/岩浆身份）显示灰色占位，不以水桶替换材料身份。图标 Hook 不可用或 C++ 绘制异常时保留文字 HUD。
 

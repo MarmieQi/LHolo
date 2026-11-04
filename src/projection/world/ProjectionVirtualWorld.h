@@ -36,7 +36,7 @@ private:
     bool* mPreviousWorldDependency{};
 };
 
-// Vanilla BlockType::connectionUpdate recomputes a block's flattened
+// Vanilla BlockConnectionComponent::handleConnectionUpdate recomputes a block's flattened
 // connection states correctly for every family (fences, glass panes, iron
 // bars) but also applies its result to the region it is given. Scope the
 // calls with this guard: the BlockSource setBlock hooks then swallow every

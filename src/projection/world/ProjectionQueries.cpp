@@ -25,7 +25,7 @@ ProjectionQuery queryProjectionCell(
     if (!foundIndex) return {nullptr, false};
     Block const* block = state.worldLookup->blockAt(key);
     // Liquids have no normal block item, so they are never a valid place target.
-    if (block && block->getBlockType().mMaterial.mLiquid) block = nullptr;
+    if (block && block->getBlockType().mMaterial->mLiquid) block = nullptr;
     bool const missing = state.renderCorrectionState(*foundIndex) == CorrectionState::Missing;
     return {block, missing, block ? state.structure->renderBlocks[*foundIndex].blockEntityNbt : nullptr};
 }
@@ -59,7 +59,7 @@ std::vector<RangeCandidate> queryMissingProjectionCells(
                 if (dx * dx + dy * dy + dz * dz > r2) continue;
                 Block const* block = state.worldLookup->blockAt(key);
                 // Liquids have no normal block item, so they are never a valid place target.
-                if (block && block->getBlockType().mMaterial.mLiquid) block = nullptr;
+                if (block && block->getBlockType().mMaterial->mLiquid) block = nullptr;
                 if (!block) continue;
                 result.push_back({x, y, z, block});
             }

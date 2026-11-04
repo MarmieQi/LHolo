@@ -2,14 +2,18 @@
 
 本文档描述 LHolo Windows 客户端模组的正式版架构、关键实现、性能约束、故障历史和新 Minecraft/LeviLamina 版本适配流程。维护者在修改渲染、输入、结构解析或配置前，应先阅读对应章节，并在发布前执行完整回归矩阵。
 
-当前基线：
+当前 `main` 基线；26.51 版本维护在 `backport/26.51`：
 
-- Minecraft Bedrock Windows：`1.26.51.01`
-- LeviLamina：`26.51.0`，目标类型 `client`
+- Minecraft Bedrock Windows：`1.26.60.05`
+- LeviLamina：`26.60.0`，目标类型 `client`
 - 架构：Windows x64
 - 图形接口：Minecraft D3D12 + LHolo D3D11On12 + Dear ImGui DX11 后端
 - 模组名称、DLL、目录和内部命名空间：`LHolo` / `LHolo.dll` / `mods/LHolo` / `lholo`
 - 支持格式：Bedrock `.mcstructure`、Java Litematica `.litematic`
+
+26.60 适配保持现有功能和配置格式：客户端更新 Hook 完整转发新增参数，OreUI 私有运行时及注册接口按目标版本更新，Material 改用新版值成员，字体与私有预览液体层不再依赖已内联的独立符号。相机使用命名字段，方块实体空材质使用已构造的局部对象；维护边界分别见原生 HUD、结构预览与投影渲染文档。需要额外 MCAPI 时列出符号与依据，由维护者自行申请。
+
+本机构建、链接、完整目录组装和现有隔离回归已通过；用户已反馈适配测试通过，并确认相机修复后可以正常靠近投影。之后完成的空材质生命周期修复仍需补测箱子、告示牌、旗帜及普通/灵动视效。上述结果不代替第 16 节完整专项回归。
 
 文件结构预览通过独立原生 UIScene 展示原文件，不发布活动投影或修改任务选择。只读解析使用独立 StructureReadQueue，与任务加载仅共享原生解析互斥和世界生命周期屏障；关闭立即撤销结果发布，迟到结果丢弃。当前行为、资源所有权和维护约束见 [文件结构预览](docs/STRUCTURE_PREVIEW.md)。
 
@@ -457,9 +461,9 @@ LevelListener，即使首个投影尚未激活，世界销毁回调也先清空�
 
 - 实体模型走原版 `tessellateInWorld()`，并按原版 render layer 分桶。相邻实体方块只在 LHolo 生成网格的线程局部作用域内通过 `BlockSource::getBlock()` 暴露，供门等邻居相关模型正确生成；作用域外始终调用原版函数，不改变世界。
 - 网格化与纠错前统一经 `ProjectionRules::withNeighborConnections()` 按当前基岩版原生规则归一化邻域派生状态：网格化时 `BlockSource::getBlock()` 钩子让计算读到完整投影虚拟邻域（旋转/镜像后方向仍正确），纠错时读真实邻域，不直接把 Java 记录的邻域状态当作玩家可控朝向。
-- 邻接更新按原生能力选择：`Block::tryGetComponent<BlockConnectionComponent>()` 检查方块实际的连接组件，再由现有 `BlockType::connectionUpdate()` 调用游戏注册的回调。楼梯的 `minecraft:corner`、栅栏、玻璃板和铁栏杆等派生连接状态都走这条通路；禁止仅按楼梯/栅栏名称或类型白名单筛选。Java 映射只保留楼梯朝向与上下半部，拐角由基岩版回调依照当前邻域重算，不复制 Java 的拼接规则或忽略完整状态比较。组件查询使用游戏原生接口，不在模组内分配原生组件类型 ID。
+- 邻接更新按原生能力选择：`Block::tryGetComponent<BlockConnectionComponent>()` 检查方块实际的连接组件，再由 `BlockConnectionComponent::handleConnectionUpdate()` 调用游戏注册的回调；26.60 客户端不再调用仅服务端提供的 `BlockType::connectionUpdate()`。楼梯的 `minecraft:corner`、栅栏、玻璃板和铁栏杆等派生连接状态都走这条通路；禁止仅按楼梯/栅栏名称或类型白名单筛选。Java 映射只保留楼梯朝向与上下半部，拐角由基岩版回调依照当前邻域重算，不复制 Java 的拼接规则或忽略完整状态比较。组件查询使用游戏原生接口，不在模组内分配原生组件类型 ID。
 - 墙体由 `BlockType::isWallBlock()` 识别，使用 SDK 的 `WallBlock::_desiredConnectionState()` 计算四向 `WallConnectionType`，再使用 `WallBlock::_shouldBePost()` 对已完成连接的状态计算 `WallPostBit`；`Block::setState()` 只选择不可变调色板排列，不写入区域。Java 的 low/tall/up 状态和基岩版自然连接规则可能不同，因此墙体不走栅栏的扁平连接组件，也不直接忽略全部墙状态。禁止调用会写入世界和加入更新队列的 `tryFixWallStates()` 来做投影计算。该通路复用既有纠错预算与方块更新事件，不增加轮询或全图扫描；实机回归覆盖直墙、转角、交叉、上方覆盖、旋转/镜像和邻居增删。
-- `connectionUpdate()` 会把重算结果写进传入的区域，直接调用曾把可选中、有碰撞的幽灵栅栏写进真实世界（重进世界才消失）。因此调用必须包在 `ScopedRegionWriteSuppression` 内（`ProjectionVirtualWorld`），`ProjectionGameHooks` 里的两个 `BlockSource::setBlock` 钩子在抑制期间吞掉写入并返回成功，只取更新的返回值；不要在抑制作用域外做任何依赖写入生效的操作。
+- `handleConnectionUpdate()` 会把重算结果写进传入的区域，直接调用曾把可选中、有碰撞的幽灵栅栏写进真实世界（重进世界才消失）。因此调用必须包在 `ScopedRegionWriteSuppression` 内（`ProjectionVirtualWorld`），`ProjectionGameHooks` 里的两个 `BlockSource::setBlock` 钩子在抑制期间吞掉写入并返回成功，只取更新的返回值；不要在抑制作用域外做任何依赖写入生效的操作。
 - 所有投影方块实体创建完成后，使用 `BlockActor::isType()` 识别箱子，并在同一虚拟世界作用域内调用原版 `ChestBlockActor::_tryToPairWith()` 配对。必须先建立完整的虚拟方块和方块实体表，再执行配对；结构 NBT 中的 `pairx`/`pairz` 是原世界绝对坐标，不能直接作为投影配对坐标使用。
 - 水和岩浆沿用现有贴图 proxy 单元壳，只在 Missing 状态绘制；保留已有 liquid_depth / 四角液面高度、共享面剔除和透明度。Blend 与液体四边形在上传前保留 POSITION/COLOR/NORMAL/UV0，在同一投影实例的可见分区内统一按面排序、合为一个网格提交；不固定先提交全部玻璃、再提交全部液体。通过全局材质组按名解析 `beacon_beam_transparent`，保留深度测试、禁用深度写入、标准 alpha 混合与双面状态。不借用信标渲染器对象或修改共享材质字段；材质未就绪跳过该透明通道。实时 terrain atlas 的动画更新继续共享，不依赖额外光照贴图、区块数据或水面预处理缓冲，不增加世界/区块 Hook。
 - 玻璃外观通过几何可见性处理，不恢复会引入闪烁的深度写入和分材质提交。只对原生 Glass 材质且 Block 形状的完整单位方形面记录朝外法线；不猜测原生顶点绕序。相邻同状态且均 Missing 的投影玻璃剔除共享内部面，保留不同颜色、部分面和非 Missing 邻居。提交前按本地相机位置过滤这些玻璃面的背面；液体侧面和顶面保持双面，悬空底面显式设置向下的 `facingNormal`，仅从下方观察时提交。其他 Blend 模型不套用完整玻璃规则。玻璃包水统一排序及底面真实邻域遮挡修复已于 2026-11-03 获得用户实机测试通过确认。
@@ -520,7 +524,7 @@ OreUI 创建页使用 application/useCapture → bridge → CaptureProtocol/Capt
 
 “创建结构”不经过 `LoadedStructure`，也不会自动载入投影。选区端点先按每轴最小值/最大值归一化，两个端点都包含在内；导出前由 `BlockSource::areChunksFullyLoaded(min, max)` 拒绝客户端尚未完整加载的范围。
 
-捕获只使用 LeviLamina 26.51.0 客户端头文件确认的原版接口，并在客户端逻辑更新线程同步执行：
+捕获只使用 LeviLamina 26.60.0 客户端头文件确认的原版接口，并在客户端逻辑更新线程同步执行：
 
 1. `ll::service::getClientInstance()` 和 `ClientInstance::getLocalPlayer()` 获取当前客户端玩家。
 2. `Actor::getDimensionBlockSource()` 取得当前维度的 `BlockSource`。
@@ -577,11 +581,7 @@ world = anchor + userOffset + transform(local, mirror, rotation)
 LHolo 不自制草方块、楼梯等材质模型。它使用：
 
 - `BlockTessellator::tessellateInWorld()` 生成原版方块几何。
-- biome-tinted 方块（草和四种 foliage tint）的群系颜色使用 `BiomeColorSampling::getTessellationPolicy()`
-  计算并与网格顶点色相乘。26.40 起 `BlockTessellator::buildBiomeWeights()` 不再导出、tessellator 内的
-  群系权重缓存无法填充，因此策略调用的 `BiomeTintCache` 参数传 `nullptr`，让策略按坐标现场从
-  `BlockSource` 采样群系色（禁止把未填充的缓存指针传进去，那会得到白色/空染色）。草方块仍由原版
-  Tessellator 按面着色，不能把整块顶点统一乘绿色，否则泥土面也会变色。树叶类型和颜色不由 LHolo 维护。
+- 草类仍由原版 Tessellator 选择染色面；投影作用域内的草色 Hook 使用 `BiomeColorSampling::getMapPolicy(TintMethod::Grass).get(region, pos)` 采样，不给未填充的草类群系缓存传入伪指针，也不把空缓存当作有效采样保证。四种 foliage tint 沿用现有 TessellationPolicy 顶点乘色通路。不能把草方块整块顶点统一乘绿；具体采样、无效样本和有界重采样规则见 [投影渲染维护说明](docs/PROJECTION_PERFORMANCE.md)。
 - 渲染虚像的 opaque/alpha/alpha-one-sided 桶必须使用 ItemInHandRenderer 的 **Colored 系材质**
   （`mMatOpaqueBlockColor`/`mMatAlphaColoredBlock`/`mMatAlphaOneSidedColoredBlock`）：26.40 的
   entity 族着色器输入签名没有 COLOR0，普通版材质（`opaque_block`/`entity_alphatest` 等）会把顶点色
@@ -611,7 +611,7 @@ Opaque/Alpha/AlphaOneSided 沿用原来的原版材质与持久 GPU 网格。Ble
 
 ### 6.3 相机相对坐标
 
-网格生成后，顶点减去投影 `renderOrigin`。每帧只在 world matrix 中应用相机相对平移。不要把几万格绝对坐标直接上传为 float 顶点，否则会复现远坐标渲染错误。
+网格生成后，顶点减去投影 `renderOrigin`。每帧只在 world matrix 中应用相机相对平移。相对原点统一由 `render/RenderCamera.h` 读取 `BaseActorRenderContext::Impl::mCameraTargetPosition`；不得使用旧版固定偏移，26.60 前置捕获成员的尺寸已经变化。不要把几万格绝对坐标直接上传为 float 顶点，否则会复现远坐标渲染错误。
 
 透明排序沿用相同的相机相对矩阵；没有径向缩放、液体侧面内缩或关闭深度测试的抗闪烁特判。
 
@@ -627,7 +627,7 @@ Opaque/Alpha/AlphaOneSided 沿用原来的原版材质与持久 GPU 网格。Ble
 仅在纠错面/描边提交期间将 `ScreenContext::currentShaderColor` 固定为中性白色 `(1,1,1,1)`。
 结束或异常离开时恢复原颜色，并置 `dirty=true` 让下一次绘制重新同步常量；不能直接恢复原来
 的 dirty 标志，否则原本为 clean 的状态可能使后续绘制漏掉颜色恢复。整体边框、投影模型和
-方块实体均在作用域之外，作用域不保存跨帧对象。字段核对实际依赖 LeviLamina 26.51.0。
+方块实体均在作用域之外，作用域不保存跨帧对象。字段核对实际依赖 LeviLamina 26.60.0。
 此修复不修改世界光照，不增加网格、绘制调用、查询或异步任务；用户已确认显示效果恢复。
 
 四个可见纠错绘制列表都为空时，在整体边框绘制之后直接结束纠错阶段，避免无意义地设置/
@@ -789,7 +789,7 @@ Worker 初始化失败，或构建/上传连续失败三次后，本次游戏会
 
 `CorrectionAirScan` 按源 Region 惰性生成当前 16³ tile 的覆盖位图，减去期望占用（含液体）后只枚举剩余空气格。每文件仅保留当前 tile 的 512 B 掩码和续扫游标，不展开整张空域或分配与区域体积成正比的覆盖表；一块覆盖掩码最多通过 256 个 Z 行建立，构建及空 tile 推进也计入纠错工作。保留多 Region 的间隙及原有重叠语义，重复观测由既有稀疏 Extra 集合去重计数。
 
-`world/CorrectionWorldReader` 在当前量子内缓存一个世界子区块的空块判断。实际接口核对 xmake 安装的 LeviLamina 26.51.0 client：`ChunkSource::getAvailableChunk` 返回已加载区块的 shared_ptr，不生成新区块；再次要求 Loaded 状态，通过 `getSubChunk(short absoluteIndex)` 取子区块，在 `mWriteLock` 内检查初始化、主层指针、有效客户端状态和非占位条件。锁用法沿用 LeviLamina 的 ClientNetworkHandler 子区块处理。只有主层与可选副层均为 SDK 定义的 Paletted0 单条目存储且条目为 Air 才确认全空；不对混合存储调用可能遍历的 isUniform，不解码私有 packed 数组。未加载、缺失、其它存储格式或状态不明确时沿用普通比较，不把它们当作已证实的全空气。原生指针不离开探测调用，不跨帧持有；本阶段不改变未加载格的既有比较语义。
+`world/CorrectionWorldReader` 在当前量子内缓存一个世界子区块的空块判断。实际接口核对 xmake 安装的 LeviLamina 26.60.0 client：`ChunkSource::getAvailableChunk` 返回已加载区块的 shared_ptr，不生成新区块；再次要求 Loaded 状态，通过 `getSubChunk(short absoluteIndex)` 取子区块，在 `mWriteLock` 内检查初始化、主层指针、有效客户端状态和非占位条件。锁用法沿用 LeviLamina 的 ClientNetworkHandler 子区块处理。只有主层与可选副层均为 SDK 定义的 Paletted0 单条目存储且条目为 Air 才确认全空；不对混合存储调用可能遍历的 isUniform，不解码私有 packed 数组。未加载、缺失、其它存储格式或状态不明确时沿用普通比较，不把它们当作已证实的全空气。原生指针不离开探测调用，不跨帧持有；本阶段不改变未加载格的既有比较语义。
 
 确认空世界子区块后，期望格直接得到 Missing；空气扫描仅删除它与当前局部 tile 的真实交集，不假设偏移/旋转后的两个网格对齐。`projectionSectionLocalIntersection` 先裁切世界范围，再逆变换回局部范围，负坐标与边界计算使用宽整数。若当前 tile 仍有历史检测到的 Extra（包括隐藏格），继续逐格访问以清理计数和网格，不能直接跳过这些旧结果。纠错窗口诊断同时输出空块快路径处理格数及探测次数；这些是操作计数，不等于实测帧率或唯一方块数。
 
@@ -1069,7 +1069,7 @@ SettingsStore 在读取时兼容旧平铺字段（包括旧世界轴快捷键和
 - Visual Studio 2022 C++ 工具链（提供链接器与 Windows SDK）
 - LLVM 22（`clang-cl`）
 - xmake
-- LeviLamina 26.51.0 client
+- LeviLamina 26.60.0 client
 - levibuildscript
 - Dear ImGui 1.91.9，Win32 + DX11，静态
 - MinHook
@@ -1079,11 +1079,13 @@ SettingsStore 在读取时兼容旧平铺字段（包括旧世界轴快捷键和
 
 链接设置：`/DELAYLOAD:bedrock_runtime.dll` + `delayimp`。clang-cl 下只有 `/EHs` 生效，`/EHa` 会被静默忽略；`ProjectionRenderFrame.cpp` 依赖 C++ 异常，缺少 `/EH` 时会直接编译失败。
 
-本机若出现 `LNK1181 无法打开输入文件 user32.lib`，说明 xmake 没有找到 Windows SDK 库目录（常见于 SDK 装在非默认盘、或注册表 64 位视图的 `KitsRoot10` 指向了不存在的路径）。此时在运行 xmake 前补上 `LIB` 环境变量即可，无需改仓库：
+本机若出现 `LNK1181 无法打开输入文件 user32.lib`，说明 xmake 没有找到 Windows SDK 库目录（常见于 SDK 装在非默认盘、或注册表 64 位视图的 `KitsRoot10` 指向了不存在的路径）。可在本地 xmake 配置中明确指定库目录，无需写入仓库：
 
 ```powershell
-$env:LIB = "<SDK>\Lib\<版本>\um\x64;<SDK>\Lib\<版本>\ucrt\x64;<VS>\VC\Tools\MSVC\<版本>\lib\x64"
+xmake f -a x64 -m release -p windows --target_type=client --bin="<LLVM>\bin" --linkdirs="<SDK>\Lib\<版本>\um\x64;<SDK>\Lib\<版本>\ucrt\x64;<VS>\VC\Tools\MSVC\<版本>\lib\x64" -y
 ```
+
+`--bin` 用于避免 xmake 选择 Visual Studio 随附的旧版 clang-cl；仅调整终端 PATH 不一定改变所选编译器。本机路径保留在忽略版本管理的 `.xmake/` 中，重新配置时须保留这些参数。
 
 ### 14.2 干净 Release 构建
 
@@ -1126,7 +1128,7 @@ OreUI 随模组资源包分发的目标目录、Mojang 清单规则和升级保�
 测试路径：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.51.01\mods\LHolo
+D:\games\LeviLauncher\MC\versions\1.26.60.05\mods\LHolo
 ```
 
 ---
@@ -1344,14 +1346,14 @@ D:\games\LeviLauncher\MC\versions\1.26.51.01\mods\LHolo
 测试实例日志：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.51.01\logs\latest.log
+D:\games\LeviLauncher\MC\versions\1.26.60.05\logs\latest.log
 ```
 
 崩溃文件：
 
 ```text
-D:\games\LeviLauncher\MC\versions\1.26.51.01\logs\crash\trace_*.log
-D:\games\LeviLauncher\MC\versions\1.26.51.01\logs\crash\minidump_*.dmp
+D:\games\LeviLauncher\MC\versions\1.26.60.05\logs\crash\trace_*.log
+D:\games\LeviLauncher\MC\versions\1.26.60.05\logs\crash\minidump_*.dmp
 ```
 
 排障优先级：

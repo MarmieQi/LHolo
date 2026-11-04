@@ -26,6 +26,7 @@
 #include "projection/world/ProjectionPlacement.h"
 
 #include "overlay/BoundsWireframe.h"
+#include "render/RenderCamera.h"
 #include "place/PlaceHelper.h"
 #include "plugin/LHolo.h"
 #include "structure/capture/StructureCapture.h"
@@ -57,20 +58,6 @@
 
 namespace lholo::projection::detail {
 namespace {
-
-Vec3 renderCameraPosition(BaseActorRenderContext const& renderContext) {
-    // 1.26.40 no longer exports BaseActorRenderContext::getCameraPosition(), and
-    // its backing member mCameraPosition moved into the opaque Impl together
-    // with mCameraTargetPosition/mWorldClipRegion. The generated header exposes
-    // no accessor, so the position is read back from Impl.
-    //
-    // Verified in game: float slots 10..12 mirror the eye position every frame
-    // (they tracked the player exactly), while mce::Camera::mPosition reads 0
-    // for both the ScreenContext camera and IClientInstance::getCamera().
-    auto const* impl = reinterpret_cast<float const*>(renderContext.mImpl.get());
-    if (!impl) return {};
-    return {impl[10], impl[11], impl[12]};
-}
 
 void resetWorldAfterExit() {
     place::resetWorldSession();
@@ -246,7 +233,7 @@ void renderProjection(
     auto& client = renderContext.mClientInstance;
     auto* player = client.getLocalPlayer();
     if (!player || !state.blockTessellator) return;
-    Vec3 const camera = renderCameraPosition(renderContext);
+    Vec3 const camera = render::cameraPosition(renderContext);
 
     // Keep vanilla world queries at their real BlockPos, but do not upload large
     // absolute coordinates to the GPU. Render vertices relative to the projection
@@ -496,7 +483,7 @@ void renderProjectionFrame(BaseActorRenderContext& renderContext, bool renderAlp
                         for (auto const& file : state.files)
                             if (auto target = prepareProjectionOpaqueFrame(*file, renderContext)) targets.push_back(std::move(*target));
                         publishIndependentFileViews(state, renderContext);
-                        processProjectionOpaqueFrames(state, targets, renderContext, renderCameraPosition(renderContext));
+                        processProjectionOpaqueFrames(state, targets, renderContext, render::cameraPosition(renderContext));
                         for (auto const& target : targets) renderProjection(*target.state, renderContext, false);
                     } else {
                         for (auto& file : state.files) renderProjection(*file, renderContext, true);
@@ -512,7 +499,7 @@ void renderProjectionFrame(BaseActorRenderContext& renderContext, bool renderAlp
                 if (!renderAlphaLayer) {
                     if (auto target = prepareProjectionOpaqueFrame(state, renderContext))
                         processProjectionOpaqueFrames(state, std::span<ProjectionFrameTarget const>{&*target, 1},
-                            renderContext, renderCameraPosition(renderContext));
+                            renderContext, render::cameraPosition(renderContext));
                 }
                 renderProjection(state, renderContext, renderAlphaLayer);
             }

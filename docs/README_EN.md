@@ -4,17 +4,18 @@
 
 `LHolo` is a client-side structure projection mod for [LeviLamina](https://github.com/LiteLDev/LeviLamina)
 
+The current `main` branch targets Minecraft Bedrock Windows `1.26.60.05` and LeviLamina `26.60.0 client`, with mod version `26.60.0`. The 26.51 version is maintained on [backport/26.51](https://github.com/MarmieQi/LHolo/tree/backport/26.51).
+
 ## Development architecture
 
-OreUI is being introduced feature by feature. Chat `LHolo` opens the new menu;
-Browse, load, close, restore, selection editing, structure export, transforms, render settings, HUD, hotkeys, language and experimental settings are connected. OreUI has no separate scale control. Selecting a file alone does not load it. Material lists are connected. The configured menu hotkey (Alt+M by default) opens the same OreUI main menu; the legacy ImGui menu has no opening entry point. See the [development guide](../DEVELOPMENT.md),
+Chat `LHolo` and the configured menu hotkey (Alt+M by default) open the same OreUI menu on the building tasks page. Task files provide projection loading, closing, material lists and independent native previews. Capture, transforms, render settings, HUD, hotkeys, language and experimental settings use the existing native business modules. The HUD, layout editor and structure preview use native rendering; ImGui retains action hints and backend input. The legacy ImGui menu has been removed. See the [development guide](../DEVELOPMENT.md),
 [OreUI migration architecture](OREUI_MIGRATION.md), and [frontend guide](../frontend/README.md) (Chinese).
 
 ## Versioning
 
-Example version: `v26.51.2`
+Example version: `v26.60.2`
 
-- `26.51`: the corresponding Minecraft game version
+- `26.60`: the corresponding Minecraft game version
 - `.2`: the mod's second version for that game version
 
 ## Quick Start

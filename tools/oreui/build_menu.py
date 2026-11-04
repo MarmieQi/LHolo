@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import subprocess
 
-EXPECTED_SHA256 = "abf73f19e4d7c952d0de4ec366a0669b241560f1af319f3e0c9cbbb23142e5cc"
+EXPECTED_SHA256 = "9e7efe423b6cc8a1c1fa92756bd181675cffa51a4728bce386b0081cad1bb979"
 PROJECT = Path(__file__).resolve().parents[2]
 
 
@@ -33,21 +33,21 @@ def main():
         raise ValueError("Unsupported gameplay bundle hash; review the version adapter first")
     subprocess.run(["npm.cmd", "run", "build"], cwd=PROJECT / "frontend", check=True)
     bundle = raw.decode("utf-8")
-    if bundle.count('function u_({itemID:t,width:n,height:r,floating:o})') != 1:
+    if bundle.count('function dx({itemID:t,width:n,height:r,floating:a,hideShadow:o,bag:l})') != 1:
         raise ValueError("Unsupported native item icon component; review the runtime adapter")
-    if bundle.count('"e96d2bbd1477d4e72350"') != 1 or bundle.count('`geo-item://${e}?width=${t}&height=${n}`') != 1:
+    if bundle.count('"e96d2bbd1477d4e72350"') != 1 or bundle.count('`geo-item://${e}?width=${t}&height=${n}&bag=${encodeURIComponent(null!=l?l:"")}`') != 1:
         raise ValueError("Unsupported native thumbnail markup; review the runtime adapter")
-    start_anchor = "function oL(){"
-    end_anchor = "var iL,lL;iL=e.createElement(oL,null)"
+    start_anchor = "function CG(){"
+    end_anchor = '(function(e,t){if(null===t)return()=>{};Fw(t).render(e)})(e.createElement(CG,null)'
     if bundle.count(start_anchor) != 1 or bundle.count(end_anchor) != 1:
         raise ValueError("Unsupported gameplay application entry")
     start, end = bundle.index(start_anchor), bundle.index(end_anchor)
     adapter = Path(__file__).with_name("runtime_adapter.js").read_text(encoding="utf-8")
     app = (PROJECT / "frontend/dist/app.js").read_text(encoding="utf-8")
-    entry = adapter + "\n" + app + "\nfunction oL(){return e.createElement(LHoloOreUi.App,null);}\n"
+    entry = adapter + "\n" + app + "\nfunction CG(){return e.createElement(LHoloOreUi.App,null);}\n"
     result = bundle[:start] + entry + bundle[end:]
-    result = replace_once(result, 'const i=(0,a.useSharedFacet)(lo),l=(0,e.useRef)("")',
-                          'const i=LHoloUseMenuHistory(),l=(0,e.useRef)("")')
+    result = replace_once(result, 'e.createElement(Go,{driver:cw}',
+                          'e.createElement(Go,{driver:LHoloUseMenuHistory}')
     result = '// lholo-menu-v7-settings\n' + result
     html = replace_once(html, scripts[0], "/hbui/lholo-menu.js")
     css = (PROJECT / "frontend/dist/menu.css").read_text(encoding="utf-8")
@@ -57,7 +57,7 @@ def main():
     (args.output / "lholo-menu.js").write_text(result, encoding="utf-8")
     (args.output / "lholo-menu.html").write_text(html, encoding="utf-8")
     (args.output / "build-info.json").write_text(json.dumps({
-        "sourceSha256": EXPECTED_SHA256, "route": "/lholo-menu", "gameVersion": "1.26.51.01",
+        "sourceSha256": EXPECTED_SHA256, "route": "/lholo-menu", "gameVersion": "1.26.60.05",
     }, indent=2), encoding="utf-8")
     print(f"Generated menu assets: {args.output.resolve()}")
 

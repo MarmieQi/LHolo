@@ -4,8 +4,9 @@
 
 - 保留异步文件加载与现有单线程网格执行器。文件任务统一由 `structure/StructureFileLoader` 管理，普通加载和恢复共用单任务入口；不在每帧等待任务，世界销毁及模组卸载时才等待已有任务。
 - `core/ProjectionFrustum.h` 只做矩阵数学，`core/ProjectionVisibilityRules.h` 管理包围盒与调度规则，`runtime/ProjectionVisibility.cpp` 适配游戏相机。游戏对象不进入纯规则测试。
-- 实际依赖为 LeviLamina 26.51.0。相机矩阵来自该包 `mc/deps/renderer/Camera.h` 的 `viewMatrixStack`、`projectionMatrixStack` 和内联 `getProjectionMatrix()`；沿用项目已有相机位置来源，没有新增位置偏移或猜测游戏函数。
-- 只提取四个视锥侧面，不推断近远平面、反向 Z 或深度范围；矩阵、包围盒无效时保留绘制。已有相机位置硬编码来源仍需要在目标游戏版本内复核。
+- 实际依赖为 LeviLamina 26.60.0。相机矩阵来自该包 `mc/deps/renderer/Camera.h` 的 `viewMatrixStack`、`projectionMatrixStack` 和内联 `getProjectionMatrix()`。投影绘制、可见性、透明排序及创建选区边框共用 `render/RenderCamera.h`，通过 `BaseActorRenderContext::Impl::mCameraTargetPosition` 读取原有相机相对渲染原点；不使用 `mImpl` 的固定字节偏移或 float 下标。26.60 前置捕获成员的存储尺寸变化，不得继续沿用旧布局。
+- 方块实体提交的空 `MaterialPtr` 从当前渲染上下文中的有效句柄复制，再清空副本的共享引用，继续表示不强制覆盖原版材质。默认构造未导出时，也不得将全零字节数组强转为含 `shared_ptr` 的对象；副本仅在当前提交作用域内存活，不修改游戏句柄或跨帧保存材质。
+- 只提取四个视锥侧面，不推断近远平面、反向 Z 或深度范围；矩阵、包围盒无效时保留绘制。版本适配后仍需实机回归移动靠近、第三人称、远坐标、分层和边框位置。
 - 本轮遮挡优化是邻接内部几何剔除，不读取 GPU 深度，不提供 HZB 或视点相关的整栋建筑遮挡判断。
 
 ## 数据流与算法
@@ -45,7 +46,7 @@
 - 缓存属于 `ProjectionState`，在 `ProjectionSession::withLockedState` 的锁内访问。工作线程不访问活动绘制缓存；网格结果通过原有 generation/revision 验证后发布。
 - 切维度、退出世界、关闭投影仍沿用先停止并等待网格工作线程、再释放会话状态的顺序。缓存随状态销毁，编号不会解引用已释放资源；新的 activation 也会强制重建缓存。
 - CPU 绘制缓存与网格任务仍按原有生命周期释放。文件任务独立拥有 future，关闭投影/退出世界通过 StructureSession 的请求版本拒绝迟到结果；恢复结果也必须校验版本，不能绕过清理重新激活。菜单路径只在 UI 回调内写入。
-- `.mcstructure` 的原版 `StructureTemplate` 依赖世界持有的 unknown-block registry。实际 26.51.0 API 返回 `optional_ref<Level>` 和 `NonOwnerPointer<IUnknownBlockTypeRegistry>`，均不能延长世界寿命。因此文件任务启动前独立注册 `LevelListener`，即使尚无活动投影也在 `onLevelDestruction` 中先清除发布意图，再等待解析完成；回调后丢弃 Level 指针，不对销毁中的 Level 调用 removeListener。不在普通关闭投影或每帧路径等待解析；退出世界时若仍在解析大文件，会等待有限的剩余工作。
+- `.mcstructure` 的原版 `StructureTemplate` 依赖世界持有的 unknown-block registry。实际 26.60.0 API 返回 `optional_ref<Level>` 和 `NonOwnerPointer<IUnknownBlockTypeRegistry>`，均不能延长世界寿命。因此文件任务启动前独立注册 `LevelListener`，即使尚无活动投影也在 `onLevelDestruction` 中先清除发布意图，再等待解析完成；回调后丢弃 Level 指针，不对销毁中的 Level 调用 removeListener。不在普通关闭投影或每帧路径等待解析；退出世界时若仍在解析大文件，会等待有限的剩余工作。
 
 ### 复现与测量
 
@@ -57,7 +58,7 @@
 ## 群系染色与区块晚到
 
 - 草类沿用原版细分时的染色面选择。`GrassTessellationPolicy::$get(Block const&, BlockSource&, BlockPos const&, BiomeTintCache const*) const` hook 仅在当前线程的投影虚拟世界作用域内，改用 `getMapPolicy(TintMethod::Grass).get(region, pos)` 采样；原版世界直接调用原函数并保留原缓存。不把泥土底面或雪覆盖面统一乘绿。此前向 TessellationPolicy 传空缓存的修改已撤回：头文件签名不能证明空缓存保证返回有效颜色。
-- API 均核对实际依赖 LeviLamina 26.51.0 头文件。采样邻域取 `BiomeColorSampling::getPattern` 所有已声明模式的偏移并集，异步 ChunkView 和就绪检查使用同一范围，避免只保留原来的两格邻域。
+- API 均核对实际依赖 LeviLamina 26.60.0 头文件。采样邻域取 `BiomeColorSampling::getPattern` 所有已声明模式的偏移并集，异步 ChunkView 和就绪检查使用同一范围，避免只保留原来的两格邻域。
 - 构建时记录含草/树叶的网格是否早于 `BlockSource::areChunksFullyLoaded(min, max)`；结果与网格一起经过 worker generation、structure generation 和 revision 校验发布。不改变方块正确性也能触发一次染色重建，不依赖整张蓝图的纠错初扫完成。
 - 每帧可见扫描、后台扫描各最多查看 128 条分区元数据；世界就绪查询分别最多 8 次、2 次。同一分区的未加载查询至少间隔 60 个不透明渲染帧，等待只检查依赖、不构建网格。就绪后清除待刷新标志、消耗一次自动补建额度、递增 revision，交给原有异步执行器。脏分区和构建中分区不会被旧依赖再次打断。
 - 加载检查、采样值检查和全黑面是三个独立信号。草类采样若为全零 RGB、非有限值或超范围值，按投影显示策略暂用 `Biome::DEFAULT_GRASS_TINT()` 并记录被拒绝的样本；这不是引擎给出的“数据未就绪”标记。QuadList 输出全黑面也只记录为诊断现象，不能据此断言群系或光照未就绪。检测合并进已有的顶点颜色循环，不额外遍历顶点；单个暗角不触发判断，不重染泥土面。
@@ -78,7 +79,7 @@
 
 ## 异步加载的初始位置
 
-- 普通加载按钮在启动文件线程前读取玩家当前位置，沿用原先的 `floor(x), floor(y)-1, floor(z)` 脚下锚点规则，同时记录点击时的维度编号。实际接口核对 LeviLamina 26.51.0 的 `ClientInstance::getLocalPlayer()`、`Actor::getPosition()`、`Actor::getDimensionId()`。后台线程只捕获数值请求，不捕获玩家/世界/维度对象。
+- 普通加载按钮在启动文件线程前读取玩家当前位置，沿用原先的 `floor(x), floor(y)-1, floor(z)` 脚下锚点规则，同时记录点击时的维度编号。实际接口核对 LeviLamina 26.60.0 的 `ClientInstance::getLocalPlayer()`、`Actor::getPosition()`、`Actor::getDimensionId()`。后台线程只捕获数值请求，不捕获玩家/世界/维度对象。
 - 初始位置属于 `StructureSession` 的运行时激活意图，不写入文件内容模型 `LoadedStructure`。加载成功后，结构和位置在同一会话锁内发布；渲染侧通过轻量快照读取，不额外复制结构数据。加载期间移动不会改变锚点；切维度后暂缓启用新文件，回到点击维度再启用。
 - 最终审计移除只剩测试调用的通用 `replaceLoaded` 接口，测试装配复用实际恢复入口。所有有效结构发布都必须提供初始位置，启用阶段不再保留重新读取玩家当前位置的旧兜底。
 - 每次普通文件请求携带会话 revision。关闭、世界会话清理、更新的文件请求或结构替换使旧请求失效，迟到的成功/失败不能覆盖当前结构、位置、变换或状态。加载失败保留旧投影的位置；新投影成功发布时才重置变换。

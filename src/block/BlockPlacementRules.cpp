@@ -141,7 +141,9 @@ PlacementItem resolvePlacementItem(Block const& block, BlockActor const* blockAc
     } catch (...) {}
 
     try {
-        return describeItem(ItemInstance{block});
+        auto item = std::make_shared<ItemStack>();
+        item->reinit(block, 1);
+        return describeItem(std::move(item));
     } catch (...) {
         return {};
     }

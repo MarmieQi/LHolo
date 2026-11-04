@@ -44,7 +44,6 @@
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/VanillaBlockTypeIds.h"
-#include "mc/world/level/biome/Biome.h"
 #include "mc/world/level/biome/biome_color_sampling/BiomeColorSampling.h"
 #include "mc/world/level/biome/biome_color_sampling/MapPolicy.h"
 #include "mc/world/level/material/Material.h"
@@ -453,7 +452,7 @@ void buildProjectionSection(
             // Its independent diagnostic flag permits only one auto refresh.
             biomeRefresh.blackGrassFace = biomeRefresh.blackGrassFace || grassFaces.hasBlackFace();
             if (bucket == RenderBucket::Blend
-                && renderBlock.getBlockType().mMaterial.mType == SharedTypes::v1_26_20::MaterialType::Glass) {
+                && renderBlock.getBlockType().mMaterial->mType == SharedTypes::v1_26_20::MaterialType::Glass) {
                 auto const* graphics = BlockGraphics::getForBlock(renderBlock);
                 if (graphics && graphics->mBlockShape == BlockShape::Block)
                     glassRanges.push_back({firstPosition, tessellator.mMeshData->mPositions.get().size(),
@@ -616,7 +615,7 @@ void buildLiquidGeometry(
                 state.anchor.z + offsetZ + p.z
             };
             bool const isLava = expectedLiquid->getTypeName().find("lava") != std::string::npos
-                || expectedLiquid->getBlockType().mMaterial.mSuperHot;
+                || expectedLiquid->getBlockType().mMaterial->mSuperHot;
 
             std::uint32_t baseRgb = 0x00FFFFFFU; // Lava keeps its texture colors.
             if (!isLava) {
@@ -625,9 +624,8 @@ void buildLiquidGeometry(
                 auto sample = BiomeColorSampling::getMapPolicy(TintMethod::Water).get(region, worldPosition);
                 if (!validProjectionBiomeTint({sample.r, sample.g, sample.b})) {
                     markTessellationBiomeSampleFailed();
-                    auto const& fallback = Biome::DEFAULT_WATER_TINT();
-                    auto const rgb = projectionFallbackBiomeTint({fallback.r, fallback.g, fallback.b});
-                    sample = mce::Color{rgb[0], rgb[1], rgb[2], 1.0f};
+                    // Keep the texture's own color until native sampling succeeds.
+                    sample = mce::Color{1.0f, 1.0f, 1.0f, 1.0f};
                 }
                 baseRgb = toAbgr(sample) & 0x00FFFFFFU;
             }
@@ -666,7 +664,7 @@ void buildLiquidGeometry(
                 if (!neighbor || !neighbor->liquid) return false;
                 auto const *transformed = neighbor->liquid;
                 auto const isLavaNeighbor = transformed->getTypeName().find("lava") != std::string::npos
-                    || transformed->getBlockType().mMaterial.mSuperHot;
+                    || transformed->getBlockType().mMaterial->mSuperHot;
                 return isLavaNeighbor == isLava;
             };
             auto const sideIsCovered = [&](int dx, int dz) {
@@ -690,7 +688,7 @@ void buildLiquidGeometry(
                     return -1.0f;
                 auto const *t = n->liquid;
                 auto const isLavaNeighbor = t->getTypeName().find("lava") != std::string::npos
-                    || t->getBlockType().mMaterial.mSuperHot;
+                    || t->getBlockType().mMaterial->mSuperHot;
                 if (isLavaNeighbor != isLava)
                     return -1.0f;
                 if (neighborIsSameLiquid(dx, 1, dz))

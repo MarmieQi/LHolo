@@ -1,6 +1,7 @@
 #include "ui/preview/StructurePreviewView.h"
 #include "ui/hud/HudText.h"
 #include "ui/hud/NativeHudPainter.h"
+#include "ui/NativeFont.h"
 #include "i18n/Translator.h"
 #include "i18n/Message.h"
 #include "mc/client/game/ClientInstance.h"
@@ -21,7 +22,9 @@ void drawStructurePreviewBackground(UIRenderContext& context, ClientInstance& cl
     float const w = screen.x * s.frame.width, h = screen.y * s.frame.height;
     float const left = (screen.x - w) * 0.5f, top = (screen.y - h) * 0.5f;
     auto fontHandle = client.$getFontHandle();
-    auto const lineHeight = std::max(10.0f,fontHandle.getFont().getWrapHeight());
+    auto const font = resolveNativeFont(fontHandle);
+    if (!font) return;
+    auto const lineHeight = std::max(10.0f,font->getWrapHeight());
     hud::paintHudBackground(context,{left,top,w,h},hud::hudStyle(lineHeight).rounding,0.60f);
 }
 void drawStructurePreviewView(UIRenderContext& context, ClientInstance& client, PreviewViewState const& s) {
@@ -31,7 +34,10 @@ void drawStructurePreviewView(UIRenderContext& context, ClientInstance& client, 
     constexpr float dividerGray = 144.0f / 255.0f; // Soft gray: #909090.
     context.fillRectangle({left + w * 0.04f,left + w * 0.96f,
         top + h * 0.095f,top + h * 0.095f + 0.5f},{dividerGray,dividerGray,dividerGray,1.0f},0.6f);
-    auto handle = client.$getFontHandle(); auto& font = handle.getFont();
+    auto handle = client.$getFontHandle();
+    auto const fontOwner = resolveNativeFont(handle);
+    if (!fontOwner) return;
+    auto& font = *fontOwner;
     auto text = [&](std::string value, float x, float y, float width, float height, float scale, float brightness) {
         TextMeasureData const data{scale,0.0f,false,false,false,::ui::TextAlignment::Left};
         context.drawText(font,{left + x,left + x + width,top + y,top + y + height},std::move(value),{brightness,brightness,brightness,1.0f},

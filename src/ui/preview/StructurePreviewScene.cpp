@@ -129,8 +129,8 @@ LL_TYPE_INSTANCE_HOOK(PreviewDefinition, ll::memory::HookPriority::Normal,
     return origin(nameSpace, name);
 }
 LL_TYPE_INSTANCE_HOOK(PreviewUpdate, ll::memory::HookPriority::Normal,
-    ClientInstance, &ClientInstance::$update, bool, bool initialized) {
-    bool const result = origin(initialized);
+    ClientInstance, &ClientInstance::$update, bool, bool initialized, bool allowGameUpdate) {
+    bool const result = origin(initialized, allowGameUpdate);
     if (active) { auto client = ll::service::getClientInstance(); if (client && &client.get() == this) {
         processScene(*this);
         std::lock_guard lock(mutex); refreshPointer();

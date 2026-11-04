@@ -15,7 +15,8 @@ export interface ItemIconProps { itemId: string; iconData?: ItemIconData; }
 // Only the version-specific adapter may resolve private game symbols.
 export interface NativeRuntime {
   React: typeof React;
-  Facet: typeof Facet;
+  Facet: Pick<typeof Facet, 'createFacet' | 'createStaticFacet' | 'useFacetState'
+    | 'useFacetUnwrap' | 'useFacetMap' | 'useFacetCallback' | 'useFacetEffect' | 'NO_VALUE'>;
   Shell: React.ComponentType<{ component: React.ComponentType }>;
   Interactive: React.ComponentType<InteractiveProps>;
   Scroll: React.ComponentType<React.PropsWithChildren>;

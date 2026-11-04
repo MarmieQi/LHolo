@@ -940,15 +940,19 @@ assert([...inputMocks.values()].every(input => input.listeners.size === 0), 'DOM
 const theme = { press: 'press', hover: 'hover', focus: 'focus' };
 const adapterContext = {
   window: { engine: { trigger() {} } },
-  a: { createStaticFacet: value => value, useFacetWrap: value => value,
-    useFacetMap: (map, deps, inputs) => map(...inputs) },
+  i: value => value, C: value => value,
+  F: (map, deps, inputs) => map(...inputs),
+  R() {}, Ge() {}, W() {}, M() {}, G() {}, l: Symbol('NO_VALUE'),
   e: { createElement: (type, props, ...children) => ({ type, props, children }) },
-  Us: Symbol('native-input'), cf: Symbol('native-scroll'), uc: v => v * 10, no: () => theme,
+  Zs: Symbol('native-input'), zf: Symbol('native-scroll'), Ec: v => v * 10, Lo: () => theme,
+  uw: Symbol('native-shell'), Cl: Symbol('native-route'), cl: Symbol('native-transition'),
+  qN: Symbol('native-error'), IP: Symbol('native-semantics'), yG: Symbol('native-wrapper'),
+  DN: Symbol('native-completion'), hN: Symbol('native-input-legends'),
 };
 vm.createContext(adapterContext);
 vm.runInContext(fs.readFileSync('../tools/oreui/runtime_adapter.js', 'utf8'), adapterContext);
 const button = adapterContext.window.__LHoloOreUiRuntime.Interactive({ label: 'LHolo', className: 'lholo-button', children: 'LHolo', onClick() {} });
-assert.equal(button.type, adapterContext.Us);
+assert.equal(button.type, adapterContext.Zs);
 assert.equal(button.props.soundEffectPressed, theme.press);
 assert.equal(button.props.soundEffectHovered, theme.hover);
 assert.equal(button.props.soundEffectFocused, theme.focus);
@@ -958,10 +962,20 @@ assert.equal(adapterContext.window.__LHoloOreUiRuntime.TextField, undefined, 'No
 assert.equal(adapterContext.window.__LHoloOreUiRuntime.Switch, undefined, 'No vanilla visual switch component');
 assert.equal(button.children[0], 'LHolo', 'LHolo authors the primitive children');
 const scroll = adapterContext.window.__LHoloOreUiRuntime.Scroll({children: 'content'});
-assert.equal(scroll.type, adapterContext.cf);
+assert.equal(scroll.type, adapterContext.zf);
 assert.equal(scroll.props.floating, true);
 assert.equal(scroll.props.scrollbarClassName, 'lholo-hidden-scrollbar');
 assert.equal(scroll.props.disableScrolling, undefined);
+const shell = adapterContext.window.__LHoloOreUiRuntime.Shell({component: 'lholo-page'});
+assert.equal(shell.type, adapterContext.uw);
+assert.equal(shell.props.defaultRoute, '/lholo-menu');
+assert.equal(shell.props.wrapperComponent, adapterContext.yG);
+assert.equal(shell.children[0].type, adapterContext.Cl);
+assert.equal(shell.children[0].props.component, 'lholo-page');
+const completion = adapterContext.window.__LHoloOreUiRuntime.Completion();
+assert.equal(completion.children[0].type, adapterContext.DN);
+assert.equal(completion.children[1].type, adapterContext.DN);
+assert.equal(completion.children[2].type, adapterContext.hN);
 const icon = adapterContext.window.__LHoloOreUiRuntime.ItemIcon({ itemId: 'minecraft:stone' });
 assert.equal(icon.type, 'fast-img');
 assert.equal(icon.props.src, 'geo-item://stone?width=16&height=16');

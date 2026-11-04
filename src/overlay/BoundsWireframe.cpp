@@ -1,6 +1,7 @@
 #include "overlay/BoundsWireframe.h"
 
 #include "render/OverlayMaterials.h"
+#include "render/RenderCamera.h"
 #include "render/BoxWireframeMesh.h"
 #include "render/ScopedShaderColor.h"
 
@@ -15,14 +16,6 @@
 namespace lholo::overlay {
 
 namespace {
-
-Vec3 renderCameraPosition(BaseActorRenderContext const& renderContext) {
-    // Same source as the projection pass: see renderCameraPosition() in
-    // ProjectionRenderFrame.cpp for why this reads through Impl on 1.26.40.
-    auto const* impl = reinterpret_cast<float const*>(renderContext.mImpl.get());
-    if (!impl) return {};
-    return {impl[10], impl[11], impl[12]};
-}
 
 OffscreenCaptureDescription const& emptyOffscreenCaptureDescription() {
     using Storage = decltype(dragon::RenderMetadata::mOffscreenCaptureDescription);
@@ -70,7 +63,7 @@ void BoundsWireframe::render(BaseActorRenderContext& renderContext, bool renderA
     if (!render::materialExists(material)) return;
     auto const texture = render::resolveWhiteTextureVariant(*levelRenderer);
 
-    Vec3 const camera = renderCameraPosition(renderContext);
+    Vec3 const camera = render::cameraPosition(renderContext);
     auto matrix = renderContext.mScreenContext.camera.worldMatrixStack.get().push(false);
     matrix.mat->translate(
         static_cast<float>(mMin.x) - camera.x,

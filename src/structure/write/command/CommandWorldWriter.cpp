@@ -76,8 +76,8 @@ void process(ClientInstance& client) {
     }
 }
 LL_TYPE_INSTANCE_HOOK(CommandWriteUpdate, ll::memory::HookPriority::Normal,
-    ClientInstance, &ClientInstance::$update, bool, bool initialized) {
-    bool const result = origin(initialized);
+    ClientInstance, &ClientInstance::$update, bool, bool initialized, bool allowGameUpdate) {
+    bool const result = origin(initialized, allowGameUpdate);
     auto client = ll::service::getClientInstance();
     if (client && &client.get() == this) {
         try { process(*this); }

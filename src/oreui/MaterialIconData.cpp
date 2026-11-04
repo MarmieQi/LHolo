@@ -6,6 +6,16 @@
 #include "mc/world/item/registry/ItemRegistryManager.h"
 #include "nlohmann/json.hpp"
 
+// The 26.60 SDK declares this non-exported constructor for what was an
+// aggregate in 26.51. Preserve the former data{} value initialization;
+// setItemRendererBindings still fills the native visual metadata below.
+ItemRendererData::ItemRendererData()
+    : itemIdAux{}, isEmptyStack{}, chargedItem{}, itemCustomColor{},
+      itemPickupTime{}, showItemPickup{}, armorTrimMaterial{}, bannerPatterns{},
+      bannerColors{}, bannerType{}, decoratedPotSherds{}, serializedActorPose{},
+      shieldIsActive{}, shieldBaseColor{}, shieldBaseColorHovered{},
+      itemLoadstoneTrackingHandle{}, showBundleOpenFront{}, showBundleOpenBack{} {}
+
 namespace lholo::oreui {
 std::optional<MaterialIconData> materialIconData(ItemStack const& item, IClientInstance const& client) {
     auto const registry = client.getItemRegistry();
@@ -17,7 +27,7 @@ std::optional<MaterialIconData> materialIconData(ItemStack const& item, IClientI
     ItemRegistryManager::ScopedItemRegistry const scope{owner};
     ItemRendererData data{};
     ItemRendererDataHelpers::setItemRendererBindings(data, item);
-    // 1.26.51 ScreenController item-renderer bindings and ItemResourceResolver
+    // ScreenController item-renderer bindings and ItemResourceResolver
     // use these PropertyBag keys. Values come from the native item helper,
     // including banner defaults, rather than a second NBT conversion table.
     nlohmann::json properties{

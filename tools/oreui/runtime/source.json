@@ -1,9 +1,9 @@
 {
-  "gameVersion": "1.26.51.01",
-  "archive": "1.26.51.01.zip",
-  "archiveSha256": "5d27423e4a5c77cbab38be7730b21328789898bfccfe0e66897d198b39a72ceb",
+  "gameVersion": "1.26.60.05",
+  "archive": "1.26.60.05.zip",
+  "archiveSha256": "53aff0cd215d0fd09409add03fd2898e2fc7dc8f3127fc4dd4dbd1be89184205",
   "files": {
-    "gameplay.html": "718e1c30bbb536bbb2b6a156c3c6db65fac6add1f2969bc58681e8a0ac253d89",
-    "gameplay-100751586307248a0527.js": "abf73f19e4d7c952d0de4ec366a0669b241560f1af319f3e0c9cbbb23142e5cc"
+    "gameplay.html": "7e58d5cf68c9ae4bc13639d81a7f4c42c5cdb496b37005e507db011082f488ce",
+    "gameplay-6de8e340eddced55490b.js": "9e7efe423b6cc8a1c1fa92756bd181675cffa51a4728bce386b0081cad1bb979"
   }
 }

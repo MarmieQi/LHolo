@@ -92,7 +92,7 @@ LL_TYPE_INSTANCE_HOOK(
     return origin(position);
 }
 
-// BlockType::connectionUpdate recomputes flattened connection geometry
+// BlockConnectionComponent::handleConnectionUpdate recomputes flattened connection geometry
 // correctly for every block family, but it also writes the recomputed block
 // into the region it is handed. While a ScopedRegionWriteSuppression is
 // active on this thread the write is swallowed: the caller keeps only the

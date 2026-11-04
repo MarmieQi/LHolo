@@ -1,6 +1,7 @@
 #include "ui/hud/NativeHudPainter.h"
 #include "ui/hud/HudText.h"
 #include "ui/hud/NativeHudIcons.h"
+#include "ui/NativeFont.h"
 #include "mc/client/game/ClientInstance.h"
 #include "mc/client/gui/CaretMeasureData.h"
 #include "mc/client/gui/Font.h"
@@ -140,7 +141,12 @@ NativeHudFrame paintNativeHud(UIRenderContext& context, ClientInstance& client,
     // Borrow font/context only within this render call. No native pointers or
     // geometry from an earlier world, frame or dimension are retained.
     auto fontHandle = client.$getFontHandle();
-    auto& font = fontHandle.getFont();
+    auto const fontOwner = resolveNativeFont(fontHandle);
+    if (!fontOwner) {
+        clearNativeHudIcons();
+        return {};
+    }
+    auto& font = *fontOwner;
     auto const viewport = context.getFullClippingRectangle();
     auto const lineHeight = std::max(10.0f, font.getWrapHeight());
     bool const sameCorner = content.projection.position == content.materials.position && !saved[0].custom && !saved[1].custom;

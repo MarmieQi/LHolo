@@ -108,8 +108,10 @@ void submitProjectedBlockActorPass(
     if (state.projectedBlockActors.empty() || !state.visibilityKey) return;
     ProjectionBounds const blockBounds{{0, 0, 0}, {1, 1, 1}, true};
 
-    alignas(mce::MaterialPtr) static const std::byte sNoForcedMaterialStorage[sizeof(mce::MaterialPtr)]{};
-    auto const& noForcedMaterial = *reinterpret_cast<mce::MaterialPtr const*>(sNoForcedMaterialStorage);
+    // MaterialPtr's default constructor is not exported. Copy a live handle
+    // and clear only our shared reference to obtain a constructed empty value.
+    auto noForcedMaterial = renderContext.mItemInHandRenderer.mMatOpaqueBlock.get();
+    noForcedMaterial.mRenderMaterialInfoPtr.reset();
     auto& dispatcher = renderContext.mBlockEntityRenderDispatcher;
     ScopedTessellationBlocks blockActorWorldScope(
         *state.worldLookup,

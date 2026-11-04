@@ -1,5 +1,5 @@
 param(
-    [string]$GameRoot = 'D:\games\LeviLauncher\MC\versions\1.26.51.01'
+    [string]$GameRoot = 'D:\games\LeviLauncher\MC\versions\1.26.60.05'
 )
 $ErrorActionPreference = 'Stop'
 function Get-LHoloFileHash([string]$Path) {

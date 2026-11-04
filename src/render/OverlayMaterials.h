@@ -40,9 +40,8 @@ inline mce::MaterialPtr const& selectionOutlineMaterial(LevelRenderer& renderer)
 // Resolved once from the vanilla TextureGroup, retried per frame until it
 // shows up, and left empty when unavailable.
 inline TextureVariant resolveWhiteTextureVariant(LevelRenderer& levelRenderer) {
-    static mce::TexturePtr cached{};
-    static bool            resolved = false;
-    if (!resolved) {
+    static std::optional<mce::TexturePtr> cached;
+    if (!cached) {
         auto const& textureGroup = levelRenderer.mTextureGroup.get();
         if (textureGroup) {
             auto texture = textureGroup->getTexture(
@@ -53,12 +52,11 @@ inline TextureVariant resolveWhiteTextureVariant(LevelRenderer& levelRenderer) {
             );
             auto const& clientTexture = texture.mClientTexture;
             if (clientTexture && clientTexture->mIsMissingTexture != IsMissingTexture::Yes) {
-                cached   = std::move(texture);
-                resolved = true;
+                cached.emplace(std::move(texture));
             }
         }
     }
-    if (resolved) return TextureVariant{cached};
+    if (cached) return TextureVariant{*cached};
     return TextureVariant{};
 }
 

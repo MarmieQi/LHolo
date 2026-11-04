@@ -119,9 +119,10 @@ Block const& withNeighborConnections(
 ) {
     auto const& blockType = block.getBlockType();
     auto const wall = blockType.isWallBlock();
+    auto const* connections = wall ? nullptr : block.tryGetComponent<BlockConnectionComponent>();
     // Native connection callbacks also own derived states such as stair
     // corners. Select the capability, rather than an incomplete family list.
-    if (!wall && !block.tryGetComponent<BlockConnectionComponent>()) return block;
+    if (!wall && !connections) return block;
     // The connection update resolves the callbacks registered by the game.
     // It also APPLIES the recomputed block to the region
     // it is given — that filled the real world with ghost blocks — so run it
@@ -137,7 +138,7 @@ Block const& withNeighborConnections(
     for (int direction = 0; direction < static_cast<int>(NeighborDirection::Count); ++direction) {
         directionSet.insert(static_cast<NeighborDirection>(direction));
     }
-    return blockType.connectionUpdate(region, block, position, directions);
+    return connections->handleConnectionUpdate(region, block, position, directions);
 }
 
 bool projectionStatesMatch(Block const& expected, Block const& actual) {

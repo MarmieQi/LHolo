@@ -432,7 +432,7 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
         Block const* liquid{};
         auto const assign = [&](Block const* value) {
             if (!value) return;
-            if (value->getBlockType().mMaterial.mLiquid) liquid = value;
+            if (value->getBlockType().mMaterial->mLiquid) liquid = value;
             else if (!block) block = value;
         };
         assign(primary);
@@ -441,10 +441,10 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
         // Preserve a separately decoded liquid only; dry columns must stay dry.
         if (primary && primary->getTypeName() == "minecraft:bubble_column") {
             block = primary;
-            liquid = (secondary && secondary->getBlockType().mMaterial.mLiquid) ? secondary : nullptr;
+            liquid = (secondary && secondary->getBlockType().mMaterial->mLiquid) ? secondary : nullptr;
         } else if (secondary && secondary->getTypeName() == "minecraft:bubble_column") {
             block = secondary;
-            liquid = (primary && primary->getBlockType().mMaterial.mLiquid) ? primary : nullptr;
+            liquid = (primary && primary->getBlockType().mMaterial->mLiquid) ? primary : nullptr;
         }
         if (!block && !liquid) continue;
         auto const x = index / yz;

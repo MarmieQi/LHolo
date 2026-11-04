@@ -11,7 +11,7 @@ const runtimeModules = {
     export default React;
     export const {createElement,Fragment,useCallback,useEffect,useMemo,useRef,useState} = React;`,
   '@react-facet/core': `export const {createFacet,createStaticFacet,useFacetState,useFacetUnwrap,
-    useFacetMap,useFacetCallback,useFacetEffect,NO_VALUE,shallowObjectEqualityCheck}
+    useFacetMap,useFacetCallback,useFacetEffect,NO_VALUE}
     = window.__LHoloOreUiRuntime.Facet;`,
 };
 
