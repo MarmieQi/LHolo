@@ -13,6 +13,8 @@
 #include <optional>
 #include <vector>
 
+#include <gsl/util>
+
 #include "mc/client/game/IClientInstance.h"
 #include "mc/client/gui/screens/ScreenContext.h"
 #include "mc/client/player/LocalPlayer.h"
@@ -26,6 +28,7 @@
 #include "mc/deps/minecraft_renderer/framebuilder/dragon/RenderMetadata.h"
 #include "mc/deps/minecraft_renderer/renderer/RenderMaterial.h"
 #include "mc/deps/renderer/hal/interface/DepthStencilStateDescription.h"
+#include "mc/deps/renderer/ShaderColor.h"
 #include "mc/world/level/block/actor/BlockActor.h"
 
 namespace lholo::projection::detail {
@@ -288,6 +291,19 @@ void submitProjectionMeshPass(
     auto const& warningMaterial = levelRenderer
         ? levelRenderer->getLevelRendererPlayer().selectionBlockEntityOverlayColorMaterial.get()
         : itemRenderer.mMatBlendBlockNoColor.get();
+
+    // Correction vertex colors must not inherit the caller's shader tint.
+    // Restore it for subsequent vanilla draws, including when a draw throws.
+    auto& shaderColor = renderContext.getScreenContext().currentShaderColor;
+    auto const savedShaderColor = shaderColor.color.get();
+    auto restoreShaderColor = gsl::finally([&] {
+        shaderColor.color = savedShaderColor;
+        // Resynchronize the restored color even if the original state was clean.
+        shaderColor.dirty = true;
+    });
+    shaderColor.color = mce::Color{1.0f, 1.0f, 1.0f, 1.0f};
+    shaderColor.dirty = true;
+
     // seeThroughMeshes is passed per call so the "missing" correction meshes stay
     // depth-tested while only the "wrong" ones honor the X-ray toggle.
     auto renderOverlayMeshes = [&] (
