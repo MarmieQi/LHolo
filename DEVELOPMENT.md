@@ -1123,7 +1123,7 @@ bin/LHolo/
 
 ### 14.3 本机部署
 
-OreUI 随模组资源包分发的目标目录、Mojang 清单规则和升级保留策略见 [OreUI 发布与更新方案](docs/OREUI_PACKAGING.md)。2026-10-25 用户已实测内置资源包菜单启动成功：由 `OreUiMenuResources` 仅适配 LHolo HTML/JS，解决原版 Hybrid 对未受信任包的读取限制。OreUI 页面是必需资源，正式包包含六个安装文件；原生编辑场景定义在内存中提供。正式发布使用对应标签提交在 GitHub Actions 编译的原始 artifact ZIP，`tools/oreui/release_package.py` 校验版本与清单，发行 CI 复核完整附件及远程构建来源；GitHub CI 运行同一完整构建，上传包含 DLL、清单及 OreUI 资源的目录。
+OreUI 随模组资源包分发的目标目录、Mojang 清单规则和升级保留策略见 [OreUI 发布与更新方案](docs/OREUI_PACKAGING.md)。2026-10-25 用户已实测内置资源包菜单启动成功：由 `OreUiMenuResources` 仅适配 LHolo HTML/JS，解决原版 Hybrid 对未受信任包的读取限制。OreUI 页面是必需资源，正式包包含六个安装文件；原生编辑场景定义在内存中提供。发布 GitHub Release 后，发行工作流调用同一份 `build.yml` 重新构建标签源码并运行回归；`release_package.py` 校验版本与清单，`publish_release.py` 核对本次构建来源及哈希后自动上传原始 artifact ZIP，并检查远端附件摘要。普通提交只构建，正式发行不改写已确认的文案。
 
 测试路径：
 

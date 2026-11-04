@@ -2,12 +2,38 @@ on:
   pull_request:
   push:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Source ref to build"
+        required: true
+        type: string
+    outputs:
+      commit:
+        value: ${{ jobs.build.outputs.commit }}
+      artifact_id:
+        value: ${{ jobs.build.outputs.artifact_id }}
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - id: source
+        name: Record checked-out commit
+        run: |
+          $sourceCommit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "commit=$sourceCommit" >> $env:GITHUB_OUTPUT
 
       - uses: actions/setup-node@v6
         with:
@@ -49,9 +75,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           xmake r LHoloLogicTests
 
-      - uses: actions/upload-artifact@v7
+      - name: Test release packaging tools
+        run: python -m unittest discover -s tools/oreui/tests
+
+      - id: artifact
+        uses: actions/upload-artifact@v7
         with:
-          name: ${{ github.event.repository.name }}-${{ github.sha }}-client-windows-x64
+          name: ${{ github.event.repository.name }}-${{ steps.source.outputs.commit }}-client-windows-x64
           if-no-files-found: error
           path: |
             bin/

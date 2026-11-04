@@ -66,7 +66,7 @@ LHolo/
 - xmake 与发布 CI：先完成受控的前端/运行时资源构建，再统一收集 DLL、清单及资源包。保持一个正式发布目录，不另建一套不同结构的发行物。
 - lip/启动器：安装和更新完整模组包。运行中的 DLL 不自更新，也不在启动时修改游戏安装目录来补资源。
 
-普通 CI 与本地都通过 `xmake` 生成完整安装目录；正式发布将经过校验的完整目录归档，只上传 ZIP 到草稿后发布。发行 CI 下载已发布附件，复查六项文件清单、整包哈希、原生/资源包版本、固定 UUID 与 UI 协议；不会用缺少资源的包覆盖完整发行附件，也不重写已确认的更新日志。
+普通 CI 与本地都通过 `xmake` 生成完整安装目录。发布 GitHub Release 后，发行工作流自动对标签源码重新构建、运行回归、校验并上传完整安装 ZIP；更新日志保持发布时的原文。
 
 ## 升级、保留与回滚
 
@@ -93,11 +93,12 @@ LHolo/
 
 日常本地构建仍使用 `xmake`，供实机测试；正式 Release 必须使用 GitHub Actions 对发行标签对应提交编译的原始 artifact ZIP，不上传本机编译包。
 
-1. 核对 `tooth.json.version`、xmake modVersion 与 `v<version>` 标签，并按对应 lip 官方 Schema 检查清单。v3 使用固定 format_version/format_uuid、client/win-x64、实际依赖范围及安装目录；`preserve_files` 是卸载保留规则，不是打包清单。当前保留配置、旧配置备份和任务数据。
-2. 等待 `.github/workflows/build.yml` 对发行标签相同 SHA 的 Windows 构建成功。获取该 run 的 `LHolo-<SHA>-client-windows-x64` artifact，核对未过期及 GitHub digest，下载其原始 ZIP，不在本地重新编译或重新压缩。
-3. 将该原始 ZIP 命名为 `LHolo-client-windows-x64.zip`。通过 `tools/oreui/release_package.py --verify <ZIP> --tag v<version>` 验证六项必需文件、版本、固定 UUID 与 UI 协议；同名 `.zip.sha256` 只作本地校验输入，不上传。ZIP 顶层为 `LHolo/`，与 tooth 安装规则一致，不含配置、PDB 或本机文件。
-4. 草稿 target、发行标签和已验证 artifact 的源码提交必须一致，只上传该原始 ZIP 和已确认的更新日志，然后发布草稿。已存在的版本不能静默移动标签或改用其他提交的二进制。
-5. `.github/workflows/release.yml` 下载正式附件，除核对整包哈希和安装清单，还要求其 digest 与同标签提交的成功 build.yml artifact 一致，从而拒绝本机构建包。可用 workflow_dispatch 对指定标签重验；发布校验不重编译、不改写更新日志。
+1. 核对 `tooth.json.version`、xmake modVersion 与 `v<version>` 标签，确认发布文案。普通提交只触发构建，不自动创建 Release；在 GitHub 发布对应版本 Release 后开始自动发行。
+2. `.github/workflows/release.yml` 响应 `release.published`，调用同一份可复用 `build.yml`，按发行标签检出源码，配置 LLVM 22、LeviLamina client 和关闭 PDB 的 Release 构建。原生、前端、逻辑回归和打包工具测试全部成功后，上传 `LHolo-<实际检出 SHA>-client-windows-x64` artifact。
+3. 上传任务仅接收本次发行构建返回的 artifact ID 和源码 SHA。`tools/oreui/publish_release.py` 核对标签、源码、artifact 名称/所属 run 和 GitHub SHA256，下载原始 ZIP，不重新压缩或混入本机产物。
+4. `release_package.py` 校验六项安装文件、原生/资源包版本、UUID、最低引擎要求与 UI 协议。通过后自动将原始 ZIP 作为 `LHolo-client-windows-x64.zip` 附加到现有 Release，再核对远端附件 digest。`.zip.sha256` 只作校验输入，不上传；安装包不含配置、PDB 或本机文件。
+5. 不生成或覆盖更新日志、不移动已有标签。自动流程编译或校验失败时不会上传新包，具体错误见 Actions。Release 页面可能在构建期间尚无附件，须等待发行工作流成功后下载安装包。
+6. 需要对同一标签重新编译时，可在 Actions 手动运行发行工作流并填写 `tag`，例如 `gh workflow run release.yml -f tag=v26.60.0`。成功后替换该标签的同名附件，保留文案；同标签发行任务串行执行，防止重跑互相覆盖。
 
 v26.51.7 的远程构建来源为 Actions run 40665777019，提交 68bf0f11971944e92e18394d66b3018989ff059d。包格式参照官方模板 d0a888ec116c9a00fe4dc8f28ccead4dfc6b6760；lip v3 Schema 使用 LiteLDev/lip 的 v0.34.7 版本核对，避免把当前 v4 格式直接套到本版本。
 

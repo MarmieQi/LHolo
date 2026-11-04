@@ -1,4 +1,4 @@
-name: Verify release package
+name: Build and publish release package
 
 on:
   release:
@@ -6,71 +6,46 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag whose complete installation package will be verified"
+        description: "Existing release tag to rebuild and attach the package to"
         required: true
         type: string
 
 permissions:
   contents: read
-  actions: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.event.release.tag_name }}
+  cancel-in-progress: false
 
 jobs:
-  verify:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ inputs.tag || github.event.release.tag_name }}
+
+  publish:
+    needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      RELEASE_COMMIT: ${{ needs.build.outputs.commit }}
+      RELEASE_ARTIFACT: ${{ needs.build.outputs.artifact_id }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.tag || github.event.release.tag_name }}
+          ref: ${{ needs.build.outputs.commit }}
 
       - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
 
-      # Promote the original build.yml Actions artifact for the tagged commit.
-      # Verification never rebuilds the package or overwrites accepted notes.
-      - name: Download installation package and GitHub asset digest
-        run: |
-          gh release download "$RELEASE_TAG" --pattern 'LHolo-client-windows-x64.zip' --dir release
-          gh release view "$RELEASE_TAG" --json assets > release/asset-metadata.json
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          import re
-          import subprocess
-          archive = Path("release/LHolo-client-windows-x64.zip")
-          assets = json.loads(Path("release/asset-metadata.json").read_text())["assets"]
-          digest = next(asset["digest"] for asset in assets if asset["name"] == archive.name)
-          if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-              raise ValueError("Missing GitHub asset SHA256")
-          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-          runs = json.loads(subprocess.check_output([
-              "gh", "run", "list", "--workflow", "build.yml", "--commit", commit,
-              "--status", "success", "--limit", "20", "--json", "databaseId,headSha"
-          ], text=True))
-          source = None
-          for run in runs:
-              if run["headSha"] != commit:
-                  continue
-              endpoint = f"repos/{os.environ['GH_REPO']}/actions/runs/{run['databaseId']}/artifacts"
-              artifacts = json.loads(subprocess.check_output(["gh", "api", endpoint], text=True))["artifacts"]
-              for artifact in artifacts:
-                  if (not artifact["expired"] and artifact.get("digest") == digest
-                      and artifact["name"] == f"LHolo-{commit}-client-windows-x64"):
-                      source = run["databaseId"]
-                      break
-              if source is not None:
-                  break
-          if source is None:
-              raise ValueError("Release ZIP is not an original successful Actions build artifact for this tag")
-          print(f"Verified remote build origin: Actions run {source}, commit {commit}")
-          archive.with_name(archive.name + ".sha256").write_text(
-              f"{digest[7:]}  {archive.name}\n", encoding="ascii")
-          PY
-
-      - name: Verify version, resource pack, UI protocol and installation inventory
-        run: python tools/oreui/release_package.py --verify release/LHolo-client-windows-x64.zip --tag "$RELEASE_TAG"
+      - name: Verify original build artifact, attach package and verify uploaded digest
+        run: >-
+          python tools/oreui/publish_release.py
+          --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
+          --run-id "$GITHUB_RUN_ID" --artifact-id "$RELEASE_ARTIFACT"

@@ -10,12 +10,13 @@
 - `runtime_adapter.js`：目标版本私有 React/Facet、输入、滚动、图标与音效适配。
 - `resource_pack.json`：固定资源包 UUID 与引擎要求；版本来自原生 manifest。
 - `assemble_package.py`：组装 `bin/LHolo` 的六项必需文件，校验版本、UUID、协议和哈希，报告写入 `build/oreui/package-validation.json`。
-- `release_package.py`：仅在正式发布阶段从完整目录生成六文件 ZIP 和本地 SHA256；只上传 ZIP，CI 使用 GitHub 附件摘要校验下载结果。
+- `release_package.py`：校验完整安装 ZIP、版本、UUID 与协议，保留手动归档工具；自动发行使用 Actions 原始 ZIP，不重新压缩。
+- `publish_release.py`：核对发行标签与本次构建的原始 artifact，验包后附加到现有 Release，并检查上传摘要；不改写更新日志。
 - `deploy.ps1`：可选的测试部署工具，校验报告和 bin 文件后复制到目标 mods；不参与编译，不操作游戏进程，不生成 ZIP，不处理用户配置。
 - `tests/`：验证目录完整性、重复组装、版本冲突及资源不兼容时拒绝发布。
 
 构建成功后可直接复制 `bin/LHolo` 到游戏 `mods`。需要脚本部署时，在游戏退出后运行 `tools/oreui/deploy.ps1`。旧独立打包入口、ZIP 测试包和旧游戏目录部署入口已移除。
 
-不覆盖原版 gameplay/index。生成页面依赖经过哈希审核的目标版本运行时；这些页面为必需资源，随正式安装包一起分发，生成文件不提交源码。默认 GitHub 构建使用同一份内置运行时生成完整目录并上传 artifact；正式发布使用对应提交的原始 artifact ZIP，发行 CI 校验已上传附件。内置资源包挂载及限定 HTML/JS 读取通路已由用户实测。
+不覆盖原版 gameplay/index。生成页面依赖经过哈希审核的目标版本运行时；这些页面为必需资源，随正式安装包一起分发，生成文件不提交源码。默认 GitHub 构建使用同一份内置运行时生成完整目录并上传 artifact；发布 Release 后自动复用同一构建流程，编译标签源码、运行回归，并将经过校验的原始 artifact ZIP 上传为正式附件。内置资源包挂载及限定 HTML/JS 读取通路已由用户实测。
 
 详见 [打包说明](../../docs/OREUI_PACKAGING.md) 与 [迁移说明](../../docs/OREUI_MIGRATION.md)。
