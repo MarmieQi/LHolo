@@ -4,16 +4,10 @@
 
 `LHolo` 是一个 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 客户端投影模组
 
-当前 `main` 对应 Minecraft Bedrock Windows `1.26.60.05`、LeviLamina `26.60.0 client`，模组版本为 `26.60.0`。26.51 版本维护在 [backport/26.51](https://github.com/MarmieQi/LHolo/tree/backport/26.51)。
+## 计划
 
-## 开发架构
-
-聊天命令与菜单快捷键打开同一 OreUI 主菜单，默认进入建造任务页；文件加载、关闭投影、材料清单和独立原生结构预览均从任务页进入。创建结构、结构变换、渲染设置、HUD、快捷键、语言和实验性设置继续使用现有业务模块。HUD、布局编辑器和结构预览使用原生绘制，ImGui 保留动作提示及后端输入；旧 ImGui 菜单已移除。
-开发入口见 [开发手册](DEVELOPMENT.md)、[OreUI 架构与迁移说明](docs/OREUI_MIGRATION.md) 和 [前端说明](frontend/README.md)。
-
-## 本机构建完整模组目录
-
-配置一次目标游戏资源路径后，执行 `xmake`，完整输出到 `bin/LHolo/`，可复制到游戏 `mods/`；不生成 ZIP。默认 `xmake` 同时构建原生与前端资源。配置方法与公开发行边界见 [构建与打包说明](docs/OREUI_PACKAGING.md)。
+OreUI 将彻底替换旧 ImGui
+开发入口见 [开发手册](DEVELOPMENT.md)、[OreUI 架构与迁移说明](docs/OREUI_MIGRATION.md) 和 [前端说明](frontend/README.md)
 
 ## 版本号说明
 
