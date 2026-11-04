@@ -121,6 +121,12 @@ int runTaskActionsTests() {
     playerOrigin = {10, 20, 30, 0};
     failures += runStructureWriteActionTests(playerOrigin);
     auto fileId = getTaskSnapshot().catalog.tasks[0].files[0].id;
+    check(session.snapshot().hasVisibleSelection(), "loaded single-file task has a visible HUD selection");
+    command(TaskAction::Visible, {}, fileId); finish(true);
+    check(!session.snapshot().hasVisibleSelection() && session.snapshot().editor,
+        "hiding the only file suppresses its HUD without clearing the editor selection");
+    command(TaskAction::Visible, {}, fileId); finish(true);
+    check(session.snapshot().hasVisibleSelection(), "showing the file restores its HUD selection");
     auto original = session.loaded();
     command(TaskAction::Path, "missing.mcstructure", fileId); finish(false);
     check(session.loaded() == original && session.lastPath() == "body.mcstructure",
@@ -187,7 +193,24 @@ int runTaskActionsTests() {
     finish(true);
     check(originalPosition && fileWorldPosition(fileId) == originalPosition,
           "reopen preserves file world position even when normalization changes");
+    auto const taskFiles = getTaskSnapshot().catalog.tasks[0].files;
+    auto const otherFileId = std::find_if(taskFiles.begin(), taskFiles.end(),
+        [&](auto const& file) { return file.id != fileId; })->id;
+    command(TaskAction::SelectFile, {}, fileId);
+    command(TaskAction::Visible, {}, otherFileId); finish(true);
+    check(session.snapshot().hasVisibleSelection(), "hiding an unselected sibling preserves the selected file HUD");
+    command(TaskAction::Visible, {}, otherFileId); finish(true);
+    command(TaskAction::Visible, {}, fileId); finish(true);
+    check(structure::hasVisibleTaskFiles(*session.loaded()) && !session.snapshot().hasVisibleSelection(),
+        "a visible sibling cannot keep the hidden selected file HUD alive");
+    command(TaskAction::SelectFile, {}, otherFileId);
+    check(session.snapshot().hasVisibleSelection(), "selecting the visible sibling restores its own HUD");
+    command(TaskAction::SelectFile, {}, fileId);
+    check(!session.snapshot().hasVisibleSelection(), "selecting a hidden file does not expose empty progress or material scanning");
+    command(TaskAction::Visible, {}, fileId); finish(true);
+    check(session.snapshot().hasVisibleSelection(), "showing the selected file restores its HUD with siblings present");
     command(TaskAction::Close);
+    check(!session.snapshot().hasVisibleSelection(), "closing the task clears the visible HUD selection");
     ++worldRevision;
     playerOrigin = {200, 80, 300, 0};
     command(TaskAction::Activate);
@@ -232,6 +255,7 @@ int runTaskActionsTests() {
     check(selected.loaded && !selected.editor && selected.selectedSource < 0
         && selected.lastPath == "nether.mcstructure",
         "foreign-dimension selection keeps metadata but has no HUD/editor target");
+    check(!selected.hasVisibleSelection(), "foreign-dimension selection suppresses projection and material HUD");
     check(!inFlight && fileWorldPosition(fileId) == originalPosition,
         "selecting a foreign file leaves current-dimension projections running");
     check(ui.actionHint(GetTickCount64(), true).text == i18n::tr(i18n::TextKey::ActionHintSelectedFileOtherDimension),

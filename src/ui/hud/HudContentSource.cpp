@@ -2,7 +2,6 @@
 #include "input/MaterialHudPageRequest.h"
 #include "ui/hud/editor/HudEditor.h"
 #include "structure/StructureLoader.h"
-#include "structure/IndependentTaskFiles.h"
 #include "structure/StructureSession.h"
 #include "structure/StructureUiState.h"
 #include "structure/StructurePaths.h"
@@ -39,9 +38,7 @@ HudContent readHudContent() {
     }
     if (!settings.enabled && !materialEnabled) return result;
     auto const session = structure::detail::StructureSession::getInstance().snapshot();
-    if (!session.loaded || projection::isDimensionSuspended()
-        || (session.loaded->composed && (!session.editor || session.selectedSource < 0
-            || !structure::hasVisibleTaskFiles(*session.loaded)))) {
+    if (!session.hasVisibleSelection() || projection::isDimensionSuspended()) {
         paging = {};
         if (editing) {
             auto example = makeHudEditorContent(settings.position, state.materialHudPosition());

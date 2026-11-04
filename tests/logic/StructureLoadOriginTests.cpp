@@ -22,6 +22,7 @@ int runStructureLoadOriginTests() {
     auto& session = StructureSession::getInstance();
     session.clearLoaded(Message{TextKey::StatusProjectionClosed});
     session.resetTransform();
+    check(!session.snapshot().hasVisibleSelection());
 
     StructureLoadOrigin clicked{10, 63, -21, 0};
     auto const request = session.beginFileLoad(clicked);
@@ -29,6 +30,7 @@ int runStructureLoadOriginTests() {
     check(!session.activation().loaded && !session.activation().origin);
     auto first = makeStructure(100);
     check(session.completeFileLoad(request, first, "first.mcstructure", {}));
+    check(session.snapshot().hasVisibleSelection()); // Legacy standalone load has no task source index.
     auto activation = session.activation();
     check(activation.loaded == first);
     check(activation.origin == std::optional{StructureLoadOrigin{10, 63, -21, 0}});

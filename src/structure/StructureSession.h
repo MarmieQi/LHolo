@@ -52,6 +52,9 @@ struct StructureSessionSnapshot {
     int                                    maxLayerX{};
     StructureTransformSnapshot             transform;
     SavedProjectionSnapshot                saved;
+
+    // Selection remains editable when hidden; projection consumers must check visibility separately.
+    [[nodiscard]] bool hasVisibleSelection() const;
 };
 
 // Runtime placement intent, kept separate from immutable file contents.

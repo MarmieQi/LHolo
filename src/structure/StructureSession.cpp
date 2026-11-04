@@ -2,6 +2,7 @@
 // Copyright (C) 2026  MarmieQi
 
 #include "structure/StructureSession.h"
+#include "structure/IndependentTaskFiles.h"
 
 #include <algorithm>
 #include <cassert>
@@ -61,6 +62,13 @@ SavedProjectionSnapshot StructureSession::savedProjectionLocked() const {
         },
         mSavedStructurePath
     };
+}
+
+bool StructureSessionSnapshot::hasVisibleSelection() const {
+    if (!loaded) return false;
+    if (!loaded->composed) return true;
+    auto const* file = independentTaskFile(*loaded, selectedSource);
+    return editor && file && file->visible && file->loaded;
 }
 
 StructureSessionSnapshot StructureSession::snapshot() const {

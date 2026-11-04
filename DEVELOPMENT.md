@@ -823,6 +823,8 @@ Worker 初始化失败，或构建/上传连续失败三次后，本次游戏会
 
 HUD 每帧只读取原子计数，不查询世界、不遍历结构。`ui/hud/HudContentSource` 读取既有会话/进度/材料快照，`HudContent` 整理本地化行，`HudLayout` 计算四角与同角堆叠，`NativeHudRenderer` 只测量/绘制这些展示数据；业务模块不依赖原生绘制 SDK。材料图标身份与 OreUI 清单共用 `ui/MaterialFormat`，`NativeHudIcons` 在 tick 线程准备显示物品、在本次匹配的原生 UI flush 中绘制，不在渲染线程解析注册表。
 
+投影及材料 HUD 以会话快照的 `hasVisibleSelection()` 判断显示资格：任务中当前选中文件必须已加载且可见，其他可见文件不替代选中文件。小眼睛隐藏文件只隐藏对应 HUD，不撤销编辑选择；重新显示或改选可见文件后恢复。该判断仅按来源索引读取文件状态，不扫描结构；写入 HUD 独立显示，布局编辑器继续使用示例内容。
+
 材料显示 HUD 也不单独查询世界：`ProjectionState::progressCorrect` 每次变化时递增
 `progressRevision`，`MaterialTracker` 只在结构、纠错版本或显示层设置变化后复制一次纠错字节快照。
 版本查询和快照复制必须通过 `Projection.h` 的 `getMaterialProgressKey()` /
