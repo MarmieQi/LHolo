@@ -442,10 +442,10 @@ LevelListener，即使首个投影尚未激活，世界销毁回调也先清空�
 加载流程：
 
 1. 读取文件，单文件上限 512 MiB。
-2. 使用 Bedrock little-endian binary NBT 解析。
+2. 使用 Bedrock little-endian binary NBT 解析外层。缺省或 `compression=0` 时，`structure` 为 Compound；`compression=1` 时，它是 zlib 压缩的 ByteArray。后者经 `formats/McstructureInput.h` 有界解压并解析为独立 Compound 后预校验，解压上限同为 512 MiB；拒绝错误压缩类型、损坏/截断流和超限数据。
 3. 校验 `size`、`structure.block_indices`、`palette.default.block_palette`。
 4. 校验每个 block index layer 的长度等于结构体积。
-5. 使用客户端 Level 的 unknown-block registry 构造原版 `StructureTemplate`，再把完整根 NBT 交给 `StructureTemplate::load()`。不要逐项调用 `Block::tryGetFromRegistry()`：那条捷径会绕开格式版本升级、世界方块调色板和 unknown-block registry，旧状态可能被错误解析成未知方块。
+5. 使用客户端 Level 的 unknown-block registry 构造原版 `StructureTemplate`，再把原始完整根 NBT（保留压缩封装）交给 `StructureTemplate::load()`。预校验只读取独立解压结果，不重写索引、palette、实体数据或版本。不要逐项调用 `Block::tryGetFromRegistry()`：那条捷径会绕开格式版本升级、世界方块调色板和 unknown-block registry，旧状态可能被错误解析成未知方块。
 6. 从加载后的 `StructureTemplateData` 取得原版已升级的主/副索引数组和 `StructureBlockPalette`，用 `StructureBlockPalette::tryGetBlock()` 解析方块。不要用 `StructureTemplate::tryGetBlockAtPos()` 遍历文件：26.20 客户端该接口的坐标访问约定与 `.mcstructure` 的线性索引布局不一致，曾导致门上下半块错位和水取成错误方块。26.51 起 `mExtraBlockIndices` 是 `std::optional`：副层没有任何方块（全部为原版 `NO_BLOCK_INDEX_VALUE`，即结构不含水/含水方块）时，原版加载器会把整层收成空值，这不是损坏，按全空索引处理；仅当副层为空但文件自身第二层仍统计出占用格子（数据自相矛盾），或层有值但长度不等于体积时，才按“索引数量与结构体积不一致”拒绝。
 7. `block_indices` 有两种已知的文件形状（`format_version` 1 与 2），预校验必须都接受：
    - format 1（旧）：`List<List<Int>>`——两个 Int 列表，主层 + 可选副层（水）。
@@ -529,7 +529,7 @@ OreUI 创建页使用 application/useCapture → bridge → CaptureProtocol/Capt
 1. `ll::service::getClientInstance()` 和 `ClientInstance::getLocalPlayer()` 获取当前客户端玩家。
 2. `Actor::getDimensionBlockSource()` 取得当前维度的 `BlockSource`。
 3. `BedrockStructureCapture` 构造使用该 Level 注册表的 `StructureTemplate`，完整初始化 `StructureSettings` 后调用 `fillFromWorld` 同步捕获；不使用只赋值四个字段的 SDK `create(region, bounds)` 便捷封装。
-4. `StructureManager::exportStructure(template, Core::Path)` 写出官方 `.mcstructure`。
+4. `StructureManager::exportStructure(template, Core::Path)` 写出官方 `.mcstructure`。26.60 实际导出可使用 `format_version=2`、`compression=1` 的压缩结构标签，创建端保留原版输出；任务加载和文件预览共用上述压缩读取通路。
 
 `BlockSource` 的读取会更新其 last-chunk 弱引用与直接指针缓存，引用计数的原子操作并不允许两个线程同时改写同一缓存对象。捕获入口在区块完整性校验之前检查 `mOwnerThreadID`，错误线程直接报告捕获失败并记录日志。不得从 Present 或后台线程执行区块查询，也不得用仅保护 LHolo 的互斥锁替代引擎线程归属。不得改用依赖服务端 `ll::service::getLevel()` 的 NBT 重载，不调用 `StructureBlockActor::_saveStructure()`，也不增加手工 palette、索引、实体 NBT 或备用序列化路径。捕获不每帧扫描选区，超大选区的同步捕获和写文件仍可能阻塞客户端更新。
 

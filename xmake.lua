@@ -225,7 +225,7 @@ target("LHoloLogicTests")
     add_files("tests/logic/**.cpp")
     add_cxflags("/utf-8")
     add_syslinks("user32", "ole32", "shell32")
-    add_packages("levilamina")
+    add_packages("levilamina", "zlib")
 
 target("LHoloStructureBenchmark")
     set_kind("binary")

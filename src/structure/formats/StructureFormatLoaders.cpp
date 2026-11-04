@@ -17,6 +17,7 @@
 #include "structure/formats/StructureFormatLoaders.h"
 #include "structure/formats/LitematicNbt.h"
 #include "structure/formats/LitematicInput.h"
+#include "structure/formats/McstructureInput.h"
 #include "structure/StructureLoader.h"
 #include "block/BlockPlacementRules.h"
 #include "structure/java_to_bedrock/JavaBlockEntityToBedrock.h"
@@ -45,6 +46,7 @@
 #include "ll/api/service/Bedrock.h"
 #include "mc/client/game/ClientInstance.h"
 #include "mc/deps/nbt/CompoundTag.h"
+#include "mc/deps/nbt/ByteArrayTag.h"
 #include "mc/deps/nbt/IntArrayTag.h"
 #include "mc/deps/nbt/IntTag.h"
 #include "mc/deps/nbt/ListTag.h"
@@ -55,6 +57,7 @@
 #include "mc/world/level/material/Material.h"
 #include "mc/world/level/levelgen/structure/StructureBlockPalette.h"
 #include "mc/world/level/levelgen/structure/StructureTemplate.h"
+#include "mc/world/level/levelgen/structure/StructureCompression.h"
 #include "mc/world/level/Level.h"
 
 namespace lholo::structure::detail {
@@ -293,6 +296,39 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
 
     auto const* size = findList(*root, "size");
     auto const* structure = findCompound(*root, "structure");
+    std::optional<CompoundTag> decompressedStructure;
+    auto compression = StructureCompression::None;
+    if (auto const* tag = findTag(*root, "compression")) {
+        if (!tag->hold<IntTag>()) {
+            error = "mcstructure compression 标签不是整数";
+            return nullptr;
+        }
+        compression = static_cast<StructureCompression>(static_cast<int>(tag->get<IntTag>()));
+    }
+    if (compression == StructureCompression::Zlib) {
+        auto const* tag = findTag(*root, "structure");
+        if (!tag || !tag->hold<ByteArrayTag>()) {
+            error = "mcstructure 压缩结构不是 ByteArray 标签";
+            return nullptr;
+        }
+        auto const& payload = tag->get<ByteArrayTag>();
+        auto inflated = inflateMcstructureTag(
+            {reinterpret_cast<char const*>(payload.data()), payload.size()}, kMaximumStructureFileSize, error
+        );
+        if (!inflated) return nullptr;
+        auto decoded = CompoundTag::fromBinaryNbt(*inflated, true);
+        if (!decoded) {
+            error = "mcstructure 解压后的结构不是有效 NBT: " + decoded.error().message();
+            return nullptr;
+        }
+        decompressedStructure.emplace(std::move(*decoded));
+        structure = &*decompressedStructure;
+    } else if (compression != StructureCompression::None) {
+        error = "不支持的 mcstructure 压缩方式";
+        return nullptr;
+    }
+    // Inspect the decoded payload, but let vanilla load the original envelope
+    // so its compression, format upgrades and palette handling stay native.
     if (!size || !structure) {
         error = "缺少 size 或 structure 标签";
         return nullptr;
