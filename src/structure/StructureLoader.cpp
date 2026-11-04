@@ -676,15 +676,8 @@ void renderMaterialHud() {
                 ),
                 miss,
                 materials[index].stackSize,
-                std::to_string(miss),
-                shulkerBoxConversion
-                    ? lholo::structure::formatShulkerBoxCount(
-                        miss,
-                        materials[index].stackSize,
-                        i18n::tr(i18n::TextKey::HudShulkerBoxUnit),
-                        i18n::tr(i18n::TextKey::HudStackUnit)
-                    )
-                    : lholo::ui::formatStackBreakdown(miss, materials[index].stackSize),
+                {},
+                {},
             });
         }
     }
@@ -746,10 +739,15 @@ void renderMaterialHud() {
 
             bool hasAnyBreakdown = false;
             for (std::size_t index = 0; index < rowCount; ++index) {
-                if (!missing[index].breakdown.empty()) {
-                    hasAnyBreakdown = true;
-                    break;
-                }
+                auto& row = missing[index];
+                row.countStr = std::to_string(row.missing);
+                row.breakdown = shulkerBoxConversion
+                    ? lholo::structure::formatShulkerBoxCount(
+                        row.missing, row.stackSize,
+                        i18n::tr(i18n::TextKey::HudShulkerBoxUnit),
+                        i18n::tr(i18n::TextKey::HudStackUnit))
+                    : lholo::ui::formatStackBreakdown(row.missing, row.stackSize);
+                hasAnyBreakdown = hasAnyBreakdown || !row.breakdown.empty();
             }
 
             int const columnCount = hasAnyBreakdown ? 3 : 2;

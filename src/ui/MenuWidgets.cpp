@@ -35,12 +35,6 @@ std::string formatStackBreakdown(std::uint64_t count, int stackSize) {
     return buffer;
 }
 
-std::string formatStackCount(std::uint64_t count, int stackSize) {
-    auto const breakdown = formatStackBreakdown(count, stackSize);
-    if (breakdown.empty()) return std::to_string(count);
-    return std::to_string(count) + " " + breakdown;
-}
-
 char const* materialDisplayName(
     std::string const&                  displayName,
     std::optional<i18n::TextKey> const& nameKey
