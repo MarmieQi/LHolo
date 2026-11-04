@@ -861,7 +861,7 @@ PreLoader/LeviLamina 的约定处理：`0` 表示成功，任何非 `0` 值都�
 mods/LHolo/config/config.json
 ```
 
-当前配置版本：`12`。
+当前配置版本：`13`。
 
 正式持久化字段：
 
@@ -878,6 +878,7 @@ mods/LHolo/config/config.json
 - `correctionSeeThrough`、`missingSeeThrough`（错误与未放置标记的穿透显示开关，默认关闭）
 - `experimentalConsent`（辅助放置风险提示是否已确认）
 - `materialHudEnabled`、`materialHudPosition`（材料 HUD 开关与四角位置，新配置默认右下角）
+- `materialHudShulkerBoxConversion`（缺失材料按物品最大堆叠数折算为潜影盒与组，默认关闭；旧配置缺失时沿用默认值）
 - `loadProjectionHotkey`、`closeProjectionHotkey` 及其修饰键
 - HUD 开关、各项显示开关（含 `hudShowProjectedBlockName` 投影方块名称）、位置；读取时兼容旧键
   `hudShowBlockEntity`，保存时只写新键
@@ -886,6 +887,8 @@ mods/LHolo/config/config.json
 - 上次投影旋转、镜像、偏移、显示模式、显示层和分层轴
 
 普通结构变换和显示层属于当前会话；只有“恢复上次投影”记录显式跨会话保存。手动放置、轻松放置和范围放置为安全敏感的临时功能，只能从实验性功能页面启用，不提供全局快捷键，不读取、不写入配置，每次启动均默认关闭；放置半径和投影方块破坏后的自动放置冷却时长仍持久化。纠错样式、投影透明度、GUI/HUD 和其他快捷键属于用户偏好，始终持久化。
+
+缺失材料 HUD 按材料名、缺失数量和可选换算列对齐；先按缺口排序，再仅为实际显示的前 14 项格式化数量与换算文字。潜影盒换算按 27 个物品栏位计算，数量与堆叠上限仍来自游戏线程发布的材料快照，绘制线程不访问物品注册表。
 
 配置读取必须：
 

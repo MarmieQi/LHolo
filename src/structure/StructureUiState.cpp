@@ -354,6 +354,14 @@ void StructureUiState::setMaterialHudEnabled(bool enabled) {
     mMaterialHudEnabled.store(enabled, std::memory_order_release);
 }
 
+bool StructureUiState::materialHudShulkerBoxConversion() const {
+    return mMaterialHudShulkerBoxConversion.load(std::memory_order_acquire);
+}
+
+void StructureUiState::setMaterialHudShulkerBoxConversion(bool enabled) {
+    mMaterialHudShulkerBoxConversion.store(enabled, std::memory_order_release);
+}
+
 int StructureUiState::materialHudPosition() const {
     return mMaterialHudPosition.load(std::memory_order_acquire);
 }

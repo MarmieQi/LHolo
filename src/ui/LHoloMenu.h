@@ -130,6 +130,7 @@ struct MenuModel {
     std::vector<MaterialRow> materials;
     bool materialPopupRequested{};
     bool materialHudEnabled{};
+    bool materialHudShulkerBoxConversion{};
     int  materialHudPosition{3};
     bool closeRequested{};
 };

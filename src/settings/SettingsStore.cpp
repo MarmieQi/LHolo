@@ -34,6 +34,9 @@ bool loadSettingsFile(std::filesystem::path const& path, Settings& out) {
     out.missingSeeThrough = json.value("missingSeeThrough", out.missingSeeThrough);
     out.experimentalConsent = json.value("experimentalConsent", out.experimentalConsent);
     out.materialHudEnabled = json.value("materialHudEnabled", out.materialHudEnabled);
+    out.materialHudShulkerBoxConversion = json.value(
+        "materialHudShulkerBoxConversion", out.materialHudShulkerBoxConversion
+    );
     out.materialHudPosition = json.value("materialHudPosition", out.materialHudPosition);
     out.placementRadius = json.value("placementRadius", out.placementRadius);
     out.autoPlacementBreakCooldownSeconds = json.value(
@@ -139,7 +142,7 @@ void saveSettingsFile(std::filesystem::path const& path, Settings const& setting
     if (error) throw std::runtime_error(error.message());
 
     nlohmann::ordered_json const json{
-        {"version", 12},
+        {"version", 13},
         {"lastStructurePath", settings.lastStructurePath},
         {"language", settings.language},
         {"uiScale", settings.uiScale},
@@ -151,6 +154,7 @@ void saveSettingsFile(std::filesystem::path const& path, Settings const& setting
         {"missingSeeThrough", settings.missingSeeThrough},
         {"experimentalConsent", settings.experimentalConsent},
         {"materialHudEnabled", settings.materialHudEnabled},
+        {"materialHudShulkerBoxConversion", settings.materialHudShulkerBoxConversion},
         {"materialHudPosition", settings.materialHudPosition},
         {"placementRadius", settings.placementRadius},
         {"autoPlacementBreakCooldownSeconds", settings.autoPlacementBreakCooldownSeconds},
