@@ -95,6 +95,26 @@ private:
     bool                 mSaved{};
 };
 
+class ScopedNoDepthWrite {
+public:
+    explicit ScopedNoDepthWrite(mce::MaterialPtr const& material, bool enable) {
+        if (!enable) return;
+        mMaterial = tryRenderMaterial(material);
+        if (!mMaterial) return;
+        auto& depth = mMaterial->depthStencilStateDescription.get();
+        mSaved = depth.depthWriteMask;
+        depth.depthWriteMask = static_cast<mce::DepthWriteMask>(0);
+    }
+    ~ScopedNoDepthWrite() {
+        if (mMaterial) mMaterial->depthStencilStateDescription.get().depthWriteMask = mSaved;
+    }
+    ScopedNoDepthWrite(ScopedNoDepthWrite const&) = delete;
+    ScopedNoDepthWrite& operator=(ScopedNoDepthWrite const&) = delete;
+private:
+    mce::RenderMaterial* mMaterial{};
+    mce::DepthWriteMask mSaved{};
+};
+
 } // namespace
 
 void submitProjectedBlockActorPass(
@@ -159,7 +179,10 @@ void submitProjectionMeshPass(
     auto& itemRenderer = renderContext.mItemInHandRenderer;
     auto const& blendMaterial = itemRenderer.mMatBlendBlock.get();
     // All sorted faces share one material and do not write depth.
-    auto const transparentMaterial = renderAlphaLayer ? projectionTransparentMaterial() : std::nullopt;
+    bool const deferred = static_cast<bool>(itemRenderer.mIsDeferredEnabled);
+    auto const transparentMaterial = !renderAlphaLayer ? std::nullopt
+        : deferred ? (materialExists(blendMaterial) ? std::optional{blendMaterial} : std::nullopt)
+        : projectionTransparentMaterial();
 
     // The ItemInHand/Entity materials used for ghost blocks drive their
     // diffuse lighting from TileLightColor in constant buffer CB0. When
@@ -212,6 +235,7 @@ void submitProjectionMeshPass(
         renderSolidBucket(ProjectionDrawSlot::AlphaOneSided, materialExists(oneSidedMaterial)
             ? oneSidedMaterial : materialExists(alphaMaterial) ? alphaMaterial : blendMaterial);
     } else if (transparentMaterial) {
+        ScopedNoDepthWrite noDepthWrite{*transparentMaterial, deferred};
         if (auto* mesh = prepareProjectionTransparency(state, renderContext)) {
             if (mesh->isValid()) {
                 auto const count = static_cast<unsigned>(state.transparentCache.order.size() * 4);
