@@ -621,6 +621,8 @@ Opaque/Alpha/AlphaOneSided 沿用原来的原版材质与持久 GPU 网格。Ble
 
 - 普通路径：纠错面使用选择覆盖材质，并暂时借用标准 alpha blend 状态。
 - Deferred 路径：使用已验证可见的 outline material，提交纠错 QuadList 前临时替换 primitive、blend、depth bias 和 slope bias。
+- Deferred 纠错填充提交期间将 `depthWriteMask` 设为零，不额外修改深度测试；填充作用域退出后恢复原写入掩码，再绘制描边。普通路径、材质、顶点透明度、深度偏移和提交阶段保持原实现。用户实机确认铁轨遮挡恢复正常。
+- Deferred 填充作用域内将 `currentShaderColor` 设为中性白色 RGB 与该投影缓存的填充 alpha，结束后恢复；不修改顶点 alpha、描边或材质。用户已确认浓淡改善并测试通过。已有着色器分析显示 OutlineColor 常量输出，但实机视觉结果不等同于已核对当前 GPU 绑定或证明两种画质逐像素一致；后续版本仍需回归填充浓淡、铁轨、闪烁和穿透开关，不使用经验系数补偿。
 - 每次临时改动材质状态后必须立即恢复，不能污染 Minecraft 后续绘制。
 
 纠错颜色状态隔离：保留原来的顶点色、顶点 alpha、两组 Missing/Wrong 网格、混合及深度状态，
