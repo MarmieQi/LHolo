@@ -20,9 +20,8 @@ namespace lholo::settings {
 inline constexpr int kSettingsVersion = 13;
 
 struct Settings {
-    // Interface language locale code, for example "zh_CN" or "en_US".
-    // Runtime language indices are never persisted.
-    std::string language{"zh_CN"};
+    // "auto" follows Minecraft; a locale code pins the interface language.
+    std::string language{"auto"};
     // Rendering preferences.
     float correctionFillOpacity{0.15f};
     float correctionOutlineOpacity{1.0f};

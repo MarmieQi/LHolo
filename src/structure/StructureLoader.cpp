@@ -405,7 +405,7 @@ void saveSettings() {
         session.refreshSavedTransformIfActive();
         auto const hud = uiState().hud();
         lholo::settings::Settings settings;
-        settings.language = std::string{i18n::languageCode(i18n::language())};
+        settings.language = i18n::languagePreferenceCode();
         settings.correctionFillOpacity = projection::getCorrectionFillOpacity();
         settings.correctionOutlineOpacity = projection::getCorrectionOutlineOpacity();
         settings.structureBoundsEnabled = projection::getStructureBoundsEnabled();

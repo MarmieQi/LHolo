@@ -11,11 +11,13 @@
 #include "ui/preview/StructurePreviewScene.h"
 
 #include "i18n/LanguageStore.h"
+#include "i18n/Translator.h"
 #include "ui/hud/NativeHudRenderer.h"
 #include "ui/hud/editor/HudEditorScene.h"
 #include "ll/api/service/Bedrock.h"
 #include "mc/client/game/ClientInstance.h"
 #include "mc/client/game/ClientInstanceState.h"
+#include "mc/client/options/IOptionRegistry.h"
 #include "input/ProjectionInputGuard.h"
 #include "input/MenuOpenRequest.h"
 #include "oreui/OreUiBridge.h"
@@ -63,13 +65,15 @@ void AppKernel::processControlFrame() {
     input::updateWindowHotkeys();
     if (input::consumeMenuOpenRequest()) oreui::requestMenuOpen();
     structure::processPendingActions();
-    oreui::updateActionHintOverlay();
     if (processRenderSettingsEdits()) structure::saveSettings();
     if (processSettingsActions()) structure::saveSettings();
+    auto client = ll::service::getClientInstance();
+    if (client && i18n::followsGameLanguage())
+        i18n::updateGameLanguage(client->getOptions().getLanguage());
+    oreui::updateActionHintOverlay();
     processTaskActions();
     processStructureWriteActions();
     processStructurePreviewActions();
-    auto client = ll::service::getClientInstance();
     bool const worldAvailable = client && client->$getClientInstanceState() == ClientInstanceState::Playing && client->getLocalPlayer();
     if (consumeHudLayoutEditRequest() && worldAvailable) {
         oreui::requestMenuClose();

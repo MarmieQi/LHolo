@@ -1,9 +1,7 @@
 // LHolo - Interface language selection and lookup
 //
-// The selected language is a plain persisted preference; there is no
-// follow-the-game mode, so lookup never resolves a locale at call time. The
-// language is stored as a stable locale code in config.json. Runtime Language
-// values are only indices into the dynamically discovered registry.
+// The persisted preference is a locale code or "auto". The client control
+// frame supplies the game locale, and lookups use the resolved language index.
 //
 // Language, the dynamic registry and the lookup tables live in LanguageStore.h;
 // this header keeps the selection state and the tr() entry points the display
@@ -20,11 +18,14 @@
 
 namespace lholo::i18n {
 
-// Current interface language. Reads are lock-free because the value is a single
-// persisted preference; a switch applies to the next rendered frame.
+inline constexpr std::string_view kFollowGameLanguageCode = "auto";
+
 Language language() noexcept;
 void     setLanguage(Language language) noexcept;
 bool     setLanguageByCode(std::string_view code) noexcept;
+bool     followsGameLanguage() noexcept;
+std::string_view languagePreferenceCode() noexcept;
+void     updateGameLanguage(std::string_view code) noexcept;
 
 char const* tr(TextKey key) noexcept;
 char const* tr(TextKey key, Language language) noexcept;

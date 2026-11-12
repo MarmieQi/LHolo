@@ -9,21 +9,28 @@
 namespace lholo::i18n {
 namespace {
 
-std::atomic<std::size_t> gLanguage{kInvalidLanguage};
+std::atomic<Language> gSelectedLanguage{kInvalidLanguage};
+std::atomic<Language> gGameLanguage{kInvalidLanguage};
 
 } // namespace
 
 Language language() noexcept {
-    auto const value = gLanguage.load(std::memory_order_acquire);
-    return isValidLanguage(value) ? value : defaultLanguage();
+    auto const selected = gSelectedLanguage.load(std::memory_order_acquire);
+    if (selected != kInvalidLanguage) return selected;
+    auto const game = gGameLanguage.load(std::memory_order_acquire);
+    return game == kInvalidLanguage ? defaultLanguage() : game;
 }
 
 void setLanguage(Language value) noexcept {
     if (!isValidLanguage(value)) value = defaultLanguage();
-    gLanguage.store(value, std::memory_order_release);
+    gSelectedLanguage.store(value, std::memory_order_release);
 }
 
 bool setLanguageByCode(std::string_view code) noexcept {
+    if (code == kFollowGameLanguageCode) {
+        gSelectedLanguage.store(kInvalidLanguage, std::memory_order_release);
+        return true;
+    }
     auto const value = languageFromCode(code);
     if (value == kInvalidLanguage) {
         setLanguage(defaultLanguage());
@@ -31,6 +38,19 @@ bool setLanguageByCode(std::string_view code) noexcept {
     }
     setLanguage(value);
     return true;
+}
+
+bool followsGameLanguage() noexcept {
+    return gSelectedLanguage.load(std::memory_order_acquire) == kInvalidLanguage;
+}
+
+std::string_view languagePreferenceCode() noexcept {
+    auto const selected = gSelectedLanguage.load(std::memory_order_acquire);
+    return selected == kInvalidLanguage ? kFollowGameLanguageCode : languageCode(selected);
+}
+
+void updateGameLanguage(std::string_view code) noexcept {
+    gGameLanguage.store(languageFromCode(code), std::memory_order_release);
 }
 
 char const* tr(TextKey key) noexcept { return tr(key, language()); }

@@ -238,6 +238,7 @@
   "section.interfaceSettings": "インターフェース設定",
   "label.uiScale": "UI の拡大率 (1-5)",
   "label.language": "言語",
+  "label.followGameLanguage": "ゲームの言語に従う",
   "material.water": "水",
   "material.lava": "溶岩",
   "status.notLoaded": "ストラクチャーが読み込まれていません",

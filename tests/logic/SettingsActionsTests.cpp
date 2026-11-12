@@ -79,10 +79,12 @@ int runSettingsActionsTests() {
     check(!apply(F::Mode, 0) && !place::isEnabled(), "disable live modes without save");
     place::setPlacementRadius(4); check(apply(F::Radius, 2), "radius persisted");
     place::setAutoPlacementBreakCooldownSeconds(10); check(apply(F::Cooldown, 31), "cooldown persisted");
-    auto originalLanguage = std::string{i18n::languageCode(i18n::language())};
-    auto target = originalLanguage == "en_US" ? "zh_CN" : "en_US";
+    auto originalLanguage = std::string{i18n::languagePreferenceCode()};
+    auto target = i18n::languageCode(i18n::language()) == "en_US" ? "zh_CN" : "en_US";
     check(apply(F::Language, std::string{target}) && i18n::languageCode(i18n::language()) == target, "stable locale code applied");
     check(!apply(F::Language, std::string{"not_a_locale"}) && !getSettingsSnapshot().accepted, "unknown language rejected");
+    check(apply(F::Language, std::string{i18n::kFollowGameLanguageCode}) && i18n::followsGameLanguage(),
+          "follow-game preference accepted");
     i18n::setLanguageByCode(originalLanguage);
     auto command = [&](SettingsAction action, std::size_t slot = 0) {
         auto s = getSettingsSnapshot(); i = {}; i.id = s.ack + 1; i.context = s.context; i.action = action;

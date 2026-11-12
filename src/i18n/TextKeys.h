@@ -294,6 +294,7 @@
     LHOLO_TEXT_KEY("section.interfaceSettings", SectionInterfaceSettings, "")                            \
     LHOLO_TEXT_KEY("label.uiScale", LabelUiScale, "")                                                    \
     LHOLO_TEXT_KEY("label.language", LabelLanguage, "")                                                  \
+    LHOLO_TEXT_KEY("label.followGameLanguage", LabelFollowGameLanguage, "")                              \
                                                                                                          \
     /* Material list popup */                                                                            \
     LHOLO_TEXT_KEY("material.water", MaterialWater, "")                                                  \

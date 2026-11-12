@@ -888,6 +888,17 @@ void testI18n() {
     LHOLO_CHECK(defaultLanguage() == chinese);
     LHOLO_CHECK(languageFromCode("missing_LOCALE") == kInvalidLanguage);
 
+    LHOLO_CHECK(setLanguageByCode(kFollowGameLanguageCode));
+    updateGameLanguage("en_US");
+    LHOLO_CHECK(followsGameLanguage() && language() == english && languagePreferenceCode() == "auto");
+    updateGameLanguage("missing_LOCALE");
+    LHOLO_CHECK(language() == chinese && languagePreferenceCode() == "auto");
+    updateGameLanguage("en_US");
+    LHOLO_CHECK(language() == english && languagePreferenceCode() == "auto");
+    LHOLO_CHECK(setLanguageByCode("zh_CN"));
+    updateGameLanguage("en_US");
+    LHOLO_CHECK(!followsGameLanguage() && language() == chinese && languagePreferenceCode() == "zh_CN");
+
     for (std::size_t index = 0; index < available.size(); ++index) {
         auto const candidate = static_cast<Language>(index);
         auto const stats = languageStats(candidate);

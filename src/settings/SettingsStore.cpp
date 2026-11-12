@@ -139,10 +139,6 @@ void readLegacy(Json const& json, Settings& out) {
     if (auto const language = json.find("language");
         language != json.end() && language->is_string()) {
         out.language = language->get<std::string>();
-    } else {
-        // Language preferences intentionally have no old integer migration:
-        // missing or malformed values use the default locale.
-        out.language = "zh_CN";
     }
     out.correctionFillOpacity = json.value("correctionFillOpacity", out.correctionFillOpacity);
     out.correctionOutlineOpacity = json.value("correctionOutlineOpacity", out.correctionOutlineOpacity);

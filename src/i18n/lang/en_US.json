@@ -238,6 +238,7 @@
   "section.interfaceSettings": "Interface settings",
   "label.uiScale": "UI scale (1-5)",
   "label.language": "Language",
+  "label.followGameLanguage": "Follow game language",
   "material.water": "Water",
   "material.lava": "Lava",
   "status.notLoaded": "No structure loaded",

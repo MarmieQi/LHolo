@@ -238,6 +238,7 @@
   "section.interfaceSettings": "Настройки интерфейса",
   "label.uiScale": "Масштаб интерфейса (1–5)",
   "label.language": "Язык",
+  "label.followGameLanguage": "Как в игре",
   "material.water": "Вода",
   "material.lava": "Лава",
   "status.notLoaded": "Структура не загружена",

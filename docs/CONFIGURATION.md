@@ -5,7 +5,7 @@
 
 | 分组 | 内容 |
 | --- | --- |
-| `interface` | 界面语言 locale 代码，默认 `zh_CN` |
+| `interface.language` | 默认 `"auto"` 跟随 Minecraft。游戏语言缺少对应翻译时显示简体中文，配置仍为 `"auto"`。填 `"zh_CN"`、`"en_US"` 等语言代码可手动指定。 |
 | `rendering` | 结构边框、纠错填充/描边、穿透显示 |
 | `hud.projection` | 普通投影 HUD 开关、内容与外观 |
 | `hud.materials` | 材料 HUD 开关、堆叠换算、每页项数与外观 |

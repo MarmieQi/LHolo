@@ -29,7 +29,7 @@ SettingsSnapshot snapshot() {
         h.showProgress, h.showProjectedBlockName, h.showWrongState, h.showWrongType, h.showExtraBlocks,
         ui().materialHudEnabled(), ui().materialHudStackConversion(), ui().materialHudMaxItems(), ui().materialHudPosition(), ui().altWheelOffsetEnabled(),
         place::getPlacementRadius(), place::getAutoPlacementBreakCooldownSeconds(), activeMode(),
-        std::string{i18n::languageCode(i18n::language())}, ui().writeHudEnabled()}, {}, 0,
+        std::string{i18n::languagePreferenceCode()}, ui().writeHudEnabled()}, {}, 0,
         structure::detail::StructureSession::getInstance().transformEditorState().context, ack,
         ui().experimentalConsentGiven(), accepted};
     for (std::size_t n = 0; n < s.hotkeys.size(); ++n) {
@@ -109,7 +109,11 @@ bool processSettingsActions() {
     if (i.context != s.context) return false;
     if (i.action == SettingsAction::Set) {
         if (s.values[static_cast<std::size_t>(i.field)] != i.expected) return false;
-        if (i.field == SettingsField::Language && !i18n::isValidLanguage(i18n::languageFromCode(std::get<std::string>(i.value)))) return false;
+        if (i.field == SettingsField::Language) {
+            auto const& code = std::get<std::string>(i.value);
+            if (code != i18n::kFollowGameLanguageCode && !i18n::isValidLanguage(i18n::languageFromCode(code)))
+                return false;
+        }
         if (i.field == SettingsField::Mode && std::get<int>(i.value) != 0 && !s.consent) return false;
         accepted = true;
         return i.value != i.expected && applyField(i.field, i.value);

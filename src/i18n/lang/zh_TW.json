@@ -238,6 +238,7 @@
   "section.interfaceSettings": "介面設定",
   "label.uiScale": "介面縮放（範圍 1～5）",
   "label.language": "語言",
+  "label.followGameLanguage": "跟隨遊戲",
   "material.water": "水",
   "material.lava": "熔岩",
   "status.notLoaded": "尚未載入結構檔案",

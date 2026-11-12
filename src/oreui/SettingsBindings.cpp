@@ -36,6 +36,7 @@ std::optional<std::string> takeSettingsUpdate(bool force) {
             {"key", b.key}, {"modifiers", b.modifiers}, {"capturing", b.capturing},
             {"display", ui::hotkeyChordName(b.modifiers, b.key)}});
     }
+    languages.push_back({{"code", i18n::kFollowGameLanguageCode}, {"name", i18n::tr(i18n::TextKey::LabelFollowGameLanguage)}});
     for (auto const& language : i18n::languages()) languages.push_back({{"code", language.code}, {"name", language.displayName}});
     auto state = nlohmann::json{{"values", values}, {"hotkeys", hotkeys}, {"languages", languages},
         {"consent", s.consent}, {"hotkeysRevision", s.hotkeysRevision}, {"context", s.context}, {"ack", s.ack}, {"accepted", s.accepted}}.dump();
