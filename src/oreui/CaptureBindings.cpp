@@ -1,5 +1,6 @@
 #include "oreui/CaptureBindings.h"
 #include "oreui/CaptureProtocol.h"
+#include "structure/capture/CaptureBounds.h"
 #include "i18n/Translator.h"
 #include "ui/StructureFilePicker.h"
 #include "nlohmann/json.hpp"
@@ -13,6 +14,7 @@ std::optional<std::string> intent;
 ui::StructureFilePicker outputPicker{ui::selectMcstructureOutput, ui::StructureFileTypes::Mcstructure};
 std::optional<structure::capture::Request> inFlight;
 std::string published, error;
+i18n::TextKey customStatus{};
 std::uint64_t ack{};
 bool selecting{};
 
@@ -36,11 +38,13 @@ std::optional<std::string> takeCaptureUpdate(bool force) {
         auto request = parseCaptureIntent(*std::exchange(intent, std::nullopt));
         if (request && request->id > ack) {
             error.clear();
-            if (!snapshot.worldAvailable || request->revision != snapshot.revision) {
+            bool const emptyExport = request->action == Action::ExportEmpty;
+            if (emptyExport) customStatus = i18n::TextKey::None;
+            if (!emptyExport && (!snapshot.worldAvailable || request->revision != snapshot.revision)) {
                 ack = request->id;
                 error = i18n::tr(i18n::TextKey::OreUiCaptureChanged);
 
-            } else if (request->action == Action::Export) {
+            } else if (request->action == Action::Export || emptyExport) {
                 try {
                     if (outputPicker.start({})) { inFlight = *request; selecting = true; }
                     else ack = request->id;
@@ -54,7 +58,8 @@ std::optional<std::string> takeCaptureUpdate(bool force) {
     }
     if (auto result = outputPicker.takeResult(); result && inFlight && selecting) {
         selecting = false;
-        if (result->path && snapshot.worldAvailable && snapshot.revision == inFlight->revision) {
+        if (result->path && (inFlight->action == Action::ExportEmpty
+            || (snapshot.worldAvailable && snapshot.revision == inFlight->revision))) {
             inFlight->output = std::move(*result->path);
             if (!submitAction(*inFlight)) { ack = inFlight->id; inFlight.reset(); }
         } else {
@@ -65,12 +70,15 @@ std::optional<std::string> takeCaptureUpdate(bool force) {
         }
     }
     if (inFlight && !selecting && completedAction() == inFlight->id && !actionPending()) {
+        if (inFlight->action == Action::ExportEmpty)
+            customStatus = emptyExportSucceeded() ? i18n::TextKey::CaptureStatusExported : i18n::TextKey::CaptureStatusWriteFailed;
         ack = inFlight->id;
         inFlight.reset();
         snapshot = getSnapshot();
     }
     // World/dimension changes dismiss a stale save dialog before it can export.
-    if (inFlight && (!snapshot.worldAvailable || (selecting && snapshot.revision != inFlight->revision))) {
+    if (inFlight && inFlight->action != Action::ExportEmpty
+        && (!snapshot.worldAvailable || (selecting && snapshot.revision != inFlight->revision))) {
         outputPicker.cancel();
         ack = inFlight->id;
         inFlight.reset();
@@ -80,8 +88,8 @@ std::optional<std::string> takeCaptureUpdate(bool force) {
     auto state = nlohmann::json{
         {"draft", {{"first", pointJson(snapshot.draft.first)}, {"second", pointJson(snapshot.draft.second)},
             {"includeEntities", snapshot.draft.includeEntities}}},
-        {"worldAvailable", snapshot.worldAvailable}, {"status", snapshot.status},
-        {"revision", snapshot.revision}, {"ack", ack},
+        {"worldAvailable", snapshot.worldAvailable}, {"status", snapshot.status}, {"customStatus", i18n::tr(customStatus)},
+        {"revision", snapshot.revision}, {"ack", ack}, {"maxEmptyCells", kMaximumEmptyStructureCells},
         {"busy", inFlight.has_value() || outputPicker.busy() || actionPending()}, {"error", error}
     }.dump();
     if (!force && published == state) return std::nullopt;
@@ -96,6 +104,7 @@ void resetCaptureBindings() {
     inFlight.reset();
     selecting = false;
     error.clear();
+    customStatus = i18n::TextKey::None;
     published.clear();
 }
 void shutdownCaptureBindings() { resetCaptureBindings(); outputPicker.shutdown(); }

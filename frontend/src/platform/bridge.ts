@@ -32,7 +32,7 @@ export interface CaptureDraft {
   second: CapturePoint | null;
   includeEntities: boolean;
 }
-export type CaptureAction = 'apply' | 'first' | 'second' | 'clear' | 'export';
+export type CaptureAction = 'apply' | 'first' | 'second' | 'clear' | 'export' | 'exportEmpty';
 export interface CaptureState {
   draft: CaptureDraft;
   revision: number;
@@ -40,11 +40,13 @@ export interface CaptureState {
   worldAvailable: boolean;
   busy: boolean;
   status: string;
+  customStatus: string;
+  maxEmptyCells: number;
   error: string;
 }
 export interface CaptureBridge {
   subscribeCapture(listener: (state: CaptureState) => void): () => void;
-  capture(action: CaptureAction, draft: CaptureDraft, revision: number, id: number): void;
+  capture(action: CaptureAction, draft: CaptureDraft, revision: number, id: number, size?: CapturePoint): void;
 }
 export type TransformField = 'rotation' | 'mirror' | 'x' | 'y' | 'z';
 export type TransformValues = Record<TransformField, number>;
@@ -151,7 +153,9 @@ export function parseCapture(payload: string): CaptureState {
     || !Number.isSafeInteger(state.revision) || state.revision < 0
     || !Number.isSafeInteger(state.ack) || state.ack < 0
     || typeof state.worldAvailable !== 'boolean' || typeof state.busy !== 'boolean'
-    || typeof state.status !== 'string' || typeof state.error !== 'string') throw new Error('Invalid LHolo capture state');
+    || !Number.isSafeInteger(state.maxEmptyCells) || state.maxEmptyCells <= 0
+    || typeof state.status !== 'string' || typeof state.customStatus !== 'string'
+    || typeof state.error !== 'string') throw new Error('Invalid LHolo capture state');
   return state as CaptureState;
 }
 
@@ -239,12 +243,12 @@ export const menuBridge: MenuBridge = {
     window.engine.on('lholo:capture', receive);
     return () => window.engine.off('lholo:capture', receive);
   },
-  capture(action, draft, revision, id) {
+  capture(action, draft, revision, id, size) {
     // Original typed facet activation carries one JSON string. The native
     // adapter validates it and queues an application-frame action.
     window.engine.trigger('facet:discard', 'lholo.capture.intent');
     window.engine.trigger('facet:request', 'lholo.capture.intent', 'lholo.capture.intent', {
-      request: JSON.stringify({ action, draft, revision, id }),
+      request: JSON.stringify(action === 'exportEmpty' ? { action, size, revision, id } : { action, draft, revision, id }),
     });
   },
   close: () => send('lholo.menu.close'),

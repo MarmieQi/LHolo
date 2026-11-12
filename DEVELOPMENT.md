@@ -438,8 +438,8 @@ LevelListener，即使首个投影尚未激活，世界销毁回调也先清空�
 
 加载流程：
 
-1. 读取文件，单文件上限 512 MiB。
-2. 使用 Bedrock little-endian binary NBT 解析外层。缺省或 `compression=0` 时，`structure` 为 Compound；`compression=1` 时，它是 zlib 压缩的 ByteArray。后者经 `formats/McstructureInput.h` 有界解压并解析为独立 Compound 后预校验，解压上限同为 512 MiB；拒绝错误压缩类型、损坏/截断流和超限数据。
+1. 读取文件，单文件上限 640 MiB。
+2. 使用 Bedrock little-endian binary NBT 解析外层。缺省或 `compression=0` 时，`structure` 为 Compound；`compression=1` 时，它是 zlib 压缩的 ByteArray。后者经 `formats/McstructureInput.h` 有界解压并解析为独立 Compound 后预校验，解压上限同为 640 MiB；拒绝错误压缩类型、损坏/截断流和超限数据。
 3. 校验 `size`、`structure.block_indices`、`palette.default.block_palette`。
 4. 校验每个 block index layer 的长度等于结构体积。
 5. 使用客户端 Level 的 unknown-block registry 构造原版 `StructureTemplate`，再把原始完整根 NBT（保留压缩封装）交给 `StructureTemplate::load()`。预校验只读取独立解压结果，不重写索引、palette、实体数据或版本。不要逐项调用 `Block::tryGetFromRegistry()`：那条捷径会绕开格式版本升级、世界方块调色板和 unknown-block registry，旧状态可能被错误解析成未知方块。

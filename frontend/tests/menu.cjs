@@ -419,7 +419,7 @@ click(labels['tasks.nav']);
 click(labels['page.createStructure']);
 const captureState = (changes = {}) => receive(JSON.stringify({
   draft: {first: null, second: null, includeEntities: false}, revision: 0, ack: 0,
-  worldAvailable: true, busy: false, status: labels['captureStatus.needTwoPoints'], error: '', ...changes,
+  worldAvailable: true, busy: false, status: labels['captureStatus.needTwoPoints'], customStatus: '', maxEmptyCells: 167771904, error: '', ...changes,
 }), 'lholo:capture');
 assert.equal(buttonByLabel(labels['button.exportMcstructure']).props.disabled, true);
 captureState({worldAvailable: false});
@@ -449,6 +449,15 @@ assert.equal(buttonByLabel(labels['oreui.applySelection']), undefined, 'No extra
 const beforePartial = captureEvents().length;
 editCoordinate(1, '2 64');
 assert.equal(captureEvents().length, beforePartial, 'Incomplete point does not send invalid coordinates');
+click(labels['capture.tabCustom']);
+assert.equal(inputs().length, 3, 'Custom tab exposes three size fields');
+editCoordinate(0, '32');
+editCoordinate(1, '0');
+editCoordinate(2, '16');
+assert.equal(buttonByLabel(labels['button.exportMcstructure']).props.disabled, true);
+click(labels['capture.tabWorld']);
+assert.equal(inputs()[1].props.value, '2 64', 'Tab navigation preserves the world selection draft');
+assert.equal(captureEvents().length, beforePartial, 'Tab navigation does not send capture intents');
 assert.equal(buttonByLabel(labels['button.exportMcstructure']).props.disabled, true);
 editCoordinate(1, ' 2.9  64.75 -10.99 ');
 assert.equal(lastCapture().action, 'apply', 'Valid coordinates synchronize automatically');
@@ -514,6 +523,17 @@ captureState({revision: 8, ack: 8, draft: {
   second: {x: 2147483647, y: 2147483647, z: 2147483647}, includeEntities: false,
 }});
 assert(JSON.stringify(tree.toJSON()).includes('79228162514264337593543950336'), 'Large volume remains exact without BigInt');
+click(labels['capture.tabCustom']);
+captureState({revision: 9, ack: 8, worldAvailable: false});
+editCoordinate(0, '32');
+editCoordinate(1, '16');
+editCoordinate(2, '24');
+assert(JSON.stringify(tree.toJSON()).includes('尺寸：32 × 16 × 24'));
+assert(JSON.stringify(tree.toJSON()).includes('方块总数：12288'));
+click(labels['button.exportMcstructure']);
+assert.deepEqual(lastCapture(), {action: 'exportEmpty', size: {x: 32, y: 16, z: 24}, revision: 9, id: 9});
+captureState({revision: 9, ack: 9, worldAvailable: false, customStatus: labels['captureStatus.exported']});
+assert(JSON.stringify(tree.toJSON()).includes(labels['captureStatus.exported']));
 click(labels['tasks.nav']);
 assert(events.every(args => ['query:subscribe/lholo.menu.ready', 'query:subscribe/lholo.menu.close',
   'query:subscribe/lholo.materials.request', 'facet:discard', 'facet:request'].includes(args[0])));

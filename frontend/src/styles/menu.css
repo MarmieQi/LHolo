@@ -91,14 +91,14 @@
 .lholo-hud-header { flex-direction:row; align-items:center; justify-content:space-between; flex-wrap:wrap; padding-bottom:0.65rem; border-bottom:0.06rem solid #303030; }
 .lholo-hud-title { font-size:1.2rem; font-weight:600; line-height:1.5; }
 .lholo-hud-header > .lholo-button { margin-left:0.65rem; }
-.lholo-hud-tabs { position:relative; flex-direction:row; align-items:center; margin-top:0.8rem; border-bottom:0.06rem solid #303030; }
-.lholo-hud-tab { height:2.4rem; padding:0 0.9rem; background-color:transparent; border-radius:0; border-bottom:0.12rem solid transparent; color:#a0a0a0; transition:background-color 150ms ease,color 180ms ease; }
-.lholo-hud-tab.lholo-control-hovered { background-color:#242424; color:#ededed; }
-.lholo-hud-tab.lholo-control-pressed { background-color:#303030; }
-.lholo-hud-tab.is-selected { color:#ffffff; }
-.lholo-hud-tab.is-selected.lholo-control-hovered { background-color:#242424; }
-.lholo-hud-tab-indicator { position:absolute; left:0; bottom:0; height:0.12rem; z-index:1; pointer-events:none; background-color:#0f82f2; transition:transform 320ms cubic-bezier(0.4,0,0.2,1),width 320ms cubic-bezier(0.4,0,0.2,1); }
-.lholo-hud-tab-content { padding-top:0.7rem; }
+.lholo-tabs { position:relative; flex-direction:row; align-items:center; margin-top:0.8rem; border-bottom:0.06rem solid #303030; }
+.lholo-tab { height:2.4rem; padding:0 0.9rem; background-color:transparent; border-radius:0; border-bottom:0.12rem solid transparent; color:#a0a0a0; transition:background-color 150ms ease,color 180ms ease; }
+.lholo-tab.lholo-control-hovered { background-color:#242424; color:#ededed; }
+.lholo-tab.lholo-control-pressed { background-color:#303030; }
+.lholo-tab.is-selected { color:#ffffff; }
+.lholo-tab.is-selected.lholo-control-hovered { background-color:#242424; }
+.lholo-tab-indicator { position:absolute; left:0; bottom:0; height:0.12rem; z-index:1; pointer-events:none; background-color:#0f82f2; transition:transform 320ms cubic-bezier(0.4,0,0.2,1),width 320ms cubic-bezier(0.4,0,0.2,1); }
+.lholo-tab-content { padding-top:0.7rem; }
 .lholo-hud-master { padding-bottom:0.65rem; border-bottom:0.06rem solid #303030; }
 .lholo-hud-columns { flex-direction:row; flex-wrap:wrap; margin-top:0.9rem; }
 .lholo-hud-column { box-sizing:border-box; flex:1 1 16rem; min-width:16rem; }
@@ -128,7 +128,7 @@
 @keyframes lholo-page-enter { from { opacity:0; transform:translateY(0.25rem); } to { opacity:1; transform:translateY(0); } }
 .lholo-content { animation:lholo-page-enter 170ms ease-out; }
 @media (prefers-reduced-motion:reduce) {
-  .lholo-navigation-indicator, .lholo-navigation-item, .lholo-hud-tab, .lholo-hud-tab-indicator { transition:none; }
+  .lholo-navigation-indicator, .lholo-navigation-item, .lholo-tab, .lholo-tab-indicator { transition:none; }
   .lholo-navigation-accent { animation:none; }
   .lholo-content { animation:none; }
 }
@@ -136,12 +136,14 @@
 
 .lholo-control-disabled { opacity:0.5; }
 
-.lholo-capture-selection { margin-top:1.2rem; }
-.lholo-capture-point-title { font-size:1rem; line-height:1.5; min-width:3.6rem; margin-right:0.6rem; margin-bottom:0.35rem; }
+.lholo-capture-point-title { font-size:1rem; line-height:1.5; min-width:2.25rem; margin-right:0.6rem; margin-bottom:0.35rem; }
 /* Gameface: keep XYZ nowrap with length-based bases; only the outer action may wrap. */
 .lholo-coordinate-row { flex-direction:row; align-items:center; flex-wrap:wrap; margin-top:0.3rem; }
 .lholo-coordinate-row > .lholo-input-shell { width:12rem; margin-right:0.6rem; margin-bottom:0.35rem; }
 .lholo-coordinate-row > .lholo-button { margin-bottom:0.35rem; }
+.lholo-size-fields { margin-top:0.65rem; }
+.lholo-size-fields .lholo-capture-point-title { min-width:1rem; }
+.lholo-size-fields input.lholo-text-input::placeholder { color:#909090; }
 .lholo-input-shell { width:5.6rem; height:2.2rem; min-height:0; flex-shrink:0; border-radius:0.25rem; background-color:#242424; }
 .lholo-input-shell input.lholo-text-input { width:100%; flex:1; border:none; border-radius:0.25rem; background-color:transparent; min-width:0; min-height:0; height:2.2rem; padding:0.25rem 0.55rem; font-family:LHoloSans,sans-serif; font-size:1rem; line-height:1.5; text-shadow:none; color:#ededed; }
 .lholo-capture-entities { margin-top:1rem; }

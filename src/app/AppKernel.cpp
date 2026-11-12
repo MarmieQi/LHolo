@@ -29,6 +29,7 @@
 #include "projection/ProjectionController.h"
 #include "projection/mesh/ProjectionMeshWorker.h"
 #include "structure/capture/StructureCapture.h"
+#include "structure/capture/CaptureActions.h"
 #include "structure/MaterialTracker.h"
 #include "structure/StructureLoader.h"
 #include "structure/StructureFileLoader.h"
@@ -160,6 +161,7 @@ bool AppKernel::disable() {
     // resets held placement/input state and joins the projection mesh worker
     // while its Level/Dimension pointers are still valid.
     place::resetWorldSession();
+    structure::capture::resetActions();
     structure::resetWorldSession();
     structure::capture::clear();
     input::uninstallProjectionInputGuard();

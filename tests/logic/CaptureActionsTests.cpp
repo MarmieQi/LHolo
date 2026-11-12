@@ -12,6 +12,7 @@ namespace lholo::structure::capture {
 namespace {
 Snapshot fake;
 int exports{};
+std::array<int, 3> exportedSize{};
 std::filesystem::path exportedPath;
 std::thread::id exportThread;
 }
@@ -24,6 +25,11 @@ void setPointFromPlayer(PointSlot slot) {
 void clear() { fake.draft = {}; ++fake.revision; }
 void exportStructure(Draft const&, std::filesystem::path const& output) {
     ++exports; exportedPath = output; exportThread = std::this_thread::get_id();
+}
+bool exportEmptyMcstructure(std::array<int, 3> const& size, std::filesystem::path const& output) {
+    exportedSize = size;
+    exportedPath = output;
+    return true;
 }
 }
 
@@ -105,6 +111,27 @@ int runCaptureActionsTests() {
     processActions();
     check(exports == 2 && exportThread == logicThread && completedAction() == 8 && !actionPending(),
           "queued export runs once on the consumer thread, never on the producer thread");
+    nlohmann::json emptyPayload{{"id", 9}, {"revision", 0}, {"action", "exportEmpty"},
+        {"size", {{"x", 32}, {"y", 16}, {"z", 24}}}};
+    auto empty = parseCaptureIntent(emptyPayload.dump());
+    check(empty && empty->size == std::array<int, 3>{32, 16, 24}, "empty export reads dimensions without world draft");
+    emptyPayload["size"]["x"] = 0;
+    check(!parseCaptureIntent(emptyPayload.dump()), "zero extent rejected");
+    emptyPayload["size"] = {{"x", 512}, {"y", 512}, {"z", 639}};
+    check(parseCaptureIntent(emptyPayload.dump()).has_value(), "empty export accepts sizes above the former 512 MiB limit");
+    emptyPayload["size"]["z"] = 640;
+    check(!parseCaptureIntent(emptyPayload.dump()), "empty structure exceeding file size rejected");
+    if (empty) {
+        fake.worldAvailable = false;
+        auto const draftBefore = fake.draft;
+        empty->output = request->output;
+        submitAction(*empty);
+        resetWorldActions();
+        processActions();
+        check(completedAction() == 9 && emptyExportSucceeded() && exportedSize == empty->size
+              && exportedPath == empty->output && fake.draft == draftBefore,
+              "empty export is independent of world state and preserves world draft");
+    }
     std::printf("CaptureActionsTests: %d failures\n", failures);
     return failures;
 }

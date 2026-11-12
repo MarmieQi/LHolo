@@ -145,6 +145,11 @@
                                                                                                          \
     /* Create-structure page */                                                                          \
     LHOLO_TEXT_KEY("section.captureSource", SectionCaptureSource, "")                                    \
+    LHOLO_TEXT_KEY("capture.tabWorld", CaptureTabWorld, "")                                              \
+    LHOLO_TEXT_KEY("capture.tabCustom", CaptureTabCustom, "")                                            \
+    LHOLO_TEXT_KEY("capture.emptyDimensions", CaptureEmptyDimensions, "")                                \
+    LHOLO_TEXT_KEY("capture.emptyDimensionsFormat", CaptureEmptyDimensionsFormat, "")                    \
+    LHOLO_TEXT_KEY("capture.invalidEmptyDimensions", CaptureInvalidEmptyDimensions, "")                  \
     LHOLO_TEXT_KEY("label.captureMode", LabelCaptureMode, "")                                            \
     LHOLO_TEXT_KEY("combo.captureModeClient", ComboCaptureModeClient, "")                                \
     LHOLO_TEXT_KEY("hint.captureClientOnly", HintCaptureClientOnly, "")                                  \

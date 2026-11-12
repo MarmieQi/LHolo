@@ -18,6 +18,7 @@
 #include "structure/formats/LitematicNbt.h"
 #include "structure/formats/LitematicInput.h"
 #include "structure/formats/McstructureInput.h"
+#include "structure/formats/StructureFileLimits.h"
 #include "structure/StructureLoader.h"
 #include "block/BlockPlacementRules.h"
 #include "structure/java_to_bedrock/JavaBlockEntityToBedrock.h"
@@ -62,8 +63,6 @@
 
 namespace lholo::structure::detail {
 namespace {
-
-constexpr std::uintmax_t kMaximumStructureFileSize = 512ull * 1024ull * 1024ull;
 
 void assignMaterialIndices(LoadedStructure& loaded) {
     std::map<std::string, std::uint64_t> bodyCounts;
@@ -116,7 +115,7 @@ void assignMaterialIndices(LoadedStructure& loaded) {
     loaded.materialCount = bodyKeys.size() + liquidKeys.size();
 }
 
-std::optional<std::string> readFile(std::filesystem::path const& path, std::string& error) {
+std::optional<std::string> readFile(std::filesystem::path const& path, std::size_t maximumSize, std::string& error) {
     std::error_code filesystemError;
     if (!std::filesystem::is_regular_file(path, filesystemError)) {
         error = filesystemError ? filesystemError.message() : "路径不是普通文件";
@@ -127,8 +126,8 @@ std::optional<std::string> readFile(std::filesystem::path const& path, std::stri
         error = filesystemError.message();
         return std::nullopt;
     }
-    if (size == 0 || size > kMaximumStructureFileSize) {
-        error = "文件为空或超过 512 MiB 限制";
+    if (size == 0 || size > maximumSize) {
+        error = "文件为空或超过 " + std::to_string(maximumSize / (1024 * 1024)) + " MiB 限制";
         return std::nullopt;
     }
     if (size > static_cast<std::uintmax_t>(std::numeric_limits<std::streamsize>::max())) {
@@ -285,7 +284,7 @@ ResolvedJavaBlock resolveJavaBlock(JavaNbtTag const& paletteEntry, int javaDataV
 
 
 std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& path, std::string& error) {
-    auto bytes = readFile(path, error);
+    auto bytes = readFile(path, kMaximumMcstructureFileSize, error);
     if (!bytes) return nullptr;
 
     auto root = CompoundTag::fromBinaryNbt(*bytes, true);
@@ -313,7 +312,7 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
         }
         auto const& payload = tag->get<ByteArrayTag>();
         auto inflated = inflateMcstructureTag(
-            {reinterpret_cast<char const*>(payload.data()), payload.size()}, kMaximumStructureFileSize, error
+            {reinterpret_cast<char const*>(payload.data()), payload.size()}, kMaximumMcstructureFileSize, error
         );
         if (!inflated) return nullptr;
         auto decoded = CompoundTag::fromBinaryNbt(*inflated, true);
@@ -522,7 +521,7 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
     // world teardown, so a cache from the previous world must never be reused.
     resetJavaBlockMappingCache();
 
-    auto compressed = readFile(path, error);
+    auto compressed = readFile(path, kMaximumLitematicFileSize, error);
     if (!compressed) return nullptr;
     auto bytes = inflateGzip(*compressed, error);
     if (!bytes) return nullptr;

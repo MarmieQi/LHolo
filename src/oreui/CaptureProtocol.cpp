@@ -1,4 +1,5 @@
 #include "oreui/CaptureProtocol.h"
+#include "structure/capture/CaptureBounds.h"
 #include "nlohmann/json.hpp"
 #include <limits>
 
@@ -17,6 +18,20 @@ std::optional<structure::capture::Request> parseCaptureIntent(std::string_view p
         request.id = value.at("id").get<std::uint64_t>();
         request.revision = value.at("revision").get<std::uint64_t>();
         auto const action = value.at("action").get<std::string>();
+        if (action == "exportEmpty") {
+            auto const& size = value.at("size");
+            std::array const axes{"x", "y", "z"};
+            for (std::size_t index = 0; index < axes.size(); ++index) {
+                auto const& extent = size.at(axes[index]);
+                if (!extent.is_number_unsigned()) return std::nullopt;
+                auto const length = extent.get<std::uint64_t>();
+                if (length == 0 || length > std::numeric_limits<int>::max()) return std::nullopt;
+                request.size[index] = static_cast<int>(length);
+            }
+            if (!emptyStructureVolume(request.size)) return std::nullopt;
+            request.action = Action::ExportEmpty;
+            return request;
+        }
         if (action == "apply") request.action = Action::Apply;
         else if (action == "first") request.action = Action::FirstFromPlayer;
         else if (action == "second") request.action = Action::SecondFromPlayer;

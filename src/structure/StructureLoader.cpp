@@ -520,7 +520,7 @@ void clearProjectionSession(i18n::Message status) {
 void resetWorldSession() {
     resetProjectionActions();
     resetTransformEdits();
-    capture::resetActions();
+    capture::resetWorldActions();
     clearProjectionSession(i18n::Message{i18n::TextKey::StatusWorldExited});
     uiState().resetWorldSession();
 }

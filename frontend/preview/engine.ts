@@ -25,7 +25,7 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
   let projection: ProjectionState = {worldAvailable:true,loading:false,hasProjection:false};
   let capture: CaptureState = {
     draft:{first:null,second:null,includeEntities:false},revision:0,ack:0,
-    worldAvailable:true,busy:false,status:labels['captureStatus.needTwoPoints'],error:'',
+    worldAvailable:true,busy:false,status:labels['captureStatus.needTwoPoints'],customStatus:'',maxEmptyCells:167771904,error:'',
   };
   const emit = (name: string, value: unknown) => {
     const payload = JSON.stringify(value);
@@ -95,6 +95,11 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
       if (name === 'facet:request' && args[0] === 'lholo.capture.intent') {
         const request = JSON.parse((args[2] as { request: string }).request);
         if (capture.busy) return;
+        if (request.action === 'exportEmpty') {
+          capture = { ...capture, ack: request.id, busy: true, customStatus: '', error: '' }; publish();
+          later(() => { capture = { ...capture, busy: false, customStatus: '开发预览：已模拟导出，未生成结构文件' }; });
+          return;
+        }
         if (!capture.worldAvailable || request.revision !== capture.revision) {
           capture = { ...capture, ack: request.id, error: labels['oreui.captureChanged'] }; publish(); return;
         }
