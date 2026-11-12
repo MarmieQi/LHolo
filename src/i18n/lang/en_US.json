@@ -121,7 +121,7 @@
   "section.captureSelection": "Selection",
   "label.capturePoint1": "Point 1",
   "label.capturePoint2": "Point 2",
-  "button.usePlayerPosition": "Use the player's current position",
+  "button.usePlayerPosition": "Use current position",
   "label.notSet": "Not set",
   "label.captureSize": "Size: %llu × %llu × %llu",
   "label.captureVolume": "Total blocks: %llu",
@@ -314,7 +314,7 @@
   "oreui.browseFailed": "Could not select the file. Try a .mcstructure or .litematic file.",
   "oreui.applySelection": "Apply selection",
   "oreui.captureChanged": "The world or selection changed. Review it and try again.",
-  "oreui.invalidCoordinates": "Enter complete integer XYZ coordinates, or leave the entire point blank.",
+  "oreui.invalidCoordinates": "Enter three valid XYZ coordinates, or leave the point blank.",
   "oreui.captureBusy": "Processing structure creation…",
   "oreui.saveFailed": "Could not choose a save location. Use a .mcstructure file."
 }

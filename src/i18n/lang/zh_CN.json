@@ -121,7 +121,7 @@
   "section.captureSelection": "结构选区",
   "label.capturePoint1": "点 1",
   "label.capturePoint2": "点 2",
-  "button.usePlayerPosition": "使用玩家当前位置",
+  "button.usePlayerPosition": "使用当前位置",
   "label.notSet": "未设置",
   "label.captureSize": "尺寸：%llu × %llu × %llu",
   "label.captureVolume": "方块总数：%llu",
@@ -314,7 +314,7 @@
   "oreui.browseFailed": "无法选择文件，请重试并选择 .mcstructure 或 .litematic 文件",
   "oreui.applySelection": "应用选区",
   "oreui.captureChanged": "世界或选区已变化，请确认后重试",
-  "oreui.invalidCoordinates": "请输入完整的整数 XYZ 坐标，或将整组坐标留空",
+  "oreui.invalidCoordinates": "请输入三个有效的 XYZ 坐标，或将整组坐标留空",
   "oreui.captureBusy": "正在处理创建结构操作…",
   "oreui.saveFailed": "无法选择保存位置，请使用 .mcstructure 文件"
 }

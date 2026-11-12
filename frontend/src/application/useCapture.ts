@@ -1,16 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CaptureAction, CaptureBridge, CaptureDraft, CapturePoint, CaptureState } from '../platform/bridge';
 
-export type PointText = { x: string; y: string; z: string };
-const blankPoint = (): PointText => ({ x: '', y: '', z: '' });
-const pointText = (point: CapturePoint | null): PointText => point
-  ? { x: String(point.x), y: String(point.y), z: String(point.z) } : blankPoint();
+const pointText = (point: CapturePoint | null) => point ? `${point.x} ${point.y} ${point.z}` : '';
 
-function parsePoint(point: PointText): CapturePoint | null | undefined {
-  if (Object.values(point).every(value => value.trim() === '')) return null;
-  if (!Object.values(point).every(value => /^-?\d+$/.test(value.trim())
-    && Number.isInteger(Number(value)) && Number(value) >= -2147483648 && Number(value) <= 2147483647)) return undefined;
-  return { x: Number(point.x), y: Number(point.y), z: Number(point.z) };
+function parsePoint(text: string): CapturePoint | null | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(/\s+/);
+  if (parts.length !== 3) return undefined;
+  const coordinates: number[] = [];
+  for (const part of parts) {
+    const match = /^(-?\d+)(?:\.\d*)?$|^-?\.\d+$/.exec(part);
+    if (!match) return undefined;
+    const value = Number(match[1] ?? 0);
+    if (value < -2147483648 || value > 2147483647) return undefined;
+    coordinates.push(value);
+  }
+  const [x, y, z] = coordinates;
+  return { x, y, z };
 }
 
 function sameDraft(left: CaptureDraft, right: CaptureDraft) {
@@ -22,8 +29,8 @@ function sameDraft(left: CaptureDraft, right: CaptureDraft) {
 
 export function useCapture(bridge: CaptureBridge) {
   const [state, setState] = useState<CaptureState | null>(null);
-  const [first, updateFirst] = useState(blankPoint);
-  const [second, updateSecond] = useState(blankPoint);
+  const [first, updateFirst] = useState('');
+  const [second, updateSecond] = useState('');
   const [includeEntities, updateIncludeEntities] = useState(false);
   const [pendingAction, setPendingAction] = useState<CaptureAction | null>(null);
   const lastRevision = useRef<number | null>(null);
@@ -31,8 +38,8 @@ export function useCapture(bridge: CaptureBridge) {
   const pending = useRef<{id: number; action: CaptureAction; draft: CaptureDraft} | null>(null);
   const editVersion = useRef(0);
   const failedVersion = useRef<number | null>(null);
-  const setFirst = useCallback((point: PointText) => { ++editVersion.current; updateFirst(point); }, []);
-  const setSecond = useCallback((point: PointText) => { ++editVersion.current; updateSecond(point); }, []);
+  const setFirst = useCallback((text: string) => { ++editVersion.current; updateFirst(text); }, []);
+  const setSecond = useCallback((text: string) => { ++editVersion.current; updateSecond(text); }, []);
   const setIncludeEntities = useCallback((value: boolean) => { ++editVersion.current; updateIncludeEntities(value); }, []);
   useEffect(() => bridge.subscribeCapture(next => {
     const request = pending.current;
@@ -54,6 +61,12 @@ export function useCapture(bridge: CaptureBridge) {
     if (acknowledged) { pending.current = null; setPendingAction(null); }
   }), [bridge]);
   const firstPoint = parsePoint(first), secondPoint = parsePoint(second);
+  const finishPoint = (slot: 'first' | 'second') => {
+    const point = slot === 'first' ? firstPoint : secondPoint;
+    if (point === undefined) return;
+    const update = slot === 'first' ? updateFirst : updateSecond;
+    update(pointText(point));
+  };
   const valid = firstPoint !== undefined && secondPoint !== undefined;
   const draft: CaptureDraft | null = valid
     ? { first: firstPoint!, second: secondPoint!, includeEntities } : null;
@@ -88,6 +101,6 @@ export function useCapture(bridge: CaptureBridge) {
   // actions and save dialogs lock the editor. New edits coalesce after ack.
   const editingBusy = busy && pendingAction !== 'apply';
   return { state, first, second, setFirst, setSecond, includeEntities, setIncludeEntities,
-    valid, draft, busy, editingBusy, submit };
+    valid, draft, busy, editingBusy, submit, finishPoint };
 }
 export type CaptureControls = ReturnType<typeof useCapture>;

@@ -137,15 +137,11 @@
 .lholo-control-disabled { opacity:0.5; }
 
 .lholo-capture-selection { margin-top:1.2rem; }
-.lholo-capture-point { margin-top:0.65rem; margin-bottom:0.3rem; }
-.lholo-capture-point-title { font-size:1rem; line-height:1.5; margin-bottom:0.5rem; }
+.lholo-capture-point-title { font-size:1rem; line-height:1.5; min-width:3.6rem; margin-right:0.6rem; margin-bottom:0.35rem; }
 /* Gameface: keep XYZ nowrap with length-based bases; only the outer action may wrap. */
-.lholo-coordinate-row { flex-direction:row; align-items:center; flex-wrap:wrap; }
-.lholo-coordinate-fields { display:flex; flex-direction:row; flex-wrap:nowrap; flex:1 1 18rem; min-width:18rem; margin-bottom:0.5rem; }
-.lholo-coordinate { display:flex; flex-direction:row; align-items:center; flex:1 1 0px; min-width:0; margin-right:0.8rem; }
-.lholo-coordinate > .lholo-input-shell { width:0; flex:1 1 0px; min-width:3.2rem; }
-.lholo-coordinate-label { font-size:1rem; line-height:1.5; margin-right:0.45rem; }
-.lholo-coordinate-row > .lholo-button { margin-bottom:0.5rem; }
+.lholo-coordinate-row { flex-direction:row; align-items:center; flex-wrap:wrap; margin-top:0.3rem; }
+.lholo-coordinate-row > .lholo-input-shell { width:12rem; margin-right:0.6rem; margin-bottom:0.35rem; }
+.lholo-coordinate-row > .lholo-button { margin-bottom:0.35rem; }
 .lholo-input-shell { width:5.6rem; height:2.2rem; min-height:0; flex-shrink:0; border-radius:0.25rem; background-color:#242424; }
 .lholo-input-shell input.lholo-text-input { width:100%; flex:1; border:none; border-radius:0.25rem; background-color:transparent; min-width:0; min-height:0; height:2.2rem; padding:0.25rem 0.55rem; font-family:LHoloSans,sans-serif; font-size:1rem; line-height:1.5; text-shadow:none; color:#ededed; }
 .lholo-capture-entities { margin-top:1rem; }
@@ -322,9 +318,6 @@
   .lholo-hotkey-bind .lholo-button-label { flex-shrink:1; overflow-wrap:break-word; }
 }
 @media (max-width:640px) {
-  .lholo-coordinate-row { flex-direction:column; align-items:stretch; }
-  .lholo-coordinate-fields { min-width:0; flex:0 0 auto; }
-  .lholo-coordinate-row > .lholo-button { align-self:flex-start; }
   .lholo-setting-row > .lholo-transform-label, .lholo-setting-row > .lholo-interface-label, .lholo-setting-row > .lholo-experimental-label, .lholo-setting-row > .lholo-opacity-label { flex:none; width:100%; min-width:0; margin-right:0; margin-bottom:0.3rem; }
   .lholo-setting-row > .lholo-select { min-width:0; }
   .lholo-setting-row > .lholo-stepper { min-width:0; }

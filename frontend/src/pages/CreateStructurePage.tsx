@@ -7,7 +7,7 @@ import { LHoloButton, LHoloCheckbox, LHoloTextField } from '../components/LHoloC
 export function CreateStructurePage({ labels, capture }: {
   labels: MenuLabels; capture: CaptureControls;
 }) {
-  const { state, first, second, setFirst, setSecond, includeEntities, setIncludeEntities, valid, draft, busy, editingBusy, submit } = capture;
+  const { state, first, second, setFirst, setSecond, includeEntities, setIncludeEntities, valid, draft, busy, editingBusy, submit, finishPoint } = capture;
   const disabled = !state?.worldAvailable || busy;
   const editorDisabled = !state?.worldAvailable || editingBusy;
   let size = '', volume = '';
@@ -25,19 +25,12 @@ export function CreateStructurePage({ labels, capture }: {
     <div className="lholo-section-title lholo-capture-selection">{labels['section.captureSelection']}</div>
     <div className="lholo-status">{state?.status || labels['captureStatus.noWorld']}</div>
     {([['first', first, setFirst, 'label.capturePoint1'], ['second', second, setSecond, 'label.capturePoint2']] as const)
-      .map(([slot, point, setPoint, label]) => <div className="lholo-capture-point" key={slot}>
+      .map(([slot, point, setPoint, label]) => <div className="lholo-coordinate-row" key={slot}>
         <div className="lholo-capture-point-title">{labels[label]}</div>
-        <div className="lholo-coordinate-row">
-          <div className="lholo-coordinate-fields">{(['x', 'y', 'z'] as const).map(axis =>
-            <div className="lholo-coordinate" key={axis}>
-              <div className="lholo-coordinate-label">{axis.toUpperCase()}</div>
-              <LHoloTextField label={labels[label] + ' ' + axis.toUpperCase()}
-                value={point[axis]} onChange={text => setPoint({ ...point, [axis]: text })}
-                disabled={editorDisabled} maxLength={11} />
-            </div>)}</div>
-          <LHoloButton label={labels['button.usePlayerPosition']}
-            disabled={disabled} onClick={() => submit(slot)} />
-        </div>
+        <LHoloTextField label={labels[label] + ' XYZ'} placeholder="X Y Z"
+          value={point} onChange={setPoint} onBlur={() => finishPoint(slot)} disabled={editorDisabled} />
+        <LHoloButton label={labels['button.usePlayerPosition']}
+          disabled={disabled} onClick={() => submit(slot)} />
       </div>)}
     {!valid && <div className="lholo-notice">{labels['oreui.invalidCoordinates']}</div>}
     {size && <div className="lholo-muted">{size}</div>}

@@ -121,7 +121,7 @@
   "section.captureSelection": "選択範囲",
   "label.capturePoint1": "地点 1",
   "label.capturePoint2": "地点 2",
-  "button.usePlayerPosition": "プレイヤーの現在位置を使用",
+  "button.usePlayerPosition": "現在位置を使用",
   "label.notSet": "未設定",
   "label.captureSize": "サイズ: %llu × %llu × %llu",
   "label.captureVolume": "総ブロック数: %llu",
@@ -314,7 +314,7 @@
   "oreui.browseFailed": "ファイルを選択できませんでした。.mcstructure または .litematic ファイルを選んで、もう一度お試しください。",
   "oreui.applySelection": "選択範囲を適用",
   "oreui.captureChanged": "ワールドまたは選択範囲が変更されました。確認してから、もう一度お試しください。",
-  "oreui.invalidCoordinates": "XYZ の各座標を整数ですべて入力するか、同じ地点の座標欄をすべて空欄にしてください。",
+  "oreui.invalidCoordinates": "有効な XYZ 座標を 3 つ入力するか、座標欄を空欄にしてください。",
   "oreui.captureBusy": "ストラクチャーを作成中…",
   "oreui.saveFailed": "保存先を選択できませんでした。.mcstructure ファイルを指定してください。"
 }

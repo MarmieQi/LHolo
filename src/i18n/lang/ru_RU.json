@@ -121,7 +121,7 @@
   "section.captureSelection": "Область структуры",
   "label.capturePoint1": "Точка 1",
   "label.capturePoint2": "Точка 2",
-  "button.usePlayerPosition": "Использовать текущую позицию игрока",
+  "button.usePlayerPosition": "Использовать текущую позицию",
   "label.notSet": "Не задано",
   "label.captureSize": "Размер: %llu × %llu × %llu",
   "label.captureVolume": "Всего блоков: %llu",
@@ -314,7 +314,7 @@
   "oreui.browseFailed": "Не удалось выбрать файл. Выберите файл .mcstructure или .litematic.",
   "oreui.applySelection": "Применить выделение",
   "oreui.captureChanged": "Мир или выделение изменились. Проверьте и повторите.",
-  "oreui.invalidCoordinates": "Введите целые координаты XYZ или оставьте все поля точки пустыми.",
+  "oreui.invalidCoordinates": "Введите три допустимые координаты XYZ или оставьте поле пустым.",
   "oreui.captureBusy": "Создание структуры…",
   "oreui.saveFailed": "Не удалось выбрать место сохранения. Используйте файл .mcstructure."
 }
