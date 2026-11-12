@@ -12,8 +12,7 @@ struct HudStyle {
 };
 inline HudStyle hudStyle(float lineHeight, bool compactRows = false, float scale = 1.0f) {
     // Legacy Fluent HUD: logical font 18, padding 12/8, item gap 8 and
-    // rounding 4 * 0.7. Express those proportions in native font/GUI units;
-    // do not import ImGui's viewport scale or global theme into native HUD.
+    // rounding 4 * 0.7, expressed in native font and GUI units.
     auto const unit = lineHeight / 18.0f;
     // Material HUD uses vanilla's +2 GUI units per row; retain all other
     // legacy panel metrics, including the gap between separate HUD panels.

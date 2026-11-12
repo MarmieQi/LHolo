@@ -8,7 +8,7 @@ The current `main` branch targets Minecraft Bedrock Windows `1.26.60.05` and Lev
 
 ## Development architecture
 
-Chat `LHolo` and the configured menu hotkey (Alt+M by default) open the same OreUI menu on the building tasks page. Task files provide projection loading, closing, material lists and independent native previews. Capture, transforms, render settings, HUD, hotkeys, language and experimental settings use the existing native business modules. The HUD, layout editor and structure preview use native rendering; ImGui retains action hints and backend input. The legacy ImGui menu has been removed. See the [development guide](../DEVELOPMENT.md),
+Chat `LHolo` and the configured menu hotkey (Alt+M by default) open the same OreUI menu on the building tasks page. Task files provide projection loading, closing, material lists and independent native previews. Capture, transforms, render settings, HUD, hotkeys, language and experimental settings use the existing native business modules. OreUI renders action hints. The HUD, layout editor and structure preview use native rendering. WindowHotkeys handles Windows shortcuts. See the [development guide](../DEVELOPMENT.md),
 [OreUI migration architecture](OREUI_MIGRATION.md), and [frontend guide](../frontend/README.md) (Chinese).
 
 ## Versioning

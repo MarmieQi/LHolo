@@ -4,9 +4,9 @@
 
 `LHolo` 是一个 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 客户端投影模组
 
-## 计划
+## 开发
 
-OreUI 将彻底替换旧 ImGui
+菜单和动作提示使用 OreUI，常驻 HUD 使用原生渲染，快捷键由游戏窗口接收。
 开发入口见 [开发手册](DEVELOPMENT.md)、[OreUI 架构与迁移说明](docs/OREUI_MIGRATION.md) 和 [前端说明](frontend/README.md)
 
 ## 版本号说明

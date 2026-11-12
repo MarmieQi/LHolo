@@ -1,8 +1,7 @@
 // LHolo - Client-side projection renderer for Minecraft Bedrock Windows
 // Copyright (C) 2026  MarmieQi
 //
-// Shared, type-safe layer grouping and visibility modes. Persistent settings
-// and Dear ImGui keep their stable integer representation only at the edges.
+// Layer types shared by runtime code. Settings and protocols serialize stable integer values.
 
 #pragma once
 

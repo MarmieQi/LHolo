@@ -52,10 +52,10 @@ OreUiMenuResources 负责内置资源包的限定 URL 读取适配，只处理 L
 页面不访问 engine 或原版私有符号，业务层不依赖 OreUI。
 Gameface 的普通 div 默认按纵向 flex 排列直接子节点。连续文案须先组成一个字符串再交给单个文本节点；需要不同样式时，使用显式横向容器与独立 span。当前选中文件提示由 SelectedFileContext 统一提供。任务错误显式分为两行：第一行“任务错误: 文件名”，第二行错误原因；每行各自保持单个文本节点，避免标点单独成行。
 打开与另存为的全局互斥由 StructureFilePicker 服务负责，两个功能绑定不互相引用。
-FilePicker 不依赖 Gameface、ImGui、结构会话、投影或模组日志。
+FilePicker 独立处理系统文件对话框。
 MenuBindings 将投影意图提交给 structure/ProjectionActions，不复制结构加载逻辑。
 ProjectionActions 在现有应用控制帧统一执行加载、关闭和恢复，读取玩家坐标并复用 StructureFileLoader / StructureSession；业务模块不依赖 OreUI 协议。快捷键也复用这一入口。
-应用控制帧由 AppKernel 的 `ClientInstance::$update` Hook 在客户端逻辑线程处理请求，只消费当前主客户端实例的队列。操作执行不依赖 ImGui 或交换链初始化，DXGI Present 不调用应用控制帧。
+应用控制帧由 AppKernel 的 `ClientInstance::$update` Hook 在客户端逻辑线程处理请求，只消费当前主客户端实例的队列。
 不为首个功能预建通用服务框架；后续按选定业务扩展绑定。
 
 ## 任务文件与投影操作

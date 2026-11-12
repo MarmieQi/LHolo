@@ -79,7 +79,7 @@ LHolo 的投影、纠错、HUD 和菜单都只存在于客户端，不产生碰�
 - 支持准心轻松放置、按住右键的手动放置，以及半径 1～4 的范围放置；三种模式在 GUI 中互斥。手动放置按住右键不放，可沿准心扫过的投影连续放置。
 - `.mcstructure` 中带 NBT 的方块实体优先使用原版方块实体渲染器；没有可用渲染器或 Tessellation 结果的方块使用贴图占位外壳。
 - HUD 可显示文件名、显示层、建造进度、放置错误数、朝向错误数、多余方块数、准心指向的投影方块名称和当前辅助放置模式（手动/轻松/范围）；支持四角定位和单项关闭，各类错误可分别配置。
-- GUI 使用外部注入 Dear ImGui，不使用游戏表单。
+- 菜单和动作提示使用 OreUI，普通与材料 HUD 使用 Bedrock 原生绘制。
 - 界面语言由 `src/i18n/lang/*.json` 自动发现，可在“界面设置”页切换，默认简体中文；语言代码随配置文件持久化。
 - 默认 `Alt + M` 打开 OreUI 主菜单；聊天栏输入 `LHolo`（ASCII 大小写不敏感）打开 OreUI 菜单，消息在客户端拦截，不发往服务器。
 - LHolo 菜单打开及关闭过渡期间，客户端阻止本地控制玩家开始或继续破坏方块；本地存档和远程服务器均有效，服务器无需安装 LHolo。
@@ -254,8 +254,7 @@ LHolo/
   只能由它统一开关，禁止任一处单独读取其它状态。
 - `structure/StructureSession` 持有结构会话状态：已加载结构、变换/分层值、恢复快照与状态文案；
   mutex、原子量、字符串和容器均不向调用者暴露，菜单/HUD 通过一致快照读取，变更通过具体操作完成。
-- 分层轴与显示范围在运行时统一使用 `LayerAxis`/`LayerDisplayMode`；只有 JSON 持久化和 Dear ImGui 控件边界
-  使用稳定整数编码并立即转换，禁止在投影、纠错或放置逻辑中用 `0/1/2/3` 表达分层语义。
+- 分层轴与显示范围在运行时统一使用 `LayerAxis`/`LayerDisplayMode`；JSON 持久化与 OreUI 协议使用稳定整数编码并在边界转换，禁止在投影、纠错或放置逻辑中用 `0/1/2/3` 表达分层语义。
   关闭活动投影时必须先把当前变换/分层冻结到恢复快照，再释放 `LoadedStructure`；空会话将显示层钳到
   0 的临时 UI 值不得覆盖恢复记录。
 - `ui/HotkeyFormat` 只根据显式参数生成按键名与和弦字符串，不读取会话状态；快捷键交互仍由
@@ -287,13 +286,12 @@ LHolo/
 - `structure`/`place`/`projection` 只保存 `i18n::Message`（键 + 语言中立参数）或 `TextKey`，
   禁止保存已翻译的句子，否则切换语言时旧文案不会更新。日志与异常消息保持英文技术描述，
   不进入语言表。
-- Dear ImGui 的 `##`/`###` ID、`CalcTextSize` 数字宽度探针（`"0000000000"`、`"-0.0"` 等）
-  与 `Ctrl`/`Alt`/`Shift`、`X`/`Y`/`Z` 等标识符不参与翻译。
+- `Ctrl`/`Alt`/`Shift` 与 `X`/`Y`/`Z` 保持固定写法。
 - 菜单布局与导航由 `frontend/src/LHoloMenu.tsx` 负责，页面与可视控件分别位于 `frontend/src/pages/` 和 `components/`；原生业务只通过现有绑定、动作队列及一致快照接入。
 - `StructureLoader` 保留动作提示、快捷键事件与加载入口；普通和材料 HUD 绘制位于 `ui/hud/`。旧菜单的模型、控件及同步文件对话框已删除，不以空渲染函数保留调用链。
 - 材料清单通过 `materialListSnapshotIfChanged` 同时读取 revision、ready 与 requirements，不保留旧菜单分开读取状态/内容的接口；动作提示读取现有完整快照。提示页面的样式集中在 OreUiActionHintPage。
 - `structure/StructurePaths` 提供 UTF-8 路径转换，结构模块与 UI 共用。
-- `projection` 负责“结构如何出现在世界中”，不弹文件选择框、不直接操作 ImGui。
+- `projection` 负责世界内投影，文件选择由 UI 层处理。
 - `projection/ProjectionTypes.h` 不包含运行状态、Hook 或 Minecraft 资源所有权；内部纯数据定义集中在
   `projection/core/ProjectionInternalTypes.h`，投影状态与 Worker/Mesh 生命周期仍由实现层负责。
 - `projection/core/ProjectionRules.*` 只根据显式参数计算结果，不读取全局投影状态，也不持有游戏对象；
@@ -357,7 +355,7 @@ LHolo/
 - `place/PlacementExecutor` 承载轻松/手动/范围放置的规划与执行（背包查找、交换、放置事务、
   点击候选与预测匹配），不直接读取操作系统物理输入；游戏 Hook 和右键物理状态边界留在 `PlaceHelper`，
   只向 `PlacementState` 提交状态转换并调用 `tickEasyPlace`/`tickRangePlace`。
-- `input` 负责投影滚轮的原生热栏输入保护和共享快捷键捕获；原生页面管理自身输入，不恢复旧 ImGui 菜单输入拦截。
+- `input` 负责窗口快捷键、按键录制和投影滚轮保护。原生页面管理自身输入。
 - `plugin` 只把生命周期委托给 `app/AppKernel`，不承载业务逻辑。
 
 ---
@@ -371,7 +369,7 @@ LHolo/
 1. 开放结构文件后台任务入口，再安装投影相关 LeviLamina Hook。
 2. 安装辅助放置 Hook：`LocalPlayer::$tickWorld` 负责每 tick 驱动，三个 `GameMode` build Hook 负责命中真实方块时的右键状态和原版放置抑制，`GameMode::$useItem` 负责捕获指向空气的右键操作（tick Hook 失败仅告警，不阻断；单个手动 Hook 失败会分别告警并降级对应行为）。
 3. 安装投影滚轮保护：`MouseDevice::feed` 只在投影取得滚轮所有权时阻止原生热栏滚动；失败告警，不阻断菜单启用。
-4. 尝试安装 ImGui/DXGI Hook；图形环境尚未可用时允许后续 `Present` 重试。
+4. 启用客户端控制帧。WindowHotkeys 在游戏窗口可用后安装 WndProc。
 
 应用控制帧由 `app/AppKernel` 自有的 `ClientInstance::$update` Hook 在原版更新返回后驱动，只处理当前主客户端实例，标题界面和世界内均可执行。业务模块仍只提供独立动作队列；启用完成才开始消费，卸载先停用并移除该 Hook，再拆除业务模块。输入窗口绑定和业务队列均由客户端控制帧调度。
 
@@ -1010,7 +1008,6 @@ SettingsStore 在读取时兼容旧平铺字段（包括旧世界轴快捷键和
 - xmake
 - LeviLamina 26.60.0 client
 - levibuildscript
-- Dear ImGui 1.91.9，Win32 + DX11，静态
 - zlib
 
 编译设置：C++20、MD runtime、UTF-8、警告等级 `/W4`、工具链 `clang-cl`。
@@ -1257,7 +1254,6 @@ D:\games\LeviLauncher\MC\versions\1.26.60.05\mods\LHolo
 
 - 在展示边界（`ui/`、底部提示、文件对话框）之外写用户可见文案，或把已翻译的句子存进
   `StructureSession`/`StructureUiState`/投影状态。界面文案一律经 `i18n::TextKey`。
-- 翻译 Dear ImGui 的 `##`/`###` ID、`CalcTextSize` 数字宽度探针或 `Ctrl`/`Alt`/`Shift` 等标识符。
 - 用“英文原文当键”的写法新增文案：改名会静默丢掉翻译，也无法做编译期完备性校验。
 - `sp`/`sp <block>` 头顶单方块测试命令及其延迟切换状态。
 - `spgui` 旧菜单命令。
@@ -1272,8 +1268,6 @@ D:\games\LeviLauncher\MC\versions\1.26.60.05\mods\LHolo
 - 未做共享面剔除的每方块完整六面叠加。
 - 每帧全量扫描整个结构。
 - 整体移动时重建所有 GPU 网格。
-- 只在 ResizeBuffers 清理 RTV 的 F11 修复。
-- GUI 使用游戏内置表单替代外部 ImGui。
 - 写死导入路径。
 - 跨世界缓存世界对象或 ECS 裸指针。
 

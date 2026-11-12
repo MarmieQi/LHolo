@@ -4,7 +4,7 @@ LHolo 是当前开发项目。同级 OreUIProbe 仅供参考，ore-ui 提供官�
 修改前阅读 DEVELOPMENT.md 的相关章节；OreUI 工作另读 docs/OREUI_MIGRATION.md。
 
 - 保持高内聚、低耦合、职责清楚；按实际功能增加模块，不预建通用框架或空实现。
-- 菜单与 HUD 设置使用 OreUI，普通/材料 HUD 画面使用原生绘制；旧 C++ ImGui 菜单已移除。动作提示由 src/oreui 的独立 Gameface 层绘制；Windows 快捷键由 input/WindowHotkeys 独立接收。应用动作由 AppKernel 的 ClientInstance::$update Hook 调度，禁止在 DXGI Present 中读取世界或执行业务动作。快捷键与输入行为继续有效。
+- 菜单、HUD 设置和动作提示使用 OreUI，普通与材料 HUD 由原生绘制。Windows 快捷键由 input/WindowHotkeys 接收。AppKernel 通过 ClientInstance::$update 在客户端控制帧执行业务动作。
 - 前端在 frontend/；原生页面生命周期、通信和业务绑定集中在 src/oreui/；
   游戏版本私有符号及生成工具集中在 tools/oreui/。
 - 页面不访问 engine 或原版私有符号。业务状态使用现有 C++ 模块，前端只保留界面状态。

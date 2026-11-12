@@ -10,7 +10,7 @@ namespace lholo::ui {
 
 enum class StructureFileTypes { Projection, Mcstructure };
 
-// Owns one asynchronous system picker. No OreUI, ImGui or world dependencies.
+// Owns one asynchronous system file picker.
 class StructureFilePicker {
 public:
     using Dialog = StructureFileDialogResult (*)(std::filesystem::path const&, std::stop_token);
