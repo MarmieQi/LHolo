@@ -4,7 +4,7 @@
 
 `LHolo` is a client-side structure projection mod for [LeviLamina](https://github.com/LiteLDev/LeviLamina)
 
-The current `main` branch targets Minecraft Bedrock Windows `1.26.60.05` and LeviLamina `26.60.0 client`, with mod version `26.60.0`. The 26.51 version is maintained on [backport/26.51](https://github.com/MarmieQi/LHolo/tree/backport/26.51).
+The current `main` branch targets Minecraft Bedrock Windows `1.26.60.05` and LeviLamina `26.60.0 client`, with mod version `26.60.1`. The 26.51 version is maintained on [backport/26.51](https://github.com/MarmieQi/LHolo/tree/backport/26.51).
 
 ## Development architecture
 
