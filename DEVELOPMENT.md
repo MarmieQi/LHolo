@@ -7,7 +7,7 @@
 - Minecraft Bedrock Windows：`1.26.60.05`
 - LeviLamina：`26.60.0`，目标类型 `client`
 - 架构：Windows x64
-- 图形接口：Minecraft D3D12 + LHolo D3D11On12 + Dear ImGui DX11 后端
+- 图形接口：Minecraft 原生渲染与 OreUI/Gameface
 - 模组名称、DLL、目录和内部命名空间：`LHolo` / `LHolo.dll` / `mods/LHolo` / `lholo`
 - 支持格式：Bedrock `.mcstructure`、Java Litematica `.litematic`
 
@@ -37,7 +37,7 @@
 
 HUD 布局编辑使用独立原生 UIScene，入口仍在 OreUI HUD 设置页。editor/HudEditor 管理草稿和输入状态，HudEditorScene 在客户端更新中创建/弹出场景，HudEditorView 与正常 HUD 共用 NativeHudPainter。HUD、边框与按钮均原生绘制，鼠标由游戏场景管理；完成保存，取消/Esc 丢弃，待原生场景移除后重新打开 HUD 设置页。有结构时使用真实内容，没有结构时使用编辑专用本地化示例。编辑器支持独立调整位置及背景不透明度（0～100%、精度 1%，默认 60%），底部为“重置、透明度、缩放”，后两者复用向上展开的百分比滑条；缩放范围 50～200%，默认 100%，两个 HUD 分别保存；完成保存、取消丢弃，“重置”恢复选中 HUD 的位置、默认透明度 60% 和缩放 100%；全部重置恢复两个 HUD 的位置、默认不透明度与缩放。全部按钮背景统一默认 0.5，悬停 0.6，按下 0.7。用户已于 2026-10-26 确认原生编辑器可用。操作按钮移至顶部居中，共用 HUD 圆角背景，顶部三个按钮默认不透明度为 0.5，不额外显示面板名称，仅选中项显示红色边框。2026-10-27 用户已验证 `UIDefRepository::findDef` 提供的内存场景定义可用于原生编辑，不再依赖资源包中的 HUD JSON UI 注册；OreUI 菜单仍依赖资源包。
 
-OreUI 渐进迁移状态（2026-11-01）：聊天命令和菜单快捷键均打开当前自有样式的 OreUI 主菜单。旧 C++ ImGui 菜单、专用模型/控件/控制器和同步文件对话框已移除；动作提示统一由独立 OreUI 覆盖层绘制；ImGui 后端仍负责安装全局快捷键使用的 WndProc。
+OreUI 渐进迁移状态（2026-11-01）：聊天命令和菜单快捷键均打开当前自有样式的 OreUI 主菜单。旧 C++ ImGui 菜单、专用模型/控件/控制器和同步文件对话框已移除；动作提示统一由独立 OreUI 覆盖层绘制；全局快捷键由 input/WindowHotkeys 独立接收。
 主界面入口试验：菜单快捷键允许在 Idle + start_screen 打开同一页面；路由调度在主 ClientInstance::update 上执行，不依赖已有 OreUI View。进入/退出世界或加载状态变化关闭旧上下文页面。无世界时允许浏览文件和编辑偏好，禁用加载/恢复投影、选区/导出与辅助放置启用；前后端均校验 worldAvailable。主界面实机结果待验收。
 默认入口为建造任务，旧单文件“投影”页面和专用浏览/加载/恢复桥接已移除；材料清单位于任务页。前端任务意图经 TaskBindings/TaskProtocol 进入 app/TaskActions，复用现有加载器、合成器和投影会话；MenuBindings 只提供材料与运行上下文快照。OreUI 不提供缩放控件，不写旧 ImGui 缩放。协议、取消、测试与部署要求见
 [OreUI 迁移说明](docs/OREUI_MIGRATION.md)；前端入口见 [frontend/README.md](frontend/README.md)。
@@ -47,7 +47,7 @@ OreUI 渐进迁移状态（2026-11-01）：聊天命令和菜单快捷键均打�
 
 ---
 
-渲染设置经 application/useRenderSettings → RenderSettingsBindings/Protocol → app/RenderSettingsActions 接入。AppKernel::processControlFrame 在 ImGui 初始化前编排结构动作与渲染设置，并复用 saveSettings。应用启用时向 Overlay 注册原子帧回调，Overlay 不依赖 AppKernel，关闭时移除回调。投影视觉参数仍由 projection 持有，分层和真实范围由 StructureSession / LayerSettings 持有；下层不得反向依赖 app 或 OreUI。请求只包含改动字段，控制帧校验原值、会话和分层轴，避免整页配置覆盖。
+渲染设置经 application/useRenderSettings → RenderSettingsBindings/Protocol → app/RenderSettingsActions 接入。AppKernel::processControlFrame 在客户端更新时编排结构动作与渲染设置，并复用 saveSettings。应用启用时向 Overlay 注册原子帧回调，Overlay 不依赖 AppKernel，关闭时移除回调。投影视觉参数仍由 projection 持有，分层和真实范围由 StructureSession / LayerSettings 持有；下层不得反向依赖 app 或 OreUI。请求只包含改动字段，控制帧校验原值、会话和分层轴，避免整页配置覆盖。
 
 HUD/快捷键/语言/实验性功能由 app/SettingsActions 统一接收字段或具体命令，原生持有实际状态；前端共享 useSettings 的应答调度，各页 hook 只持有局部编辑状态。语言列表/快捷键标签与默认值不在正式前端复制；input/HotkeyCapture 共用原有输入规则。模式不持久化，知情确认和参数沿用原有保存；缩放协议不开放。详见迁移说明。
 
@@ -125,8 +125,6 @@ LHolo/
 │  ├─ settings/
 │  │  └─ SettingsStore.*        config.json 读写与字段映射
 │  ├─ overlay/
-│  │  ├─ ImGuiOverlay.cpp       DXGI/D3D11On12 与 WndProc 输入生命周期
-│  │  ├─ ImGuiOverlay.h
 │  │  └─ BoundsWireframe.*      创建结构选区的红色整体线框
 │  ├─ render/
 │  │  ├─ OverlayMaterials.h    纠错/整体边框/创建选区共享的原版材质与白纹理查找
@@ -198,6 +196,7 @@ LHolo/
 │  │  ├─ PlacementExecutor.*    轻松/手动/范围放置规划与执行
 │  │  └─ PlaceHelper.h          配置开关与 Hook 生命周期接口
 │  └─ input/
+│     ├─ WindowHotkeys.*       游戏窗口快捷键与录制输入
 │     ├─ HotkeyTypes.h          快捷键槽位、顺序与数量的唯一共享定义
 │     ├─ ViewMoveBasis.*        朝向/视线到整块步进的纯方向规则
 │     ├─ ProjectionInputGuard.cpp 投影滚轮的原生热栏输入保护
@@ -374,7 +373,7 @@ LHolo/
 3. 安装投影滚轮保护：`MouseDevice::feed` 只在投影取得滚轮所有权时阻止原生热栏滚动；失败告警，不阻断菜单启用。
 4. 尝试安装 ImGui/DXGI Hook；图形环境尚未可用时允许后续 `Present` 重试。
 
-应用控制帧由 `app/AppKernel` 自有的 `ClientInstance::$update` Hook 在原版更新返回后驱动，只处理当前主客户端实例，标题界面和世界内均可执行。业务模块仍只提供独立动作队列；启用完成才开始消费，卸载先停用并移除该 Hook，再拆除业务模块。DXGI Present 只管理现有输入后端初始化，不消费业务队列，业务执行不依赖 ImGui 或交换链初始化。
+应用控制帧由 `app/AppKernel` 自有的 `ClientInstance::$update` Hook 在原版更新返回后驱动，只处理当前主客户端实例，标题界面和世界内均可执行。业务模块仍只提供独立动作队列；启用完成才开始消费，卸载先停用并移除该 Hook，再拆除业务模块。输入窗口绑定和业务队列均由客户端控制帧调度。
 
 配置由 `LHolo::load()` 在 enable 之前从 `mods/LHolo/config/config.json` 读取。世界退出由 `LevelListener::onLevelDestruction()` 发布轻量信号；投影渲染入口和客户端逻辑控制帧都能观察该信号，真正的结构、辅助放置、捕获和投影清理在销毁回调之外执行。投影渲染入口仍通过 `client/level/dimension` 身份变化检测世界/维度切换，并在上下文失效时清理投影。
 
@@ -403,7 +402,7 @@ LevelListener，即使首个投影尚未激活，世界销毁回调也先清空�
 3. 卸载投影滚轮输入源 Hook。
 4. 卸载辅助放置的 tick/build Hook。
 5. 卸载投影 Hook，防止渲染路径再次触发 Overlay 安装重试。
-6. 关闭 ImGui 图形后端、恢复原 WndProc、移除 MinHook，并清空图形资源。
+6. 恢复游戏窗口原 WndProc，清理快捷键状态。
 
 ### 3.3 世界切换
 
@@ -872,7 +871,7 @@ NBT 内容合并、本地化和背包读取仍在游戏 tick 线程执行，普�
 
 主菜单和 HUD 设置使用 OreUI，页面位于 frontend/，原生绑定集中在 src/oreui/。普通、材料和写入 HUD、布局编辑器及结构预览使用原生通路。不要把 JS 协议加入结构或投影内部模块。
 
-旧 C++ ImGui 菜单、同步文件选择、菜单可见/输入过渡状态及菜单缩放已删除。动作提示由独立 OreUI 页面绘制，后端仍负责快捷键输入。应用控制帧由 AppKernel 的客户端逻辑更新 Hook 驱动。
+旧 C++ ImGui 菜单、同步文件选择、菜单可见/输入过渡状态及菜单缩放已删除。动作提示由独立 OreUI 页面绘制，快捷键由 input/WindowHotkeys 接收。应用控制帧由 AppKernel 的客户端逻辑更新 Hook 驱动。
 
 ### 9.2 输入所有权
 
@@ -908,64 +907,11 @@ input/ProjectionInputGuard 仅保留 MouseDevice::feed Hook：活动投影取得
 
 ---
 
-## 10. ImGui 图形链与交换链生命周期
+## 10. Windows 快捷键生命周期
 
-### 10.1 Hook 列表
+`input/WindowHotkeys` 在主客户端控制帧读取游戏窗口句柄并安装 WndProc。窗口尚未创建时等下一控制帧，窗口替换或模组停用时恢复原过程。输入适配沿用原有 Windows 虚拟键、鼠标中键与侧键、滚轮及失焦重置规则。Bedrock 的 Esc 菜单 Hook 与滚轮保护仍由各自模块管理。
 
-`ImGuiOverlay.cpp` 使用 MinHook 连接：
-
-- `IDXGISwapChain::Present`
-- `IDXGISwapChain1::Present1`
-- `IDXGISwapChain::ResizeBuffers`
-- `IDXGISwapChain3::ResizeBuffers1`
-- `ID3D12CommandQueue::ExecuteCommandLists`
-- 游戏窗口 WndProc
-
-`ExecuteCommandLists` 用于捕获可用的 Direct D3D12 command queue。随后建立 D3D11On12 device/context，并让 ImGui 使用 DX11 后端。
-
-### 10.2 每帧资源规则
-
-DXGI Present 保留现有 WndProc 安装及后端生命周期。动作提示的合成由 OreUI 在游戏界面绘制时完成。
-
-### 10.3 历史崩溃根因
-
-历史崩溃条件：只要初始化过 ImGui，之后 F11 切换全屏就以 `0xC0000409`/`std::terminate` 结束。IDA 与日志表明进入 Minecraft 的 device-lost 处理链，而不是普通输入异常。
-
-根因是 Minecraft 开始全屏/交换链转换时，外部 D3D11On12 后端仍持有旧图形状态。仅在 `ResizeBuffers` 释放 RTV 已经太晚。
-
-窗口大小调整还有一条相同性质的历史路径：菜单绘制过一次后，ImGui 已创建 DX11 device objects；旧实现只 Hook 了 `IDXGISwapChain::ResizeBuffers`，但 Minecraft 的 D3D12 交换链使用 `IDXGISwapChain3::ResizeBuffers1` 调整窗口大小，导致 LHolo 完全错过实际缩放入口，D3D11On12 device/context 跨越旧、新 back buffer 生命周期，Minecraft 会以 `0xC0000409` 结束进程。
-
-### 10.4 正确修复
-
-WndProc 收到首次 `WM_KEYDOWN + VK_F11`，在消息交回 Minecraft 前：
-
-1. `ImGui_ImplDX11_Shutdown()`。
-2. 解除 RTV。
-3. `ClearState()`、`Flush()`。
-4. 释放 D3D11On12 device/context/device。
-5. 保留 ImGui Context、Win32 后端、WndProc 和业务状态。
-6. 延迟约 750 ms，允许 Minecraft 完成交换链切换。
-7. 后续有效 Present 使用新 swap chain/queue 重建图形后端。
-
-普通窗口缩放必须同时 Hook `ResizeBuffers` 和 `ResizeBuffers1`，两者都进入同一套 `prepareForSwapChainResizeLocked()` / `deferGraphicsResumeAfterSwapChainResizeLocked()` 生命周期：完整释放 DX11/D3D11On12 图形后端，保留 ImGui Context、Win32 后端和菜单状态；缩放成功或失败后都不在 detour 内同步重建，而是短暂防抖，并由稳定的后续 Present 懒重建。连续 Resize 必须续期普通缩放的恢复时间，但不得缩短 F11 已安排的更长暂停。所有 DXGI vtable 索引集中定义在 `ImGuiOverlay.cpp` 顶部，不得在安装代码中散落数字常量。`gResourceMutex` 必须覆盖释放、原始缩放调用和恢复时刻更新，避免 Present 与交换链缩放并发访问图形状态。
-
-LHolo 使用受 `gResourceMutex` 保护的弱 `gActiveSwapChain` 身份，只处理当前游戏交换链的 Present 和 Resize；不得对该指针 `AddRef`，以免延长 Minecraft 交换链生命周期。全屏或设备转换允许图形后端已释放时，由输出到同一游戏窗口的新交换链接管；无窗口的 composition/off-screen 交换链不得接管已绑定的 overlay。`initializeImGui()` 的所有失败出口必须回滚本次创建的 DX11/D3D11On12 对象，首次 Win32 后端初始化失败还必须销毁刚创建的 ImGui Context。
-
-不要回退为只清 RTV、只 invalidate ImGui device objects、在 `ResizeBuffers` 内同步 CreateDeviceObjects，或只依赖窗口消息猜测普通缩放。
-
-### 10.5 图形故障日志
-
-以下失败必须记录 HRESULT 与 `GetDeviceRemovedReason`：
-
-- D3D12/D3D11 `GetBuffer`
-- `CreateWrappedResource`
-- `CreateRenderTargetView`
-- `ResizeBuffers`
-- `ResizeBuffers1`
-
-错误日志是正式版维护能力，不应作为“调试死代码”删除。
-
----
+动作提示由独立 OreUI 场景合成，投影由原版渲染 Hook 提交。图形生命周期由游戏管理。
 
 ## 11. 网络命令与 Hook
 
@@ -1065,7 +1011,6 @@ SettingsStore 在读取时兼容旧平铺字段（包括旧世界轴快捷键和
 - LeviLamina 26.60.0 client
 - levibuildscript
 - Dear ImGui 1.91.9，Win32 + DX11，静态
-- MinHook
 - zlib
 
 编译设置：C++20、MD runtime、UTF-8、警告等级 `/W4`、工具链 `clang-cl`。

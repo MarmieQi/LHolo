@@ -21,7 +21,7 @@
 #include "oreui/OreUiBridge.h"
 #include "oreui/OreUiScreen.h"
 #include "oreui/OreUiActionHint.h"
-#include "overlay/ImGuiOverlay.h"
+#include "input/WindowHotkeys.h"
 #include "place/PlaceHelper.h"
 #include "plugin/LHolo.h"
 #include "projection/ProjectionController.h"
@@ -60,6 +60,7 @@ AppKernel& AppKernel::getInstance() {
 }
 
 void AppKernel::processControlFrame() {
+    input::updateWindowHotkeys();
     if (input::consumeMenuOpenRequest()) oreui::requestMenuOpen();
     structure::processPendingActions();
     oreui::updateActionHintOverlay();
@@ -125,10 +126,6 @@ bool AppKernel::enable() {
     }
 
     controlFramesEnabled.store(true, std::memory_order_release);
-    if (!overlay::ensureInstalled()) {
-        logger.warn("GUI overlay hotkey hooks are not ready; lholo will retry initialization");
-    }
-
     logger.info("LHolo enabled. Chat LHolo and the configured menu hotkey open the OreUI main menu.");
     return true;
 }
@@ -136,6 +133,7 @@ bool AppKernel::enable() {
 bool AppKernel::disable() {
     auto& logger = LHolo::getInstance().getSelf().getLogger();
     if (controlFramesEnabled.exchange(false, std::memory_order_acq_rel)) AppClientUpdate::unhook();
+    input::uninstallWindowHotkeys();
     input::clearMenuOpenRequest();
 
     resetStructurePreviewActions();
@@ -165,7 +163,6 @@ bool AppKernel::disable() {
     projection::detail::projectionController().uninstallHooks();
     // Projection hooks contain the automatic overlay-install retry path, so
     // remove them before tearing the overlay down.
-    overlay::shutdown();
 
     logger.info("LHolo disabled");
     return true;

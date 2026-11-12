@@ -3,7 +3,6 @@
 
 #include "projection/hooks/ProjectionRenderHooks.h"
 
-#include "overlay/ImGuiOverlay.h"
 #include "projection/runtime/ProjectionRenderFrame.h"
 
 #include "mc/client/renderer/BaseActorRenderContext.h"
@@ -41,11 +40,6 @@ LL_TYPE_INSTANCE_HOOK(
     bool                      renderAlphaLayer
 ) {
     origin(renderContext, renderAlphaLayer);
-    // The first install attempt can happen before Minecraft exposes a usable
-    // swap chain. Keep retrying from the render path, which is active even
-    // while the menu is hidden and does not depend on Present already being
-    // hooked.
-    (void)overlay::ensureInstalled();
     renderProjectionFrame(renderContext, renderAlphaLayer);
 }
 
