@@ -20,6 +20,7 @@
 #include "input/MenuOpenRequest.h"
 #include "oreui/OreUiBridge.h"
 #include "oreui/OreUiScreen.h"
+#include "oreui/OreUiActionHint.h"
 #include "overlay/ImGuiOverlay.h"
 #include "place/PlaceHelper.h"
 #include "plugin/LHolo.h"
@@ -61,6 +62,7 @@ AppKernel& AppKernel::getInstance() {
 void AppKernel::processControlFrame() {
     if (input::consumeMenuOpenRequest()) oreui::requestMenuOpen();
     structure::processPendingActions();
+    oreui::updateActionHintOverlay();
     if (processRenderSettingsEdits()) structure::saveSettings();
     if (processSettingsActions()) structure::saveSettings();
     processTaskActions();
@@ -107,6 +109,7 @@ bool AppKernel::enable() {
     }
 
     if (!ui::hud::installNativeHudRenderer()) logger.warn("Failed to install the native HUD renderer");
+    if (!oreui::installActionHintOverlay()) logger.warn("Failed to install the Ore UI action hint overlay");
 
     if (!ui::hud::installHudEditorScene()) logger.error("Failed to install the native HUD editor scene");
     if (!ui::preview::installStructurePreviewScene()) logger.error("Failed to install the native structure preview scene");
@@ -139,6 +142,7 @@ bool AppKernel::disable() {
     ui::preview::uninstallStructurePreviewScene();
     ui::hud::uninstallHudEditorScene();
     ui::hud::uninstallNativeHudRenderer();
+    oreui::uninstallActionHintOverlay();
     oreui::uninstallMenuScreen();
     oreui::uninstallMenuBridge();
 

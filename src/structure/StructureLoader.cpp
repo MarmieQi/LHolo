@@ -33,7 +33,6 @@
 #include "structure/capture/StructureCapture.h"
 #include "structure/capture/CaptureActions.h"
 #include "structure/java_to_bedrock/JavaToBedrock.h"
-#include "ui/FluentTheme.h"
 #include "place/PlaceHelper.h"
 #include "plugin/LHolo.h"
 #include "projection/Projection.h"
@@ -58,7 +57,6 @@
 
 #include "ll/api/mod/NativeMod.h"
 #include "ll/api/service/Bedrock.h"
-#include "imgui.h"
 #include "mc/client/game/ClientInstance.h"
 #include "mc/client/game/IClientInstance.h"
 #include "mc/client/player/LocalPlayer.h"
@@ -70,10 +68,6 @@ namespace {
 constexpr std::size_t kGuiHotkeyIndex = input::hotkeyIndex(input::HotkeyId::Gui);
 constexpr std::size_t kLayerIncreaseHotkeyIndex = input::hotkeyIndex(input::HotkeyId::LayerIncrease);
 constexpr std::size_t kLayerDecreaseHotkeyIndex = input::hotkeyIndex(input::HotkeyId::LayerDecrease);
-constexpr float kActionHintVerticalScreenRatio = 0.80f;
-// Background alpha for the legacy transient action hint. Native HUD styling
-// belongs to ui/hud/NativeHudRenderer.
-constexpr float kOverlayWindowBgAlpha = 0.68f;
 auto& logger() {
     return LHolo::getInstance().getSelf().getLogger();
 }
@@ -313,59 +307,6 @@ i18n::Message makeLoadedStatusMessage(LoadedStructure const& loaded) {
         i18n::TextKey::StatusLoaded,
         {detail::pathToUtf8(loaded.sourcePath.filename()), sizeText, blocksText}
     };
-}
-
-bool actionHintActive(bool menuVisible) {
-    return uiState().actionHintActive(GetTickCount64(), menuVisible);
-}
-
-void renderActionHint(bool menuVisible) {
-    auto const now = GetTickCount64();
-    auto const hint = uiState().actionHint(now, menuVisible);
-    auto const expiry = hint.expiry;
-    if (!hint.persistent && now >= expiry) return;
-    if (hint.text.empty()) return;
-
-    float const alpha = !hint.persistent && expiry - now < 300
-        ? static_cast<float>(expiry - now) / 300.0f : 1.0f;
-    auto const displaySize = ImGui::GetIO().DisplaySize;
-    float const uiScale = std::clamp(
-        std::min(displaySize.x / 1920.0f, displaySize.y / 1080.0f), 1.0f, 5.0f
-    );
-    auto const metrics = lholo::ui::calculateMetrics(displaySize, uiScale);
-    lholo::ui::applyFluentTheme(metrics);
-
-    // Centered horizontally, sitting just above the hotbar like JE's action bar.
-    ImGui::SetNextWindowPos(
-        ImVec2(displaySize.x * 0.5f, displaySize.y * kActionHintVerticalScreenRatio),
-        ImGuiCond_Always,
-        ImVec2(0.5f, 0.5f)
-    );
-    // Same neutral background as the HUDs: this bar used to carry its own
-    // purple accent, which no longer matched either the Fluent theme or the
-    // HUD next to it. Only the fade alpha is specific to the hint.
-    ImGui::SetNextWindowBgAlpha(kOverlayWindowBgAlpha * alpha);
-    auto hintText = ImGui::GetStyleColorVec4(ImGuiCol_Text);
-    hintText.w *= alpha;
-    ImGui::PushStyleColor(ImGuiCol_Text, hintText);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, metrics.rounding * 0.6f);
-    ImGui::PushStyleVar(
-        ImGuiStyleVar_WindowPadding, ImVec2(metrics.sectionPadding, metrics.gap)
-    );
-    constexpr auto flags = ImGuiWindowFlags_NoDecoration
-        | ImGuiWindowFlags_AlwaysAutoResize
-        | ImGuiWindowFlags_NoSavedSettings
-        | ImGuiWindowFlags_NoFocusOnAppearing
-        | ImGuiWindowFlags_NoBringToFrontOnFocus
-        | ImGuiWindowFlags_NoNavInputs
-        | ImGuiWindowFlags_NoNavFocus
-        | ImGuiWindowFlags_NoInputs;
-    if (ImGui::Begin("##LHoloActionHint", nullptr, flags)) {
-        ImGui::TextUnformatted(hint.text.c_str());
-    }
-    ImGui::End();
-    ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor();
 }
 
 void loadSettings() {

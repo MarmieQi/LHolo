@@ -1,4 +1,5 @@
 #include "oreui/OreUiMenuResources.h"
+#include "oreui/OreUiActionHint.h"
 #include "plugin/LHolo.h"
 #include "ll/api/memory/Hook.h"
 #include "ll/api/mod/NativeMod.h"
@@ -26,22 +27,27 @@ std::string_view menuResourcePath(std::string_view url) {
 auto& logger() { return LHolo::getInstance().getSelf().getLogger(); }
 
 // 1.26.51 HybridResourceHandler only searches trusted packs for ui:// assets.
-// Serve our two exact resources through the mounted stack, without changing trust
+// Serve exact LHolo URLs without changing trust
 // or handling any vanilla/third-party URL. The broker owns response completion.
 LL_TYPE_INSTANCE_HOOK(MenuResourceRequest, ll::memory::HookPriority::Normal,
     OreUI::HybridResourceHandler, &OreUI::HybridResourceHandler::$onResourceRequest,
     Gameface::ResourceHandlerStatus, Gameface::ResourceRequest const& request,
     Gameface::ResourceResponse& response) {
-    auto const path = menuResourcePath(request.mAbsoluteUrl.get());
-    auto const pack = LHolo::getInstance().getSelf().getResourceDir() / "LHoloUI/manifest.json";
-    if (path.empty() || !std::filesystem::exists(pack)) return origin(request, response);
-    std::string contents;
-    ResourceLocation const location{Core::PathView{path}, ResourceFileSystem::UserPackage};
-    if (!mPackManager.load(location, contents)
-        || contents.find("lholo-menu-v7-settings") == std::string::npos) {
-        logger().error("[oreui.resource] Missing or incompatible mounted resource: {}", path);
-        return Gameface::ResourceHandlerStatus::Failure;
+    auto const& url = request.mAbsoluteUrl.get();
+    auto const overlayPage = url == "ui://./hbui/lholo-action-hint.html" ? actionHintOverlayPage() : std::string_view{};
+    auto const path = overlayPage.empty() ? menuResourcePath(url) : kActionHintOverlayPath;
+    std::string menuContents;
+    if (overlayPage.empty()) {
+        auto const pack = LHolo::getInstance().getSelf().getResourceDir() / "LHoloUI/manifest.json";
+        if (path.empty() || !std::filesystem::exists(pack)) return origin(request, response);
+        ResourceLocation const location{Core::PathView{path}, ResourceFileSystem::UserPackage};
+        if (!mPackManager.load(location, menuContents)
+            || menuContents.find("lholo-menu-v7-settings") == std::string::npos) {
+            logger().error("[oreui.resource] Missing or incompatible mounted resource: {}", path);
+            return Gameface::ResourceHandlerStatus::Failure;
+        }
     }
+    auto const contents = overlayPage.empty() ? std::string_view{menuContents} : overlayPage;
     auto* target = response.mResponse;
     if (!target || request.mRange.get().has_value()) return Gameface::ResourceHandlerStatus::Failure;
     auto* destination = target->GetSpace(contents.size());

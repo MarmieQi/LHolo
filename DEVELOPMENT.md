@@ -17,7 +17,7 @@
 
 文件结构预览通过独立原生 UIScene 展示原文件，不发布活动投影或修改任务选择。只读解析使用独立 StructureReadQueue，与任务加载仅共享原生解析互斥和世界生命周期屏障；关闭立即撤销结果发布，迟到结果丢弃。当前行为、资源所有权和维护约束见 [文件结构预览](docs/STRUCTURE_PREVIEW.md)。
 
-2026-10-28 任务异步加载提示修复：`StructureFileLoader::startTaskComposition` 接入现有 `StructureUiState` 加载提示 token，在解析与合成期间通过旧 ImGui 动作提示栏显示 `TasksLoading`（“加载中...”）。成功和失败均由 Worker 的作用域清理结束提示，启动失败同步清理；关闭投影、退出世界和停用沿用现有清理，旧 token 不影响后续加载。单文件加载保留原文案，提示随当前语言渲染，不新增 HUD 设置或前端状态。隔离回归与编译不替代游戏内验收。
+2026-10-28 任务异步加载提示修复：`StructureFileLoader::startTaskComposition` 接入现有 `StructureUiState` 加载提示 token，在解析与合成期间通过动作提示栏显示 `TasksLoading`（“加载中...”）。成功和失败均由 Worker 的作用域清理结束提示，启动失败同步清理；关闭投影、退出世界和停用沿用现有清理，旧 token 不影响后续加载。单文件加载保留原文案，提示随当前语言渲染，不新增 HUD 设置或前端状态。隔离回归与编译不替代游戏内验收。
 
 2026-10-28 每文件维度和世界坐标：按用户要求不记录世界/服务器标识，`tasks.json` 升为 v2，每个文件保存 `dimension` 和 `position: {x,y,z}`。任务只组织文件，不再保存/缓存任务锚点；原生脚部方块坐标与维度在添加新文件时立即登记；添加时没有玩家坐标的文件在后续加载时补取。退出世界仍释放原生缓存与迟到加载，已绑定文件重进或换服务器继续使用同一维度和绝对坐标，不做主世界/下界 8:1 转换。活动任务随玩家维度切换重新筛选视图，其他维度的文件保留设置但不参与加载、AABB、渲染、纠错或放置，且不能用快捷键误编辑。现有非重叠单文件管线保持不变。
 
@@ -37,7 +37,7 @@
 
 HUD 布局编辑使用独立原生 UIScene，入口仍在 OreUI HUD 设置页。editor/HudEditor 管理草稿和输入状态，HudEditorScene 在客户端更新中创建/弹出场景，HudEditorView 与正常 HUD 共用 NativeHudPainter。HUD、边框与按钮均原生绘制，鼠标由游戏场景管理；完成保存，取消/Esc 丢弃，待原生场景移除后重新打开 HUD 设置页。有结构时使用真实内容，没有结构时使用编辑专用本地化示例。编辑器支持独立调整位置及背景不透明度（0～100%、精度 1%，默认 60%），底部为“重置、透明度、缩放”，后两者复用向上展开的百分比滑条；缩放范围 50～200%，默认 100%，两个 HUD 分别保存；完成保存、取消丢弃，“重置”恢复选中 HUD 的位置、默认透明度 60% 和缩放 100%；全部重置恢复两个 HUD 的位置、默认不透明度与缩放。全部按钮背景统一默认 0.5，悬停 0.6，按下 0.7。用户已于 2026-10-26 确认原生编辑器可用。操作按钮移至顶部居中，共用 HUD 圆角背景，顶部三个按钮默认不透明度为 0.5，不额外显示面板名称，仅选中项显示红色边框。2026-10-27 用户已验证 `UIDefRepository::findDef` 提供的内存场景定义可用于原生编辑，不再依赖资源包中的 HUD JSON UI 注册；OreUI 菜单仍依赖资源包。
 
-OreUI 渐进迁移状态（2026-11-01）：聊天命令和菜单快捷键均打开当前自有样式的 OreUI 主菜单。旧 C++ ImGui 菜单、专用模型/控件/控制器和同步文件对话框已移除；ImGui 后端仍承载动作提示、全局快捷键与应用控制帧，须在这些活跃功能迁移后再移除。FluentTheme 目前仅供动作提示和后端使用。
+OreUI 渐进迁移状态（2026-11-01）：聊天命令和菜单快捷键均打开当前自有样式的 OreUI 主菜单。旧 C++ ImGui 菜单、专用模型/控件/控制器和同步文件对话框已移除；动作提示统一由独立 OreUI 覆盖层绘制；ImGui 后端仍负责安装全局快捷键使用的 WndProc。
 主界面入口试验：菜单快捷键允许在 Idle + start_screen 打开同一页面；路由调度在主 ClientInstance::update 上执行，不依赖已有 OreUI View。进入/退出世界或加载状态变化关闭旧上下文页面。无世界时允许浏览文件和编辑偏好，禁用加载/恢复投影、选区/导出与辅助放置启用；前后端均校验 worldAvailable。主界面实机结果待验收。
 默认入口为建造任务，旧单文件“投影”页面和专用浏览/加载/恢复桥接已移除；材料清单位于任务页。前端任务意图经 TaskBindings/TaskProtocol 进入 app/TaskActions，复用现有加载器、合成器和投影会话；MenuBindings 只提供材料与运行上下文快照。OreUI 不提供缩放控件，不写旧 ImGui 缩放。协议、取消、测试与部署要求见
 [OreUI 迁移说明](docs/OREUI_MIGRATION.md)；前端入口见 [frontend/README.md](frontend/README.md)。
@@ -91,7 +91,7 @@ LHolo 的投影、纠错、HUD 和菜单都只存在于客户端，不产生碰�
 - 退出世界、切换存档或失去有效客户端上下文时清理投影，禁止跨世界复用世界对象；完成清理后在底部提示投影已关闭。
 - 仅切换维度时保留已加载结构、锚点、变换、HUD 配置和辅助放置模式。投影与原维度绑定：进入其他维度时释放旧维度运行资源、隐藏投影及 HUD，并在底部提示投影已暂停；返回原维度并成功按原锚点重建后提示投影已恢复，材料 HUD 随恢复后的投影重新统计。投影生命周期状态提示均显示 2.5 秒。
 
-底部生命周期提示继续通过 ImGui 动作提示条显示。任务按维度重建时，新 generation 使用自身的文件坐标，以 `Rebuilding` 保留维度过渡语义；只有成功激活后才结束暂停，有可见已加载文件时发送恢复提示。空任务视图离开时不发送暂停提示，空视图激活也不发送恢复提示。可见性依据独立文件成员或合成前完整文件边界，不以分层后的方块数量判断；失败重试保留过渡状态，显式关闭和退出世界清除。普通/材料 HUD 的绘制与开关不在此提示修复范围内。
+底部生命周期提示由 OreUI 动作提示条显示。任务按维度重建时，新 generation 使用自身的文件坐标，以 `Rebuilding` 保留维度过渡语义；只有成功激活后才结束暂停，有可见已加载文件时发送恢复提示。空任务视图离开时不发送暂停提示，空视图激活也不发送恢复提示。可见性依据独立文件成员或合成前完整文件边界，不以分层后的方块数量判断；失败重试保留过渡状态，显式关闭和退出世界清除。普通/材料 HUD 的绘制与开关不在此提示修复范围内。
 
 不在当前范围内：
 
@@ -125,7 +125,7 @@ LHolo/
 │  ├─ settings/
 │  │  └─ SettingsStore.*        config.json 读写与字段映射
 │  ├─ overlay/
-│  │  ├─ ImGuiOverlay.cpp       DXGI/D3D11On12、WndProc、旧 GUI/动作提示提交
+│  │  ├─ ImGuiOverlay.cpp       DXGI/D3D11On12 与 WndProc 输入生命周期
 │  │  ├─ ImGuiOverlay.h
 │  │  └─ BoundsWireframe.*      创建结构选区的红色整体线框
 │  ├─ render/
@@ -153,7 +153,6 @@ LHolo/
 │  │  ├─ HotkeyFormat.*         纯按键名/修饰键格式化（不读会话状态）
 │  │  ├─ StructureFilePicker.*  可取消的异步文件选择服务
 │  │  ├─ preview/              独立原生结构文件预览
-│  │  └─ FluentTheme.*         剩余 ImGui 动作提示使用的样式与度量
 │  ├─ projection/
 │  │  ├─ Projection.cpp         对外门面：Hook 生命周期、设置与查询转发
 │  │  ├─ Projection.h           GUI/HUD 和辅助放置使用的投影控制接口
@@ -293,7 +292,7 @@ LHolo/
   与 `Ctrl`/`Alt`/`Shift`、`X`/`Y`/`Z` 等标识符不参与翻译。
 - 菜单布局与导航由 `frontend/src/LHoloMenu.tsx` 负责，页面与可视控件分别位于 `frontend/src/pages/` 和 `components/`；原生业务只通过现有绑定、动作队列及一致快照接入。
 - `StructureLoader` 保留动作提示、快捷键事件与加载入口；普通和材料 HUD 绘制位于 `ui/hud/`。旧菜单的模型、控件及同步文件对话框已删除，不以空渲染函数保留调用链。
-- 材料清单通过 `materialListSnapshotIfChanged` 同时读取 revision、ready 与 requirements，不保留旧菜单分开读取状态/内容的接口；动作提示读取现有完整快照。FluentTheme 保留动作提示使用的度量与样式，不保留旧菜单紧凑布局标记。
+- 材料清单通过 `materialListSnapshotIfChanged` 同时读取 revision、ready 与 requirements，不保留旧菜单分开读取状态/内容的接口；动作提示读取现有完整快照。提示页面的样式集中在 OreUiActionHintPage。
 - `structure/StructurePaths` 提供 UTF-8 路径转换，结构模块与 UI 共用。
 - `projection` 负责“结构如何出现在世界中”，不弹文件选择框、不直接操作 ImGui。
 - `projection/ProjectionTypes.h` 不包含运行状态、Hook 或 Minecraft 资源所有权；内部纯数据定义集中在
@@ -375,7 +374,7 @@ LHolo/
 3. 安装投影滚轮保护：`MouseDevice::feed` 只在投影取得滚轮所有权时阻止原生热栏滚动；失败告警，不阻断菜单启用。
 4. 尝试安装 ImGui/DXGI Hook；图形环境尚未可用时允许后续 `Present` 重试。
 
-应用控制帧由 `app/AppKernel` 自有的 `ClientInstance::$update` Hook 在原版更新返回后驱动，只处理当前主客户端实例，标题界面和世界内均可执行。业务模块仍只提供独立动作队列；启用完成才开始消费，卸载先停用并移除该 Hook，再拆除业务模块。DXGI Present 只管理图形后端和绘制动作提示，不消费业务队列，业务执行不依赖 ImGui 或交换链初始化。
+应用控制帧由 `app/AppKernel` 自有的 `ClientInstance::$update` Hook 在原版更新返回后驱动，只处理当前主客户端实例，标题界面和世界内均可执行。业务模块仍只提供独立动作队列；启用完成才开始消费，卸载先停用并移除该 Hook，再拆除业务模块。DXGI Present 只管理现有输入后端初始化，不消费业务队列，业务执行不依赖 ImGui 或交换链初始化。
 
 配置由 `LHolo::load()` 在 enable 之前从 `mods/LHolo/config/config.json` 读取。世界退出由 `LevelListener::onLevelDestruction()` 发布轻量信号；投影渲染入口和客户端逻辑控制帧都能观察该信号，真正的结构、辅助放置、捕获和投影清理在销毁回调之外执行。投影渲染入口仍通过 `client/level/dimension` 身份变化检测世界/维度切换，并在上下文失效时清理投影。
 
@@ -813,7 +812,7 @@ Worker 初始化失败，或构建/上传连续失败三次后，本次游戏会
 
 材料 HUD 标题左侧显示本地化“缺失材料”，页码单独放在同一行右端，与材料数量右对齐，每页沿用 materialHudMaxItems（默认 5）。ui/hud/MaterialHudPaging 持有临时页码与上下文；input/MaterialHudPageRequest 仅传递原子翻页意图，不依赖 HUD。上一页/下一页追加到 HotkeyId 尾部，默认按键/修饰键均为空，沿用现有捕获、重复绑定清除、按住去重、释放处理与 SettingsStore 保存。HUD 未启用或维度暂停时不认领翻页输入，菜单及编辑期间丢弃请求；退出世界清除待处理意图。文件、分层或每页项数改变回第一页，数量减少自动钳制有效页，首尾不循环。分页只消费原有材料/背包快照，不增加世界查询；nth_element 分离前页后仅排序当前页，数量相同按原索引稳定排序。页码不写配置、不进入任务或投影业务。
 
-材料 HUD 的 `materialHudStackConversion` 是独立持久化布尔偏好，默认关闭；OreUI 材料 HUD 页通过现有 SettingsActions 字段通路即时修改。关闭只显示缺失总数，开启使用 `43x64+34` 格式并按物品实际堆叠上限换算，不同时显示总数。格式化位于 `ui/MaterialFormat`，原生 HUD 与编辑示例共用；材料业务统计与菜单材料清单保持原有行为。显示项数通过 `materialHudMaxItems` 持久化，范围 1～50、默认 5，只对当前页排序；数量独立存入 HudLine 并在 NativeHudPainter 统一右对齐，材料名称完整显示，面板按每行名称与数量的实际合计宽度自适应，列间距为字高的 0.8 倍，不将不同材料的最长名称和最长数量额外相加留白；超过视口宽度时同比例缩小文字、图标和间距；视口高度限制继续生效。材料图标通过完整 ItemStack 保留原生附加值与用户数据；后台计数以 Block 指针及不可变 NBT 来源指针为键，保留同一方块状态下的所有物品变体。游戏线程先按去掉顶层 x/y/z 的源 NBT 内容合并计数，再经临时 BlockActor 和原生 asItemInstance 取得床/旗帜等物品；同内容不同坐标只解析和比较一次，源 NBT 不修改，不另存重复的物品解析缓存。材料清单与材料 HUD 按原生物品 ID 和 hasSameAuxValue 分组，背包计数共用 block::sameMaterialItem；旗帜使用 BannerBlockActor::getBannerType 和 BannerItem::getPatternAndColorPairsFromItemStack 读取原生类型与图案，不比较缺省字段写法或自定义名称，其他物品比较 hasSameUserData。MaterialRequirement::itemPrototype 持有只读物品身份，HUD 复用它绘制图标，不反向依赖 UI 数据。不逐帧建物品、不扫描真实世界。最终审计删除无调用的 formatStackCount、完整物品接入后重复的 aux 转发/缓存及仅测试消费的布局输出，保留默认关闭的堆叠换算；旧 C++ 菜单已移除，ImGui 动作提示及后端暂留。
+材料 HUD 的 `materialHudStackConversion` 是独立持久化布尔偏好，默认关闭；OreUI 材料 HUD 页通过现有 SettingsActions 字段通路即时修改。关闭只显示缺失总数，开启使用 `43x64+34` 格式并按物品实际堆叠上限换算，不同时显示总数。格式化位于 `ui/MaterialFormat`，原生 HUD 与编辑示例共用；材料业务统计与菜单材料清单保持原有行为。显示项数通过 `materialHudMaxItems` 持久化，范围 1～50、默认 5，只对当前页排序；数量独立存入 HudLine 并在 NativeHudPainter 统一右对齐，材料名称完整显示，面板按每行名称与数量的实际合计宽度自适应，列间距为字高的 0.8 倍，不将不同材料的最长名称和最长数量额外相加留白；超过视口宽度时同比例缩小文字、图标和间距；视口高度限制继续生效。材料图标通过完整 ItemStack 保留原生附加值与用户数据；后台计数以 Block 指针及不可变 NBT 来源指针为键，保留同一方块状态下的所有物品变体。游戏线程先按去掉顶层 x/y/z 的源 NBT 内容合并计数，再经临时 BlockActor 和原生 asItemInstance 取得床/旗帜等物品；同内容不同坐标只解析和比较一次，源 NBT 不修改，不另存重复的物品解析缓存。材料清单与材料 HUD 按原生物品 ID 和 hasSameAuxValue 分组，背包计数共用 block::sameMaterialItem；旗帜使用 BannerBlockActor::getBannerType 和 BannerItem::getPatternAndColorPairsFromItemStack 读取原生类型与图案，不比较缺省字段写法或自定义名称，其他物品比较 hasSameUserData。MaterialRequirement::itemPrototype 持有只读物品身份，HUD 复用它绘制图标，不反向依赖 UI 数据。不逐帧建物品、不扫描真实世界。最终审计删除无调用的 formatStackCount、完整物品接入后重复的 aux 转发/缓存及仅测试消费的布局输出，保留默认关闭的堆叠换算；动作提示由 OreUI 绘制，快捷键沿用现有 WndProc。
 
 物品适配统一通过 `block::hasUsableItem` 检查数量、原生 Item 弱引用及 `isNull()`；缺失 Addon 或异常 NBT 可能留下数量/valid 有值而 Item 未解析的对象，不能只依赖 `isNull()`。三条方块转物品候选均在读取名称、堆叠数量或序列化前校验，保存失败或重建后的 ItemStack 无效则继续既有回退，只有有效的只读物品原型才能发布。材料列表、缺失材料 HUD 与瞄准物品共用此通路；背包比较、自动放置和原生图标绘制也在各自入口使用同一校验。完全无法解析时保留材料文字与数量，不发布无效原型，图标使用已有占位行为，自动放置不匹配无效物品。有效 Addon 和床/旗帜 NBT 保留原生处理，不按命名空间过滤、不修改源 NBT。校验不查询注册表、不分配内存，复用现有统计/图标缓存。用户已于 2026-11-03 确认本次崩溃修复实机测试通过。
 
@@ -873,11 +872,11 @@ NBT 内容合并、本地化和背包读取仍在游戏 tick 线程执行，普�
 
 主菜单和 HUD 设置使用 OreUI，页面位于 frontend/，原生绑定集中在 src/oreui/。普通、材料和写入 HUD、布局编辑器及结构预览使用原生通路。不要把 JS 协议加入结构或投影内部模块。
 
-旧 C++ ImGui 菜单、同步文件选择、菜单可见/输入过渡状态及菜单缩放已删除。ImGui 仍承载动作提示，后端仍负责快捷键输入；应用控制帧由 AppKernel 的客户端逻辑更新 Hook 驱动。迁移动作提示和输入前保留后端和 FluentTheme。
+旧 C++ ImGui 菜单、同步文件选择、菜单可见/输入过渡状态及菜单缩放已删除。动作提示由独立 OreUI 页面绘制，后端仍负责快捷键输入。应用控制帧由 AppKernel 的客户端逻辑更新 Hook 驱动。
 
 ### 9.2 输入所有权
 
-任务中的跨维度文件选择只在底部动作提示条短暂提示，不增加页面、弹窗或其他 HUD 提示。仅显式 SelectFile 动作可触发；控制帧、任务重组和维度往返不重复触发，改选其他文件时只撤销该维度提示。该条瞬时提示可在 OreUI 菜单上方绘制，其他提示仍沿用菜单隐藏规则；ImGui 不接收输入且禁止修改原生光标。
+任务中的跨维度文件选择只在底部动作提示条短暂提示，不增加页面、弹窗或其他 HUD 提示。仅显式 SelectFile 动作可触发；控制帧、任务重组和维度往返不重复触发，改选其他文件时只撤销该维度提示。该条瞬时提示可在 OreUI 菜单上方绘制，其他提示仍沿用菜单隐藏规则；提示层不参与菜单导航或接管原生光标。
 
 OreUI、HUD 编辑器或结构预览位于栈顶时，WndProc 将常规输入交还原版场景，不执行投影快捷键和滚轮移动。快捷键捕获期间，键盘、中键和侧键进入 input/HotkeyCapture，已认领的重复按下和释放成对消费；失焦时清理捕获释放记录和修饰键状态。F11 仍先处理图形后端生命周期，再交还游戏。
 
@@ -926,17 +925,7 @@ input/ProjectionInputGuard 仅保留 MouseDevice::feed Hook：活动投影取得
 
 ### 10.2 每帧资源规则
 
-需要绘制 ImGui 动作提示时（普通/材料 HUD 不经过此路径）：
-
-1. 从当前 swap chain 取得当前 back buffer。
-2. 为该帧创建 wrapped resource 和 RTV。
-3. `AcquireWrappedResources`。
-4. 绘制 ImGui。
-5. 解除 RTV 绑定。
-6. `ReleaseWrappedResources` 并 `Flush`。
-7. 释放该帧 wrapped resource 和 RTV。
-
-不跨帧持有 back buffer wrapper。动作提示不显示时跳过这条提交路径；输入仍保留原后端生命周期，业务队列不进入 Present。
+DXGI Present 保留现有 WndProc 安装及后端生命周期。动作提示的合成由 OreUI 在游戏界面绘制时完成。
 
 ### 10.3 历史崩溃根因
 

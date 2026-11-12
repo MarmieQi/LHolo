@@ -100,10 +100,8 @@ void resetWorldSession();
 // when manual mode blocks an action, or a placement hotkey is toggled). The
 // hint is stored as a message so it follows a language switch while pending.
 void showActionHint(i18n::Message message, std::uint64_t durationMs = 1600);
-void renderActionHint(bool menuVisible = false);
 // True while a hint is still on screen, so the overlay keeps drawing even with
 // no projection loaded and the menu closed.
-bool actionHintActive(bool menuVisible = false);
 // One-time consent for the experimental assisted-placement features (they may be
 // flagged as cheating by server anti-cheat). Persisted once acknowledged.
 bool experimentalConsentGiven();

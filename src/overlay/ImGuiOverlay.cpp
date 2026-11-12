@@ -39,12 +39,10 @@
 
 #include <atomic>
 #include <array>
-#include <filesystem>
 #include <mutex>
 
 #include "plugin/LHolo.h"
 #include "structure/StructureLoader.h"
-#include "ui/FluentTheme.h"
 #include "oreui/OreUiScreen.h"
 #include "ll/api/mod/NativeMod.h"
 
@@ -192,53 +190,6 @@ void deferGraphicsResumeAfterSwapChainResizeLocked() {
     auto const currentResumeAt = gGraphicsResumeAt.load(std::memory_order_acquire);
     if (currentResumeAt < resizeResumeAt) {
         gGraphicsResumeAt.store(resizeResumeAt, std::memory_order_release);
-    }
-}
-
-void loadFonts() {
-    auto& io = ImGui::GetIO();
-    ImFontConfig config{};
-    config.OversampleH = 2;
-    config.OversampleV = 2;
-    auto const chineseFont = "C:\\Windows\\Fonts\\msyh.ttc";
-    if (std::filesystem::exists(chineseFont)) {
-        // Build the atlas at 2x the logical base size. A 4K/default 2x UI can
-        // then render at native font resolution instead of magnifying an 18px
-        // atlas, which made text and navigation edges look pixelated.
-        io.Fonts->AddFontFromFileTTF(
-            chineseFont,
-            36.0f,
-            &config,
-            io.Fonts->GetGlyphRangesChineseFull()
-        );
-
-        // Merge Cyrillic glyphs into the already loaded font. Use ImGui's
-        // stable built-in range pointer; atlas construction happens later,
-        // so a temporary range buffer must not be passed here.
-        ImFontConfig cyrillicConfig = config;
-        cyrillicConfig.MergeMode = true;
-        io.Fonts->AddFontFromFileTTF(
-            chineseFont,
-            36.0f,
-            &cyrillicConfig,
-            io.Fonts->GetGlyphRangesCyrillic()
-        );
-    } else {
-        io.Fonts->AddFontDefault();
-    }
-
-    // Chinese glyph ranges do not include the warning sign used by the
-    // experimental-feature notice. Merge that single glyph from Windows'
-    // symbol font so the original label is rendered instead of as '?'.
-    auto const symbolFont = "C:\\Windows\\Fonts\\seguisym.ttf";
-    if (std::filesystem::exists(symbolFont)) {
-        static constexpr ImWchar warningGlyphRange[]{0x26A0, 0x26A0, 0};
-        ImFontConfig symbolConfig{};
-        symbolConfig.MergeMode = true;
-        symbolConfig.PixelSnapH = true;
-        symbolConfig.OversampleH = 2;
-        symbolConfig.OversampleV = 2;
-        io.Fonts->AddFontFromFileTTF(symbolFont, 36.0f, &symbolConfig, warningGlyphRange);
     }
 }
 
@@ -400,12 +351,10 @@ bool initializeImGui(IDXGISwapChain* swapChain) {
     if (!gImGuiInitialized) {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
-        // Action hints never own input or the native scene's cursor.
+        // The Win32 backend must leave the native cursor alone.
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
         ImGui::StyleColorsDark();
-        loadFonts();
         if (!ImGui_ImplWin32_Init(window)) {
-            ui::resetFluentTheme();
             ImGui::DestroyContext();
             releaseGraphicsBackend();
             return false;
@@ -427,7 +376,7 @@ bool initializeImGui(IDXGISwapChain* swapChain) {
     return true;
 }
 
-void render(IDXGISwapChain* swapChain) {
+void ensureInputBackend(IDXGISwapChain* swapChain) {
     if (gShuttingDown.load(std::memory_order_acquire)) return;
     if (gRendering.exchange(true, std::memory_order_acq_rel)) return;
     struct Reset { ~Reset() { gRendering.store(false, std::memory_order_release); } } reset;
@@ -438,99 +387,11 @@ void render(IDXGISwapChain* swapChain) {
     // Present so hotkeys are available even when no action hint is visible.
     // D3D12 startup may not have exposed its command queue yet, so a failed
     // attempt is intentionally retried on the next Present.
-    if (!initializeImGui(swapChain)) return;
-    // Only explicitly opted-in transient hints can appear above the menu.
-    if (ui::hud::hudLayoutEditorActive() || ui::preview::structurePreviewActive()) return;
-    auto const menuVisible = oreui::isMenuOnTop();
-    if (!structure::actionHintActive(menuVisible)) return;
-    ImGui::GetIO().MouseDrawCursor = false;
-
-    auto draw = [menuVisible](ID3D11RenderTargetView* target) {
-        gDeviceContext->OMSetRenderTargets(1, &target, nullptr);
-        ImGui_ImplDX11_NewFrame();
-        ImGui_ImplWin32_NewFrame();
-        ImGui::NewFrame();
-        structure::renderActionHint(menuVisible);
-        ImGui::Render();
-        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-        ID3D11RenderTargetView* empty{};
-        gDeviceContext->OMSetRenderTargets(1, &empty, nullptr);
-    };
-
-    if (gDevice11On12) {
-        UINT index{};
-        IDXGISwapChain3* swapChain3{};
-        if (SUCCEEDED(swapChain->QueryInterface(
-                __uuidof(IDXGISwapChain3),
-                reinterpret_cast<void**>(&swapChain3)
-            ))) {
-            index = swapChain3->GetCurrentBackBufferIndex();
-            swapChain3->Release();
-        }
-
-        ID3D12Resource* backBuffer{};
-        auto const getBufferResult = swapChain->GetBuffer(
-                index,
-                __uuidof(ID3D12Resource),
-                reinterpret_cast<void**>(&backBuffer)
-            );
-        if (FAILED(getBufferResult)) {
-            logGraphicsFailure(swapChain, "GetBuffer(D3D12)", getBufferResult);
-            return;
-        }
-        ID3D11Resource* wrappedBuffer{};
-        D3D11_RESOURCE_FLAGS resourceFlags{D3D11_BIND_RENDER_TARGET};
-        auto const wrappedResult = gDevice11On12->CreateWrappedResource(
-            backBuffer,
-            &resourceFlags,
-            D3D12_RESOURCE_STATE_PRESENT,
-            D3D12_RESOURCE_STATE_PRESENT,
-            __uuidof(ID3D11Resource),
-            reinterpret_cast<void**>(&wrappedBuffer)
-        );
-        backBuffer->Release();
-        if (FAILED(wrappedResult) || !wrappedBuffer) {
-            logGraphicsFailure(swapChain, "CreateWrappedResource", wrappedResult);
-            return;
-        }
-
-        ID3D11RenderTargetView* target{};
-        auto const targetResult = gDevice->CreateRenderTargetView(wrappedBuffer, nullptr, &target);
-        if (SUCCEEDED(targetResult) && target) {
-            gDevice11On12->AcquireWrappedResources(&wrappedBuffer, 1);
-            draw(target);
-            gDevice11On12->ReleaseWrappedResources(&wrappedBuffer, 1);
-            gDeviceContext->Flush();
-        } else {
-            logGraphicsFailure(swapChain, "CreateRenderTargetView(D3D11On12)", targetResult);
-        }
-        if (target) target->Release();
-        wrappedBuffer->Release();
-    } else {
-        ID3D11Texture2D* backBuffer{};
-        auto const getBufferResult = swapChain->GetBuffer(
-            0,
-            __uuidof(ID3D11Texture2D),
-            reinterpret_cast<void**>(&backBuffer)
-        );
-        if (FAILED(getBufferResult)) {
-            logGraphicsFailure(swapChain, "GetBuffer(D3D11)", getBufferResult);
-            return;
-        }
-        ID3D11RenderTargetView* target{};
-        auto const result = gDevice->CreateRenderTargetView(backBuffer, nullptr, &target);
-        backBuffer->Release();
-        if (SUCCEEDED(result)) {
-            draw(target);
-            target->Release();
-        } else {
-            logGraphicsFailure(swapChain, "CreateRenderTargetView(D3D11)", result);
-        }
-    }
+    initializeImGui(swapChain);
 }
 
 HRESULT __stdcall presentHook(IDXGISwapChain* swapChain, UINT interval, UINT flags) {
-    render(swapChain);
+    ensureInputBackend(swapChain);
     return gOriginalPresent(swapChain, interval, flags);
 }
 
@@ -540,7 +401,7 @@ HRESULT __stdcall present1Hook(
     UINT flags,
     DXGI_PRESENT_PARAMETERS const* parameters
 ) {
-    render(swapChain);
+    ensureInputBackend(swapChain);
     return gOriginalPresent1(swapChain, interval, flags, parameters);
 }
 
@@ -743,7 +604,6 @@ void shutdownLocked() {
     releaseGraphicsBackend();
     if (gImGuiInitialized) {
         ImGui_ImplWin32_Shutdown();
-        ui::resetFluentTheme();
         ImGui::DestroyContext();
         gImGuiInitialized = false;
     }

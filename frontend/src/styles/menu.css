@@ -146,7 +146,7 @@
 .lholo-input-shell input.lholo-text-input { width:100%; flex:1; border:none; border-radius:0.25rem; background-color:transparent; min-width:0; min-height:0; height:2.2rem; padding:0.25rem 0.55rem; font-family:LHoloSans,sans-serif; font-size:1rem; line-height:1.5; text-shadow:none; color:#ededed; }
 .lholo-capture-entities { margin-top:1rem; }
 
-/* Match src/ui/FluentTheme.cpp: neutral frames/actions, blue for state. */
+/* Neutral frames and actions, blue for state. */
 .lholo-mode-row { flex-direction:row; align-items:center; font-size:1rem; margin-top:1rem; margin-bottom:0.6rem; }
 .lholo-mode-value { justify-content:center; min-height:2.2rem; padding:0.4rem 0.9rem; margin-left:0.7rem; border-radius:0.25rem; background-color:#242424; }
 .lholo-input-shell { flex-direction:row; align-items:center; }
