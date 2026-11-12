@@ -200,6 +200,22 @@ int runTaskProjectionViewTests() {
     slicedAirFiles[0].slice = {LayerAxis::Y, LayerDisplayMode::Single, 0};
     TaskProjectionView slicedAir(slicedAirFiles);
     check(slicedAir.ownsAir(1, {1, 1, 1}), "a cropped-away high-priority air region cannot hide lower-file extras");
+    auto airOnly = std::make_shared<LoadedStructure>();
+    airOnly->sizeX = 2;
+    airOnly->sizeY = airOnly->sizeZ = 1;
+    airOnly->volume = 2;
+    airOnly->regions.push_back({0, 0, 0, 2, 1, 1});
+    airOnly->omittedCells = {1};
+    check(!airOnly->hasProjectionContent(), "omitted cells alone do not make a projectable structure");
+    airOnly->hasAirCells = true;
+    check(airOnly->hasProjectionContent(), "explicit air is projectable without model blocks");
+    std::vector<CompositionFile> airOnlyFiles{{"air", airOnly, true}};
+    TaskProjectionView airOnlyTask(airOnlyFiles);
+    ProjectionWorldLookup airOnlyLookup(airOnly, {}, 0, 0, {}, {});
+    check(airOnlyTask.ownsAir(0, {0, 0, 0}) && airOnlyLookup.ownsAir({0, 0, 0}),
+          "explicit air is covered in task and standalone projections");
+    check(!airOnlyTask.ownsAir(0, {1, 0, 0}) && !airOnlyLookup.ownsAir({1, 0, 0}),
+          "omitted cells are excluded in task and standalone projections");
     // Native view returns foreign blocks but never foreign local ordinals.
     auto task = std::make_shared<TaskWorldLookups>();
     task->placements = std::make_shared<TaskProjectionView const>(airFiles);

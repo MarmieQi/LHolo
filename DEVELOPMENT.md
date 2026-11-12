@@ -434,6 +434,7 @@ LevelListener，即使首个投影尚未激活，世界销毁回调也先清空�
 - `paletteEntries`：调色板项数量。
 - `generation`：每次成功加载递增，用于通知投影替换结构。
 - `renderBlocks`：`StructureBlocks` 值序列，仅包含至少一个可解析实体方块或液体的坐标，按 XYZ 排序。消费者读取 `RenderBlock` 值，不缓存元素地址或假定连续 `std::vector<RenderBlock>` 内存。
+- 仅含显式空气的结构也可加载和投影，通过多余方块纠错提示需要清除的位置。空气不进入模型或材料清单；`.mcstructure` 两层均为 `-1` 的坐标不参与空气纠错。
 - `.litematic` 使用每格一个 `uint64_t` 的坐标/调色板编号及共享调色板，NBT 只由实际需要的调色板项持有；有界 Z 行目录加速邻居查询。`.mcstructure` 保留原版解析和普通值数组路径。`mutableValues()` 仅供发布前构造使用，已发布的结构不可修改。
 - `RenderBlock{x,y,z,block,liquid,blockEntityNbt,materialIndex,liquidMaterialIndex}`：归一化局部坐标、可空实体方块指针、可空液体指针、可选的原生 Bedrock 方块实体 NBT，以及与材料清单稳定排序一致的实体/液体材料索引。同一坐标可同时具有实体与液体，用于含水方块；`.mcstructure` 直接保留原生 NBT，`.litematic` 仅为已有明确转换规则的方块实体生成 NBT。
 

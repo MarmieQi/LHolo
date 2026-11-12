@@ -149,6 +149,8 @@ bool TaskProjectionView::covers(std::size_t file, std::array<long long, 3> const
     auto local = localCell(file, p);
     if (!local || !layerCellVisible(mFiles[file].slice, (*local)[0], (*local)[1]))
         return false;
+    if (mFiles[file].loaded->isOmittedCell((*local)[0], (*local)[1], (*local)[2]))
+        return false;
     for (auto const &b : mFiles[file].loaded->regions)
         if ((*local)[0] >= b.x && (*local)[0] < static_cast<long long>(b.x) + b.sizeX && (*local)[1] >= b.y &&
             (*local)[1] < static_cast<long long>(b.y) + b.sizeY && (*local)[2] >= b.z &&

@@ -449,10 +449,9 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
     auto const unknownRegistry = nativeStructure->mUnknownBlockRegistry.get();
     auto const resolveNative = [&](int paletteIndex) -> Block const* {
         if (paletteIndex < 0) return nullptr;
-        auto const* resolved = nativePalette->tryGetBlock(
+        return nativePalette->tryGetBlock(
             static_cast<std::uint64_t>(paletteIndex), unknownRegistry
         );
-        return resolved && !resolved->isAir() ? resolved : nullptr;
     };
     loaded->renderBlocks.reserve(static_cast<std::size_t>(loaded->primaryBlocks + loaded->secondaryBlocks));
     auto const yz = static_cast<std::uint64_t>(loaded->sizeY) * static_cast<std::uint64_t>(loaded->sizeZ);
@@ -464,6 +463,10 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
         auto const* secondary = nativeSecondaryStorage
             ? resolveNative((*nativeSecondaryStorage)[static_cast<std::size_t>(index)])
             : nullptr;
+        bool const primaryAir = primary && primary->isAir();
+        bool const secondaryAir = secondary && secondary->isAir();
+        if (primaryAir) primary = nullptr;
+        if (secondaryAir) secondary = nullptr;
         Block const* block{};
         Block const* liquid{};
         auto const assign = [&](Block const* value) {
@@ -482,7 +485,10 @@ std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& pa
             block = secondary;
             liquid = (primary && primary->getBlockType().mMaterial->mLiquid) ? primary : nullptr;
         }
-        if (!block && !liquid) continue;
+        if (!block && !liquid) {
+            loaded->hasAirCells |= primaryAir || secondaryAir;
+            continue;
+        }
         auto const x = index / yz;
         auto const remainder = index % yz;
         auto const y = remainder / static_cast<std::uint64_t>(loaded->sizeZ);
@@ -712,7 +718,10 @@ std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path
                 ++loaded->unmappedBlocks;
                 continue;
             }
-            if (!resolved.block && !resolved.liquid) continue;
+            if (!resolved.block && !resolved.liquid) {
+                loaded->hasAirCells = true;
+                continue;
+            }
             auto const layer = static_cast<std::uint64_t>(region.sizeX) * region.sizeZ;
             auto const localY = index / layer;
             auto const remainder = index % layer;
@@ -784,7 +793,7 @@ std::shared_ptr<LoadedStructure> loadStructureFile(std::filesystem::path const& 
         error = "不支持的文件格式，请选择 .mcstructure 或 .litematic";
         return nullptr;
     }
-    if (loaded && loaded->renderBlocks.empty()) {
+    if (loaded && !loaded->hasProjectionContent()) {
         error = "结构中没有可投影方块";
         return nullptr;
     }

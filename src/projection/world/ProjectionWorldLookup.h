@@ -90,8 +90,11 @@ public:
         return mTask->placements->airOwnerAt(candidateFiles(), {x, y, z});
     }
     bool ownsAir(Key const &key) const {
-        if (!mTask)
-            return true;
+        if (!mTask) {
+            if (mSource->omittedCells.empty()) return true;
+            auto local = localCellAt(key);
+            return local && !mSource->isOmittedCell((*local)[0], (*local)[1], (*local)[2]);
+        }
         auto owner = airOwnerAt(key);
         return owner && *owner == mFile;
     }

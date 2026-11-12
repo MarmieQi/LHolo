@@ -20,8 +20,9 @@
 #include "structure/LayerDisplayTypes.h"
 #include "structure/StructureBlocks.h"
 
-#include <cstdint>
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -60,18 +61,26 @@ struct LoadedStructure {
     std::uint64_t                        generation{};
     std::size_t                          materialCount{};
     bool                                 composed{};
+    bool                                 hasAirCells{};
     std::shared_ptr<IndependentTaskFiles const> independentFiles;
     std::vector<std::string>              sourceFiles;
     // Cells covered by the source format. mcstructure contributes one box;
     // litematic contributes one per region so gaps between regions are not
     // mistaken for schematic air by projection correction.
     std::vector<RegionBox>               regions;
-    // Source format -1 cells are absent, not schematic air. Retained for world writing.
+    // Sorted linear indices for source format -1 cells, excluded from air correction and world writing.
     std::vector<std::uint64_t>            omittedCells;
     // Original template origin, used by vanilla when relocating block-entity references.
     std::array<int, 3>                    sourceWorldOrigin{};
     using RenderBlock = StructureBlock;
     StructureBlocks                      renderBlocks;
+
+    bool hasProjectionContent() const { return composed || hasAirCells || !renderBlocks.empty(); }
+
+    bool isOmittedCell(int x, int y, int z) const {
+        auto const index = (static_cast<std::uint64_t>(x) * sizeY + y) * sizeZ + z;
+        return std::binary_search(omittedCells.begin(), omittedCells.end(), index);
+    }
 };
 
 bool shouldShowProjectedBlockName();

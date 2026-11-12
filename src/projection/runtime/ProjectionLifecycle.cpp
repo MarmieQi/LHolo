@@ -72,7 +72,7 @@ bool prepareProjectionState(
 ) {
     auto& client = renderContext.mClientInstance;
     auto* player = client.getLocalPlayer();
-    if (!player || !loaded || (loaded->renderBlocks.empty() && !loaded->composed)) return false;
+    if (!player || !loaded || !loaded->hasProjectionContent()) return false;
 
     state.client = &client;
     state.level = &player->getLevel();
