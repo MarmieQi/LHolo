@@ -218,6 +218,8 @@
   "key.mouseSide2": "Боковая кнопка мыши 2",
   "section.assistedPlacement": "Помощь при установке",
   "placement.tabSingleplayer": "Одиночный мир",
+  "placement.groupModes": "Режимы установки",
+  "placement.groupRestock": "Автопополнение",
   "placement.tabLegacy": "Старый режим",
   "button.experimentalInfoOpen": "⚠ Экспериментальные функции (прочитать и включить)",
   "button.experimentalInfoView": "Просмотреть описание экспериментальных функций",

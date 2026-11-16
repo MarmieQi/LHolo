@@ -100,12 +100,12 @@
 .lholo-tab-indicator { position:absolute; left:0; bottom:0; height:0.12rem; z-index:1; pointer-events:none; background-color:#0f82f2; transition:transform 320ms cubic-bezier(0.4,0,0.2,1),width 320ms cubic-bezier(0.4,0,0.2,1); }
 .lholo-tab-content { padding-top:0.7rem; }
 .lholo-hud-master { padding-bottom:0.65rem; border-bottom:0.06rem solid #303030; }
-.lholo-hud-columns { flex-direction:row; flex-wrap:wrap; margin-top:0.9rem; }
-.lholo-hud-column { box-sizing:border-box; flex:1 1 16rem; min-width:16rem; }
-.lholo-hud-column:first-child { padding-right:1.3rem; }
-.lholo-hud-group + .lholo-hud-group { margin-top:0.75rem; }
-.lholo-hud-group-title { color:#a0a0a0; font-size:0.9rem; line-height:1.5; margin-bottom:0.2rem; }
-.lholo-hud-option { min-height:2.2rem; }
+.lholo-settings-columns { flex-direction:row; flex-wrap:wrap; margin-top:0.9rem; }
+.lholo-settings-column { box-sizing:border-box; flex:1 1 16rem; min-width:16rem; }
+.lholo-settings-column:first-child { padding-right:1.3rem; }
+.lholo-settings-group + .lholo-settings-group { margin-top:0.75rem; }
+.lholo-settings-group-title { color:#a0a0a0; font-size:0.9rem; line-height:1.5; margin-bottom:0.2rem; }
+.lholo-settings-option { min-height:2.2rem; }
 .lholo-material-hud-row { flex-direction:row; align-items:center; font-size:1rem; line-height:1.5; }
 .lholo-material-hud-label { flex:1; min-width:0; margin-right:0.8rem; font-size:1rem; line-height:1.5; overflow-wrap:break-word; }
 .lholo-material-hud-row.lholo-setting-row > .lholo-stepper { min-width:0; }
@@ -312,8 +312,9 @@
   .lholo-navigation-item { padding:0 0.6rem; }
   .lholo-navigation-item .lholo-button-label { font-size:0.9rem; }
   .lholo-content { padding-left:0.6rem; padding-right:0.6rem; }
-  .lholo-hud-column { flex-basis:100%; min-width:0; }
-  .lholo-hud-column:first-child { padding-right:0; }
+  .lholo-settings-column { flex-basis:100%; min-width:0; }
+  .lholo-settings-column:first-child { padding-right:0; }
+  .lholo-settings-column + .lholo-settings-column { margin-top:0.75rem; }
   .lholo-hotkey-label { width:100%; margin-right:0; margin-bottom:0.3rem; }
   .lholo-hotkey-actions { max-width:100%; }
   .lholo-hotkey-bind { min-width:0; max-width:100%; }

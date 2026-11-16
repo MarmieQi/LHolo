@@ -218,6 +218,8 @@
   "key.mouseSide2": "マウスボタン 5",
   "section.assistedPlacement": "設置支援",
   "placement.tabSingleplayer": "シングルプレイ",
+  "placement.groupModes": "設置モード",
+  "placement.groupRestock": "自動補充",
   "placement.tabLegacy": "従来の方式",
   "button.experimentalInfoOpen": "⚠ 実験的機能（説明を読んで有効化）",
   "button.experimentalInfoView": "実験的機能の注意事項を表示",

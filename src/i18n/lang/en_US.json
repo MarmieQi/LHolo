@@ -218,6 +218,8 @@
   "key.mouseSide2": "Mouse button 5",
   "section.assistedPlacement": "Assisted placement",
   "placement.tabSingleplayer": "Singleplayer",
+  "placement.groupModes": "Placement modes",
+  "placement.groupRestock": "Auto-restock",
   "placement.tabLegacy": "Legacy",
   "button.experimentalInfoOpen": "⚠ Experimental features (read and enable)",
   "button.experimentalInfoView": "View experimental features notice",

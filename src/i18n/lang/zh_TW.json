@@ -218,6 +218,8 @@
   "key.mouseSide2": "滑鼠側鍵 2",
   "section.assistedPlacement": "輔助放置",
   "placement.tabSingleplayer": "單人存檔",
+  "placement.groupModes": "放置模式",
+  "placement.groupRestock": "自動補貨",
   "placement.tabLegacy": "舊的",
   "button.experimentalInfoOpen": "⚠ 實驗性功能說明（點此閱讀並啟用）",
   "button.experimentalInfoView": "查看實驗性功能說明",

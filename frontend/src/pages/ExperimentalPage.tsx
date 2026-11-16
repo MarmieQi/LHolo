@@ -16,6 +16,7 @@ type ExperimentalPageProps = {
 export function ExperimentalPage(props: ExperimentalPageProps) {
   const { labels, experimental, worldAvailable } = props;
   const [tab, setTab] = useState<PlacementTab>('singleplayer');
+  const localModesDisabled = !worldAvailable || !experimental.localRangeAvailable || !experimental.canCommand;
 
   return <>
     <div className="lholo-section-title">{labels['section.assistedPlacement']}</div>
@@ -25,38 +26,29 @@ export function ExperimentalPage(props: ExperimentalPageProps) {
     ]} />
     <div className="lholo-tab-content">
       {tab === 'singleplayer' ? <>
-        <div className="lholo-render-check">
-          <LHoloCheckbox label={labels['checkbox.manualPlace']} value={experimental.localManualEnabled}
-            disabled={!worldAvailable || !experimental.localRangeAvailable || !experimental.canCommand}
-            onChange={experimental.toggleLocalManual} />
-        </div>
-        <div className="lholo-render-check">
-          <LHoloCheckbox label={labels['checkbox.easyPlace']} value={experimental.localEasyEnabled}
-            disabled={!worldAvailable || !experimental.localRangeAvailable || !experimental.canCommand}
-            onChange={experimental.toggleLocalEasy} />
-        </div>
-        <div className="lholo-render-check">
-          <LHoloCheckbox label={labels['checkbox.rangePlace']} value={experimental.localRangeEnabled}
-            disabled={!worldAvailable || !experimental.localRangeAvailable || !experimental.canCommand}
-            onChange={experimental.toggleLocalRange} />
-        </div>
-        <div className="lholo-placement-options">
-          <div className="lholo-render-check">
+        <div className="lholo-settings-columns">
+          <div className="lholo-settings-column">
+            <div className="lholo-settings-group-title">{labels['placement.groupModes']}</div>
+            <LHoloCheckbox label={labels['checkbox.manualPlace']} value={experimental.localManualEnabled}
+              disabled={localModesDisabled} onChange={experimental.toggleLocalManual} />
+            <LHoloCheckbox label={labels['checkbox.easyPlace']} value={experimental.localEasyEnabled}
+              disabled={localModesDisabled} onChange={experimental.toggleLocalEasy} />
+            <LHoloCheckbox label={labels['checkbox.rangePlace']} value={experimental.localRangeEnabled}
+              disabled={localModesDisabled} onChange={experimental.toggleLocalRange} />
             <LHoloCheckbox label={labels['checkbox.localPlacementLiquidsDisabled']} value={experimental.localLiquidsDisabled}
               disabled={!experimental.ready} onChange={experimental.setLocalLiquidsDisabled} />
           </div>
-          <div className="lholo-render-check">
+          <div className="lholo-settings-column">
+            <div className="lholo-settings-group-title">{labels['placement.groupRestock']}</div>
             <LHoloCheckbox label={labels['checkbox.localShulkerRestock']} value={experimental.localShulkerRestock}
               disabled={!experimental.ready} onChange={experimental.setLocalShulkerRestock} />
-          </div>
-          <div className="lholo-render-check">
             <LHoloCheckbox label={labels['checkbox.localCreativeRestock']} value={experimental.localCreativeRestock}
               disabled={!experimental.ready} onChange={experimental.setLocalCreativeRestock} />
-          </div>
-          <div className="lholo-render-check">
             <LHoloCheckbox label={labels['checkbox.localCreativeRestockOverwrite']} value={experimental.localCreativeRestockOverwrite}
-              disabled={!experimental.ready || !experimental.localCreativeRestock} onChange={experimental.setLocalCreativeRestockOverwrite} />
+              disabled={!experimental.ready} onChange={experimental.setLocalCreativeRestockOverwrite} />
           </div>
+        </div>
+        <div className="lholo-placement-options">
           <RangeSettings labels={labels} experimental={experimental} local />
         </div>
       </> : <LegacyPlacement {...props} />}

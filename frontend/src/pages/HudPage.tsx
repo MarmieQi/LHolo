@@ -24,7 +24,7 @@ export function HudPage({ labels, hud, worldAvailable }: { labels: MenuLabels; h
     ['checkbox.hudExtraBlocks', hud.hudShowExtraBlocks, hud.setHudShowExtraBlocks],
   ] as const;
   const renderItems = (items: typeof infoItems | typeof progressItems | typeof errorItems) => items.map(([key, value, onChange]) => (
-    <div className="lholo-hud-option" key={key}>
+    <div className="lholo-settings-option" key={key}>
       <LHoloCheckbox label={labels[key]} value={value}
         onChange={onChange} disabled={!hud.ready || !hud.hudEnabled} />
     </div>
@@ -45,20 +45,20 @@ export function HudPage({ labels, hud, worldAvailable }: { labels: MenuLabels; h
         <LHoloCheckbox disabled={!hud.ready} label={labels['checkbox.hudEnabled']}
           value={hud.hudEnabled} onChange={hud.setHudEnabled} />
       </div>
-      <div className="lholo-hud-columns">
-        <div className="lholo-hud-column">
-          <div className="lholo-hud-group">
-            <div className="lholo-hud-group-title">{labels['hud.groupInfo']}</div>
+      <div className="lholo-settings-columns">
+        <div className="lholo-settings-column">
+          <div className="lholo-settings-group">
+            <div className="lholo-settings-group-title">{labels['hud.groupInfo']}</div>
             {renderItems(infoItems)}
           </div>
-          <div className="lholo-hud-group">
-            <div className="lholo-hud-group-title">{labels['hud.groupProgress']}</div>
+          <div className="lholo-settings-group">
+            <div className="lholo-settings-group-title">{labels['hud.groupProgress']}</div>
             {renderItems(progressItems)}
           </div>
         </div>
-        <div className="lholo-hud-column">
-          <div className="lholo-hud-group">
-            <div className="lholo-hud-group-title">{labels['hud.groupErrors']}</div>
+        <div className="lholo-settings-column">
+          <div className="lholo-settings-group">
+            <div className="lholo-settings-group-title">{labels['hud.groupErrors']}</div>
             {renderItems(errorItems)}
           </div>
         </div>
@@ -68,7 +68,7 @@ export function HudPage({ labels, hud, worldAvailable }: { labels: MenuLabels; h
         <LHoloCheckbox disabled={!hud.ready} label={labels['checkbox.materialHudEnabled']}
           value={hud.materialHudEnabled} onChange={hud.setMaterialHudEnabled} />
       </div>
-      <div className="lholo-hud-option">
+      <div className="lholo-settings-option">
         <LHoloCheckbox disabled={!hud.ready || !hud.materialHudEnabled} label={labels['checkbox.materialHudStackConversion']}
           value={hud.materialHudStackConversion} onChange={hud.setMaterialHudStackConversion} />
       </div>
