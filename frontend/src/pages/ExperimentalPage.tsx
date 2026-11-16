@@ -1,15 +1,70 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type {
   AssistedPlacementMode,
   ExperimentalSettingsControls,
 } from '../application/useExperimentalSettings';
 import type { MenuLabels } from '../platform/bridge';
 import { LHoloButton, LHoloCheckbox, LHoloTextField } from '../components/LHoloControls';
+import { LHoloTabs } from '../components/LHoloTabs';
 import { NativeScrollView } from '../platform/native';
 
-export function ExperimentalPage({ labels, experimental, worldAvailable }: {
+type PlacementTab = 'singleplayer' | 'legacy';
+type ExperimentalPageProps = {
   labels: MenuLabels; experimental: ExperimentalSettingsControls; worldAvailable: boolean;
-}) {
+};
+
+export function ExperimentalPage(props: ExperimentalPageProps) {
+  const { labels, experimental, worldAvailable } = props;
+  const [tab, setTab] = useState<PlacementTab>('singleplayer');
+
+  return <>
+    <div className="lholo-section-title">{labels['section.assistedPlacement']}</div>
+    <LHoloTabs<PlacementTab> selected={tab} onSelect={setTab} tabs={[
+      { id: 'singleplayer', label: labels['placement.tabSingleplayer'] },
+      { id: 'legacy', label: labels['placement.tabLegacy'] },
+    ]} />
+    <div className="lholo-tab-content">
+      {tab === 'singleplayer' ? <>
+        <div className="lholo-render-check">
+          <LHoloCheckbox label={labels['checkbox.manualPlace']} value={experimental.localManualEnabled}
+            disabled={!worldAvailable || !experimental.localRangeAvailable || !experimental.canCommand}
+            onChange={experimental.toggleLocalManual} />
+        </div>
+        <div className="lholo-render-check">
+          <LHoloCheckbox label={labels['checkbox.easyPlace']} value={experimental.localEasyEnabled}
+            disabled={!worldAvailable || !experimental.localRangeAvailable || !experimental.canCommand}
+            onChange={experimental.toggleLocalEasy} />
+        </div>
+        <div className="lholo-render-check">
+          <LHoloCheckbox label={labels['checkbox.rangePlace']} value={experimental.localRangeEnabled}
+            disabled={!worldAvailable || !experimental.localRangeAvailable || !experimental.canCommand}
+            onChange={experimental.toggleLocalRange} />
+        </div>
+        <div className="lholo-placement-options">
+          <div className="lholo-render-check">
+            <LHoloCheckbox label={labels['checkbox.localPlacementLiquidsDisabled']} value={experimental.localLiquidsDisabled}
+              disabled={!experimental.ready} onChange={experimental.setLocalLiquidsDisabled} />
+          </div>
+          <div className="lholo-render-check">
+            <LHoloCheckbox label={labels['checkbox.localShulkerRestock']} value={experimental.localShulkerRestock}
+              disabled={!experimental.ready} onChange={experimental.setLocalShulkerRestock} />
+          </div>
+          <div className="lholo-render-check">
+            <LHoloCheckbox label={labels['checkbox.localCreativeRestock']} value={experimental.localCreativeRestock}
+              disabled={!experimental.ready} onChange={experimental.setLocalCreativeRestock} />
+          </div>
+          <div className="lholo-render-check">
+            <LHoloCheckbox label={labels['checkbox.localCreativeRestockOverwrite']} value={experimental.localCreativeRestockOverwrite}
+              disabled={!experimental.ready || !experimental.localCreativeRestock} onChange={experimental.setLocalCreativeRestockOverwrite} />
+          </div>
+          <RangeSettings labels={labels} experimental={experimental} local />
+        </div>
+      </> : <LegacyPlacement {...props} />}
+    </div>
+  </>;
+}
+
+function LegacyPlacement({ labels, experimental, worldAvailable }: ExperimentalPageProps) {
   const infoButtonLabel = experimental.experimentalConsent
     ? labels['button.experimentalInfoView']
     : labels['button.experimentalInfoOpen'];
@@ -20,11 +75,7 @@ export function ExperimentalPage({ labels, experimental, worldAvailable }: {
     range: 'mode.range',
   };
 
-  const radiusLabel = labels['label.placementRadius'];
-  const cooldownLabel = labels['label.autoPlacementCooldown'];
-
   return <>
-    <div className="lholo-section-title">{labels['section.assistedPlacement']}</div>
     <div className="lholo-action-row">
       <LHoloButton label={infoButtonLabel} className="lholo-danger-button"
         onClick={experimental.openInfoModal} />
@@ -55,18 +106,28 @@ export function ExperimentalPage({ labels, experimental, worldAvailable }: {
       <div className="lholo-muted">{labels['hint.assistedDisabled']}</div>
     )}
 
+    <RangeSettings labels={labels} experimental={experimental} />
+  </>;
+}
+
+function RangeSettings({ labels, experimental, local }: Pick<ExperimentalPageProps, 'labels' | 'experimental'> & {local?: boolean}) {
+  const radiusLabel = labels[local ? 'label.localPlacementRadius' : 'label.placementRadius'];
+  const radius = experimental.radius(local ? 'localPlacementRadius' : 'placementRadius');
+  const cooldownLabel = labels['label.autoPlacementCooldown'];
+
+  return <>
     <div className="lholo-experimental-row lholo-setting-row">
       <div className="lholo-experimental-label">{radiusLabel}</div>
       <div className="lholo-stepper">
         <LHoloButton disabled={!experimental.ready} label="-" className="lholo-stepper-button"
-          onClick={() => experimental.stepPlacementRadius(-1)} />
+          onClick={() => radius.step(-1)} />
         <div className="lholo-stepper-value"
-          style={{ width: Math.max(3.2, Math.min(8, experimental.placementRadius.text.length * 0.7 + 1.2)) + 'rem' }}>
-          <LHoloTextField disabled={!experimental.ready} label={radiusLabel} value={experimental.placementRadius.text} maxLength={4}
-            onChange={experimental.editPlacementRadius} onBlur={experimental.commitPlacementRadius} />
+          style={{ width: Math.max(3.2, Math.min(8, radius.text.length * 0.7 + 1.2)) + 'rem' }}>
+          <LHoloTextField disabled={!experimental.ready} label={radiusLabel} value={radius.text} maxLength={4}
+            onChange={radius.edit} onBlur={radius.commit} />
         </div>
         <LHoloButton disabled={!experimental.ready} label="+" className="lholo-stepper-button"
-          onClick={() => experimental.stepPlacementRadius(1)} />
+          onClick={() => radius.step(1)} />
       </div>
     </div>
 

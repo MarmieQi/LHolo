@@ -187,30 +187,45 @@ std::vector<BrokenProjectionCell> takeBrokenProjectionCells(LocalPlayer& player)
     return result;
 }
 
-ProjectionQuery queryProjection(LocalPlayer& player, BlockPos const& worldPos) {
+ProjectionQuery queryProjection(LocalPlayer& player, BlockPos const& worldPos, bool localPlacement) {
     ProjectionQuery result{nullptr, false};
     detail::ProjectionSession::getInstance().withLockedState(
         [&](detail::ProjectionState& state, overlay::BoundsWireframe&) {
             if (!state.enabled || !state.structure) return;
             if (!projectionWorldViewMatches(state, player)) return;
             if (auto* selected=detail::selectedFileProjection(state))
-                result = detail::queryProjectionCell(*selected, worldPos);
+                result = detail::queryProjectionCell(*selected, worldPos, localPlacement);
         }
     );
     return result;
 }
 
-std::vector<RangeCandidate> queryMissingCellsInRange(LocalPlayer& player, Vec3 const& center, float radius) {
+std::vector<RangeCandidate> queryMissingCellsInRange(
+    LocalPlayer& player, Vec3 const& center, float radius, bool localPlacement) {
     std::vector<RangeCandidate> result;
     detail::ProjectionSession::getInstance().withLockedState(
         [&](detail::ProjectionState& state, overlay::BoundsWireframe&) {
             if (!state.enabled || !state.structure) return;
             if (!projectionWorldViewMatches(state, player)) return;
             if (auto* selected=detail::selectedFileProjection(state))
-                result = detail::queryMissingProjectionCells(*selected, center, radius);
+                result = detail::queryMissingProjectionCells(*selected, center, radius, localPlacement);
         }
     );
     return result;
+}
+
+std::optional<RangeCandidate> queryCurrentPlacementCandidate(BlockPos const& position, int dimension) {
+    std::optional<RangeCandidate> current;
+    detail::ProjectionSession::getInstance().withLockedState(
+        [&](detail::ProjectionState& state, overlay::BoundsWireframe&) {
+            if (!state.enabled || !state.structure || state.dimensionId != dimension) return;
+            auto const* selected = detail::selectedFileProjection(state);
+            if (!selected) return;
+            auto const query = detail::queryProjectionCell(*selected, position, true);
+            if (query.missing) current = RangeCandidate{position.x, position.y, position.z, query.block, query.hasLiquid};
+        }
+    );
+    return current;
 }
 
 } // namespace lholo::projection

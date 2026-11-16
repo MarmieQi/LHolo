@@ -122,8 +122,6 @@ void normalize(Settings& s) {
     s.writeHudPosition = std::clamp(s.writeHudPosition, 0, kTopCenterHudPosition);
     s.hudPosition = std::clamp(s.hudPosition, 0, 3);
     s.materialHudPosition = std::clamp(s.materialHudPosition, 0, 3);
-    s.placementRadius = std::clamp(s.placementRadius, 1, 4);
-    s.autoPlacementBreakCooldownSeconds = std::clamp(s.autoPlacementBreakCooldownSeconds, 0, 60);
     for (std::size_t n = 0; n < kHudPanelCount; ++n) {
         s.hudScales[n] = std::clamp(s.hudScales[n], 50, 200);
         s.hudBackgroundOpacities[n] = std::clamp(s.hudBackgroundOpacities[n], 0, 100);
@@ -145,16 +143,10 @@ void readLegacy(Json const& json, Settings& out) {
     out.structureBoundsEnabled = json.value("structureBoundsEnabled", out.structureBoundsEnabled);
     out.correctionSeeThrough = json.value("correctionSeeThrough", out.correctionSeeThrough);
     out.missingSeeThrough = json.value("missingSeeThrough", out.missingSeeThrough);
-    out.experimentalConsent = json.value("experimentalConsent", out.experimentalConsent);
     out.materialHudEnabled = json.value("materialHudEnabled", out.materialHudEnabled);
     out.materialHudStackConversion = json.value("materialHudStackConversion", out.materialHudStackConversion);
     out.materialHudMaxItems = std::clamp(json.value("materialHudMaxItems", out.materialHudMaxItems), kMinMaterialHudItems, kMaxMaterialHudItems);
     out.materialHudPosition = json.value("materialHudPosition", out.materialHudPosition);
-    out.placementRadius = json.value("placementRadius", out.placementRadius);
-    out.autoPlacementBreakCooldownSeconds = json.value(
-        "autoPlacementBreakCooldownSeconds",
-        out.autoPlacementBreakCooldownSeconds
-    );
     out.hudEnabled = json.value("hudEnabled", out.hudEnabled);
     out.hudShowFileName = json.value("hudShowFileName", out.hudShowFileName);
     out.hudShowLayer = json.value("hudShowLayer", out.hudShowLayer);
@@ -284,10 +276,6 @@ void readCurrent(Json const& data, Settings& out) {
     out.altWheelOffsetEnabled = input.value("altWheelOffset", out.altWheelOffsetEnabled);
     auto const hotkeys = section(input, "hotkeys");
     for (auto binding : bindings(out)) if (hotkeys.contains(binding.name)) decodeBinding(hotkeys.at(binding.name), binding);
-    auto const placement = section(data, "placement");
-    out.experimentalConsent = placement.value("consentGiven", out.experimentalConsent);
-    out.placementRadius = integer(placement, "radius", out.placementRadius, 1, 4);
-    out.autoPlacementBreakCooldownSeconds = integer(placement, "breakCooldownSeconds", out.autoPlacementBreakCooldownSeconds, 0, 60);
 }
 Json position(Settings const& s, std::size_t n, int anchor) {
     Json result{{"anchor", Anchors[anchor]}};
@@ -324,9 +312,7 @@ Json encode(Settings s) {
                 {"scalePercent", s.hudScales[1]}, {"backgroundOpacityPercent", s.hudBackgroundOpacities[1]}}},
             {"write", {{"enabled", s.writeHudEnabled}, {"position", position(s, 2, s.writeHudPosition)},
                 {"scalePercent", s.hudScales[2]}, {"backgroundOpacityPercent", s.hudBackgroundOpacities[2]}}}}},
-        {"input", {{"altWheelOffset", s.altWheelOffsetEnabled}, {"hotkeys", std::move(hotkeys)}}},
-        {"placement", {{"consentGiven", s.experimentalConsent}, {"radius", s.placementRadius},
-            {"breakCooldownSeconds", s.autoPlacementBreakCooldownSeconds}}}
+        {"input", {{"altWheelOffset", s.altWheelOffsetEnabled}, {"hotkeys", std::move(hotkeys)}}}
     };
 }
 Json read(std::filesystem::path const& path) {

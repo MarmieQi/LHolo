@@ -758,10 +758,10 @@ editRenderInput(0, '3'); blurRenderInput(0);
 renderState = {...renderState, context: 11, values: {...renderState.values, axis: 0, layer: 0}, maximum: [0, 0, 0]}; receiveRender();
 assert.equal(renderInputs()[0].props.value, '0', 'New projection discards old layer edit');
 
-// Connected settings use native state; only the OreUI scale is local.
+// Connected settings use native state.
 const fixture = JSON.parse(fs.readFileSync('preview/settings-fixture.json', 'utf8'));
 const defaultHotkeys = () => fixture.defaults.map((b, slot) => ({...b, slot, capturing:false, display: ''}));
-let settingsState = {values: {...fixture.values}, hotkeys: defaultHotkeys(), languages: [
+let settingsState = {localRangeAvailable: false, values: {...fixture.values}, hotkeys: defaultHotkeys(), languages: [
   {code:'en_US',name:'English'},{code:'ru_RU',name:'Русский'},{code:'zh_CN',name:'简体中文'},{code:'zh_TW',name:'繁體中文'}],
   consent:false, context:20, ack:0, accepted:false, hotkeysRevision:0};
 const settingsRequests = () => events.filter(e => e[0] === 'facet:request' && e[1] === 'lholo.settings.intent');
@@ -779,7 +779,8 @@ const ackSettings = () => {
     assert.equal(i.expected,settingsState.values[i.field]);
     settingsState.values = {...settingsState.values,[i.field]:i.value};
   } else if (i.action === 'consent') {
-    settingsState.consent=true;settingsState.values.activeMode=i.value;
+    settingsState.consent=true;
+    if (i.value !== 0) settingsState.values.activeMode=i.value;
   } else {
     assert.equal(i.hotkeysRevision,settingsState.hotkeysRevision);
     ++settingsState.hotkeysRevision;
@@ -915,6 +916,55 @@ assert.equal(nodeText(selectTrigger(0)),'English▼');
 const translated={...labels,'section.interfaceSettings':'Settings live'};receive(JSON.stringify(translated));
 assert(JSON.stringify(tree.toJSON()).includes('Settings live'));receive(JSON.stringify(labels));
 click(labels['page.experimental']);
+assert.equal(pageChecks().length,7);
+assert(nodeText(pageChecks()[5]).includes(labels['checkbox.localCreativeRestock']));
+assert(!pageChecks()[5].props.className.includes('is-checked'));
+assert(nodeText(pageChecks()[6]).includes(labels['checkbox.localCreativeRestockOverwrite']));
+assert(!pageChecks()[6].props.className.includes('is-checked'));
+assert(pageChecks()[6].props.disabled, 'Overwrite requires creative restock');
+renderer.act(()=>pageChecks()[5].props.onClick());settleSettings();
+assert.equal(settingsState.values.localCreativeRestock,true);
+assert(!pageChecks()[6].props.disabled);
+renderer.act(()=>pageChecks()[6].props.onClick());settleSettings();
+assert.equal(settingsState.values.localCreativeRestockOverwrite,true);
+assert(pageChecks()[6].props.className.includes('is-checked'));
+renderer.act(()=>pageChecks()[5].props.onClick());settleSettings();
+assert.equal(settingsState.values.localCreativeRestock,false);
+assert(pageChecks()[6].props.disabled);
+assert(nodeText(pageChecks()[4]).includes(labels['checkbox.localShulkerRestock']));
+assert(!pageChecks()[4].props.className.includes('is-checked'));
+renderer.act(()=>pageChecks()[4].props.onClick());settleSettings();
+assert.equal(settingsState.values.localShulkerRestock,true);
+assert(pageChecks()[4].props.className.includes('is-checked'));
+renderer.act(()=>pageChecks()[4].props.onClick());settleSettings();
+assert.equal(settingsState.values.localShulkerRestock,false);
+assert(pageChecks()[2].props.disabled, 'Singleplayer placement requires the native availability flag');
+assert(pageChecks()[3].props.className.includes('is-checked'), 'Automatic liquid placement is disabled by default');
+renderer.act(()=>pageChecks()[3].props.onClick());
+settleSettings();
+assert.equal(settingsState.values.localPlacementLiquidsDisabled,false);
+assert.equal(settingsState.values.activeMode,0);
+settingsState.localRangeAvailable = true;
+emitSettings();
+assert(!pageChecks()[2].props.disabled);
+renderer.act(()=>pageChecks()[2].props.onClick());
+assert(!pageChecks()[2].props.className.includes('is-checked'), 'Singleplayer placement waits for native acknowledgement');
+settleSettings();
+assert.equal(settingsState.values.activeMode,4);
+assert(!settingsState.consent);
+assert(pageChecks()[2].props.className.includes('is-checked'));
+assert(nodeText(pageChecks()[1]).includes(labels['checkbox.easyPlace']));
+renderer.act(()=>pageChecks()[1].props.onClick());settleSettings();
+assert.equal(settingsState.values.activeMode,5);
+assert(pageChecks()[1].props.className.includes('is-checked'));
+assert(!pageChecks()[2].props.className.includes('is-checked'));
+assert(nodeText(pageChecks()[0]).includes(labels['checkbox.manualPlace']));
+renderer.act(()=>pageChecks()[0].props.onClick());settleSettings();
+assert.equal(settingsState.values.activeMode,6);
+assert(pageChecks()[0].props.className.includes('is-checked'));
+assert(!pageChecks()[1].props.className.includes('is-checked'));
+assert(!pageChecks()[2].props.className.includes('is-checked'));
+click(labels['placement.tabLegacy']);
 assert.equal(pageChecks().length,3);
 renderer.act(()=>pageChecks()[0].props.onClick());
 const consentBackdrop=tree.root.findByProps({className:'lholo-modal-backdrop'});
@@ -930,9 +980,22 @@ ackSettings();assert(settingsState.consent);assert.equal(settingsState.values.ac
 assert(pageChecks()[1].props.className.includes('is-checked'));
 renderer.act(()=>pageChecks()[2].props.onClick());settleSettings();
 assert.equal(settingsState.values.activeMode,3);assert(!pageChecks()[1].props.className.includes('is-checked'));
+const beforePlacementTabs=settingsRequests().length;
+click(labels['placement.tabSingleplayer']);
+assert(!pageChecks()[0].props.className.includes('is-checked'));
+assert(!pageChecks()[1].props.className.includes('is-checked'));
+assert(!pageChecks()[2].props.className.includes('is-checked'));
+click(labels['placement.tabLegacy']);
+assert(pageChecks()[2].props.className.includes('is-checked'));
+assert.equal(settingsRequests().length,beforePlacementTabs,'Switching placement tabs leaves the active mode alone');
 const expInputs=()=>tree.root.findAllByType('input');
 const editExp=(n,text)=>renderer.act(()=>{const input=inputMocks.get(expInputs()[n].props['data-narrate']);input.value=text;input.listeners.get('input')();});
 const blurExp=n=>renderer.act(()=>expInputs()[n].props.onBlur());
+click(labels['placement.tabSingleplayer']);
+editExp(0,'100');blurExp(0);settleSettings();
+assert.equal(settingsState.values.localPlacementRadius,64);
+assert.equal(settingsState.values.placementRadius,4);
+click(labels['placement.tabLegacy']);
 editExp(0,'8');blurExp(0);settleSettings();assert.equal(settingsState.values.placementRadius,4);
 editExp(0,'2');blurExp(0);settleSettings();assert.equal(settingsState.values.placementRadius,2);
 editExp(1,'99');blurExp(1);settleSettings();assert.equal(settingsState.values.autoPlacementCooldown,60);

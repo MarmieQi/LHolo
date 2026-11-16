@@ -16,6 +16,7 @@
 
 class Block;
 class CompoundTag;
+class Vec3;
 
 namespace lholo::structure {
 struct LoadedStructure;
@@ -60,6 +61,7 @@ struct ProjectionQuery {
     Block const* block; // nullptr for non-placeable or hidden projection cells
     bool         missing;
     std::shared_ptr<CompoundTag const> blockEntityNbt;
+    bool         hasLiquid{};
 };
 
 // Range-place support: a missing projection cell and its expected block.
@@ -68,6 +70,14 @@ struct RangeCandidate {
     int          y;
     int          z;
     Block const* block;
+    bool hasLiquid{};
+};
+
+struct RangeCandidateOrder {
+    Vec3 const& center;
+
+    float distanceSquared(int x, int y, int z) const;
+    bool operator()(RangeCandidate const& a, RangeCandidate const& b) const;
 };
 
 // A real solid block was removed from a cell owned by the active projection.

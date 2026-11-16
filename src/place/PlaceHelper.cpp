@@ -16,33 +16,25 @@
 
 #include "place/PlaceHelper.h"
 
-#include "i18n/Message.h"
-#include "place/PlacementExecutor.h"
+#include "input/ProjectionInputGuard.h"
 #include "place/PlacementState.h"
+#include "place/ManualPlacementHooks.h"
+#include "place/legacy/PlacementExecutor.h"
+#include "place/local/LocalPlacement.h"
 
 #include "plugin/LHolo.h"
+#include "projection/Projection.h"
 #include "structure/MaterialTracker.h"
-#include "structure/StructureLoader.h"
 
 #include "ll/api/memory/Hook.h"
 #include "ll/api/mod/NativeMod.h"
 #include "ll/api/service/Bedrock.h"
 
 #include "mc/client/game/ClientInstance.h"
-#include "mc/client/game/IClientInstance.h"
 #include "mc/client/player/LocalPlayer.h"
-#include "mc/world/gamemode/GameMode.h"
-#include "mc/world/actor/player/Player.h"
-#include "mc/world/item/HandSlot.h"
-#include "mc/world/item/ItemStack.h"
-#include "mc/world/level/BlockPos.h"
-#include "mc/world/level/BlockSource.h"
 #include "mc/world/level/Tick.h"
-#include "mc/world/level/block/Block.h"
-#include "mc/world/level/block/BlockType.h"
 
 #include <Windows.h>
-
 #include <algorithm>
 
 namespace lholo::place {
@@ -56,15 +48,24 @@ auto& logger() {
     return LHolo::getInstance().getSelf().getLogger();
 }
 
-struct PlaceHookStatus {
-    bool tick{};
-    bool manualStart{};
-    bool manualUseItem{};
-    bool manualStop{};
-    bool manualBuild{};
-};
+void consumeBrokenProjectionCells(LocalPlayer& player, std::uint64_t now) {
+    auto const brokenCells = projection::takeBrokenProjectionCells(player);
+    auto const cooldownSeconds = placementState().autoPlacementBreakCooldownSeconds();
+    if (cooldownSeconds <= 0) return;
+    auto const cooldownMs = static_cast<std::uint64_t>(cooldownSeconds) * 1'000;
+    for (auto const& broken : brokenCells) {
+        // Use the event timestamp, not the consumption timestamp. Events held
+        // while placement is inactive therefore still expire after the
+        // configured real-time duration and never restart when placement resumes.
+        if (now - broken.destroyedAt >= cooldownMs) continue;
+        placementState().suppressAutoPlacement(
+            detail::packPlacementCell(broken.x, broken.y, broken.z),
+            broken.destroyedAt + cooldownMs
+        );
+    }
+}
 
-PlaceHookStatus gHookStatus;
+bool gTickHookInstalled{};
 
 LL_TYPE_INSTANCE_HOOK(
     LocalPlayerEasyPlaceHook,
@@ -75,143 +76,13 @@ LL_TYPE_INSTANCE_HOOK(
     ::Tick const& currentTick
 ) {
     structure::detail::tickMaterialTracker(*this);
-    // Physical mouse state belongs to the game-input Hook boundary. The
-    // executor consumes only the resulting logical press state.
-    if (placementState().manualMode()
-        && (GetAsyncKeyState(VK_RBUTTON) & 0x8000) == 0) {
-        placementState().releaseManualPress();
+    if (auto client = ll::service::getClientInstance(); client && client->getLocalPlayer() == this) {
+        consumeBrokenProjectionCells(*this, GetTickCount64());
+        pollManualInput(*this);
+        detail::tickEasyPlace();
+        local::submitCandidates(*this);
     }
-    detail::tickEasyPlace();
     origin(currentTick);
-}
-
-// Returns true when manual mode is on and `gm` belongs to the local player, i.e.
-// this is the client-side right-click we should take over. The local-player
-// check is essential: the server processes LHolo's own placement through these
-// same functions on the ServerPlayer, and that must not be suppressed.
-bool isLocalManualBuild(GameMode& gm) {
-    if (!placementState().manualMode()) return false;
-    auto client = ll::service::getClientInstance();
-    auto* localPlayer = client ? client->getLocalPlayer() : nullptr;
-    return localPlayer && &gm.mPlayer == static_cast<Player*>(localPlayer);
-}
-
-void cancelPendingManualPress() {
-    placementState().cancelManualPress();
-}
-
-bool aimedBlockAcceptsRightClick(GameMode& gm, BlockPos const& pos) {
-    // Defer to Bedrock's official interaction classification so new vanilla and
-    // custom interactive blocks do not require an LHolo name allow-list.
-    return gm.mPlayer.getDimensionBlockSource().getBlock(pos).getBlockType().isInteractiveBlock();
-}
-
-// Manual-mode press edge. If the aimed block is interactive (chest, repeater,
-// ...) we let vanilla open/use it. Otherwise we take the right button over: on a
-// projection target LHolo places it (from tickEasyPlace), and off-target we block
-// the accidental placement and show a one-shot JE-style hint. The vanilla build
-// is never allowed through, so no stray block is placed.
-LL_TYPE_INSTANCE_HOOK(
-    GameModeStartBuildHook,
-    ll::memory::HookPriority::Normal,
-    GameMode,
-    &GameMode::$startBuildBlock,
-    void,
-    ::BlockPos const& pos,
-    uchar             face,
-    ::HandSlot        handSlot
-) {
-    if (isLocalManualBuild(*this)) {
-        if (aimedBlockAcceptsRightClick(*this, pos)) {
-            cancelPendingManualPress();
-            origin(pos, face, handSlot);  // let vanilla open/use the block
-            return;
-        }
-        auto const targetStatus = detail::manualTargetStatusUnderCrosshair();
-        if (targetStatus == detail::ManualTargetStatus::Ready) {
-            (void)placementState().beginManualPress(GetTickCount64());
-        } else if (targetStatus == detail::ManualTargetStatus::MissingMaterial) {
-            cancelPendingManualPress();
-            structure::showActionHint(i18n::Message{i18n::TextKey::ActionHintNoMatchingItem});
-        } else {
-            cancelPendingManualPress();
-            structure::showActionHint(
-                i18n::Message{i18n::TextKey::ActionHintManualModeBlocked}
-            );
-        }
-        return;  // LHolo owns this press; vanilla places nothing.
-    }
-    origin(pos, face, handSlot);
-}
-
-// Right-clicking a floating projection targets air, so Bedrock calls useItem
-// instead of startBuildBlock. Capture it only when a floating projection cell is
-// under the crosshair; otherwise let vanilla use the item (eat, etc.).
-LL_TYPE_INSTANCE_HOOK(
-    GameModeUseItemHook,
-    ll::memory::HookPriority::Normal,
-    GameMode,
-    &GameMode::$useItem,
-    bool,
-    ::ItemStack& item,
-    ::HandSlot   handSlot
-) {
-    if (isLocalManualBuild(*this)) {
-        auto const targetStatus = detail::manualTargetStatusUnderCrosshair();
-        if (targetStatus == detail::ManualTargetStatus::None) {
-            cancelPendingManualPress();
-            return origin(item, handSlot);
-        }
-        if (targetStatus == detail::ManualTargetStatus::Ready) {
-            // Mark the button held so holding right-click over a floating
-            // projection keeps placing (the tick's typematic repeat). The tick
-            // clears the hold when the right button is actually released.
-            (void)placementState().beginManualPress(GetTickCount64());
-        } else {
-            placementState().cancelManualPress();
-            structure::showActionHint(
-                i18n::Message{i18n::TextKey::ActionHintNoMatchingItem}
-            );
-        }
-        return false;
-    }
-    return origin(item, handSlot);
-}
-
-// Manual-mode release edge: stop the repeat when the button is let go.
-LL_TYPE_INSTANCE_HOOK(
-    GameModeStopBuildHook,
-    ll::memory::HookPriority::Normal,
-    GameMode,
-    &GameMode::$stopBuildBlock,
-    void
-) {
-    if (isLocalManualBuild(*this)) {
-        placementState().releaseManualPress();
-    }
-    origin();
-}
-
-// GameMode::buildBlock is the vanilla continuous-build placement. In manual mode
-// we always suppress it (LHolo drives placement from the press edge above): the
-// interact for an interactive block already happened there, and this only ever
-// carries a block PLACEMENT, which manual mode blocks. No hint here — the press
-// edge shows it once, so holding the button never spams the notification.
-LL_TYPE_INSTANCE_HOOK(
-    GameModeBuildBlockHook,
-    ll::memory::HookPriority::Normal,
-    GameMode,
-    &GameMode::$buildBlock,
-    bool,
-    ::BlockPos const& pos,
-    uchar             face,
-    ::HandSlot        handSlot,
-    bool const        isSimTick
-) {
-    if (isLocalManualBuild(*this)) {
-        return false;
-    }
-    return origin(pos, face, handSlot, isSimTick);
 }
 
 } // namespace
@@ -242,6 +113,10 @@ bool isRangeEnabled() {
     return placementState().rangeEnabled();
 }
 
+void setLocalPlacementMode(LocalPlacementMode mode) { local::setMode(mode); }
+LocalPlacementMode getLocalPlacementMode() { return local::mode(); }
+bool localRangeAvailable() { return local::available(); }
+
 void setPlacementRadius(int radius) {
     placementState().setRadius(std::clamp(radius, 1, 4));
 }
@@ -249,6 +124,17 @@ void setPlacementRadius(int radius) {
 int getPlacementRadius() {
     return placementState().radius();
 }
+
+void setLocalPlacementRadius(int radius) { placementState().setLocalRadius(std::clamp(radius, 1, 64)); }
+int getLocalPlacementRadius() { return placementState().localRadius(); }
+void setLocalPlacementLiquidsDisabled(bool disabled) { placementState().setLocalLiquidsDisabled(disabled); }
+bool getLocalPlacementLiquidsDisabled() { return placementState().localLiquidsDisabled(); }
+void setLocalShulkerRestock(bool enabled) { placementState().setLocalShulkerRestock(enabled); }
+bool getLocalShulkerRestock() { return placementState().localShulkerRestock(); }
+void setLocalCreativeRestock(bool enabled) { placementState().setLocalCreativeRestock(enabled); }
+bool getLocalCreativeRestock() { return placementState().localCreativeRestock(); }
+void setLocalCreativeRestockOverwrite(bool enabled) { placementState().setLocalCreativeRestockOverwrite(enabled); }
+bool getLocalCreativeRestockOverwrite() { return placementState().localCreativeRestockOverwrite(); }
 
 void setAutoPlacementBreakCooldownSeconds(int seconds) {
     placementState().setAutoPlacementBreakCooldownSeconds(std::clamp(seconds, 0, 60));
@@ -276,45 +162,33 @@ AimedProjectedBlock getAimedProjectedBlock() {
 }
 
 void resetDimensionSession() {
+    (void)input::takeGameplayRightPress();
+    local::cancelPending();
     placementState().resetDimensionSession();
 }
 
 void resetWorldSession() {
+    (void)input::takeGameplayRightPress();
+    local::setMode(LocalPlacementMode::Off);
     placementState().resetWorldSession();
 }
 
 bool installHook() {
-    gHookStatus.tick = LocalPlayerEasyPlaceHook::hook() == 0;
-    if (!gHookStatus.tick) {
+    gTickHookInstalled = LocalPlayerEasyPlaceHook::hook() == 0;
+    if (!gTickHookInstalled) {
         logger().error("Failed to install easy-place tick hook");
         return false;
     }
-    gHookStatus.manualStart = GameModeStartBuildHook::hook() == 0;
-    if (!gHookStatus.manualStart) {
-        logger().warn("Failed to install manual-place start hook; manual mode will be unavailable");
-    }
-    gHookStatus.manualUseItem = GameModeUseItemHook::hook() == 0;
-    if (!gHookStatus.manualUseItem) {
-        logger().warn("Failed to install manual-place air-use hook; floating manual placement will be unavailable");
-    }
-    gHookStatus.manualStop = GameModeStopBuildHook::hook() == 0;
-    if (!gHookStatus.manualStop) {
-        logger().warn("Failed to install manual-place stop hook; manual mode may keep repeating");
-    }
-    gHookStatus.manualBuild = GameModeBuildBlockHook::hook() == 0;
-    if (!gHookStatus.manualBuild) {
-        logger().warn("Failed to install manual-place build hook; manual mode may double-place");
-    }
+    installManualHooks();
+    local::install();
     return true;
 }
 
 void uninstallHook() {
-    if (gHookStatus.manualBuild) GameModeBuildBlockHook::unhook();
-    if (gHookStatus.manualStop) GameModeStopBuildHook::unhook();
-    if (gHookStatus.manualUseItem) GameModeUseItemHook::unhook();
-    if (gHookStatus.manualStart) GameModeStartBuildHook::unhook();
-    if (gHookStatus.tick) LocalPlayerEasyPlaceHook::unhook();
-    gHookStatus = {};
+    local::uninstall();
+    uninstallManualHooks();
+    if (gTickHookInstalled) LocalPlayerEasyPlaceHook::unhook();
+    gTickHookInstalled = false;
 }
 
 } // namespace lholo::place

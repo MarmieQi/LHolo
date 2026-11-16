@@ -111,6 +111,12 @@ lholo.transform.intent 接收 {id, context, field, expected, value}；lholo:tran
 
 ## HUD、快捷键、语言与实验性设置
 
+“潜影盒自动补货”复用单人存档页的复选框，默认关闭。
+
+辅助放置复用 HUD 的页签组件，默认显示“单人存档”。单人手动、轻松和范围放置走现有 Settings 通道，快照中的 `localRangeAvailable` 控制可用性，`activeMode=4` 为单人范围放置，`activeMode=5` 为单人轻松放置，`activeMode=6` 为单人手动放置。“旧的”收纳原有手动、轻松、范围放置和实验性确认。单人页半径为 1～64，旧页为 1～4，两页共享冷却设置。页签切换只影响界面展示。
+
+“允许创造模式补货覆盖物品栏物品”复用统一复选框，位于“创造模式自动补货”下方。启用创造模式自动补货时可以修改，默认关闭，使用 Settings 的进程内状态。
+
 普通投影 HUD 的“投影方块”图标目前暂时注释停用，保持纯文字，以下通路保留供后续调整。普通投影 HUD 的“投影方块”行复用材料 HUD 的 HudLine 图标字段、测宽和 NativeHudIcons 绘制。该行按本地化文案的值占位符拆成前缀与名称，顺序为“投影方块：图标 名称”；Painter 分别测量和绘制前缀、图标与名称，材料行仍为“图标 名称 数量”。准星查询带回命中单元的不可变蓝图 BlockEntity NBT；游戏 tick 经 block/BlockPlacementRules 共用的原生拾取解析生成完整 ItemStack，保留床色、旗帜颜色及图案，名称与图标在同一加锁快照中发布。只缓存上一个方块/NBT 组合，切换目标后重新解析；无目标、隐藏该字段、离开世界/维度时清空显示。渲染线程不解析物品或访问可变 BlockActor，文案沿用现有四语言键。
 
 快捷键页按菜单、结构移动、分层显示、材料 HUD 分组，组内使用简短动作名。分组元数据与文案键由 ui/HotkeyDefinitions 经 SettingsBindings 下发，前端按 groupKey 展示并以原生 slot 提交捕获/重置/清除，不能使用组内数组下标。Alt+滚轮开关归结构移动组；四种语言同步组标题与动作名称，默认绑定及业务行为不变。
@@ -121,12 +127,12 @@ lholo.transform.intent 接收 {id, context, field, expected, value}；lholo:tran
 
 依赖方向：页面 → 各功能 use*Settings → application/useSettings → platform/settingsBridge → OreUiBridge → SettingsBindings/SettingsProtocol → app/SettingsActions → StructureUiState / i18n / place。应用层只编排具体字段和命令；settings/SettingsStore 仍只负责原有配置读写，下层不依赖 OreUI 或页面 JSON。单个共享队列防止各页争用同一请求通道，四个页面 hook 仅暴露各自控件所需能力；不把整个配置对象回传后直接覆盖。
 
-- SettingsActions 在 AppKernel 控制帧执行，返回是否需要保存；HUD、材料 HUD、Alt+滚轮、语言、半径/冷却和知情确认沿用现有持久化。三个辅助放置模式是实时会话状态，互斥切换，未授权不能开启，单纯启停不请求保存。模式切换先清除原有模式及手动按压状态。context 沿用加载 revision，旧世界或加载前排队的意图失效。
+- SettingsActions 在 AppKernel 控制帧执行，返回是否需要保存；HUD、材料 HUD、Alt+滚轮和语言沿用现有持久化。实验性功能页的模式、半径、冷却、知情确认及开关均为游戏进程内状态，六个辅助放置模式互斥。旧模式要求实验性确认，单人模式要求本地内置服务器。模式切换先清除原有模式及手动按压状态。context 沿用加载 revision，旧世界或加载前排队的意图失效。
 - settings snapshot 发布 values、hotkeys、languages、consent、context、ack、accepted、hotkeysRevision。字段编辑仅传对应 expected/value；动作包括 set/capture/clearHotkey/resetHotkey/resetHotkeys/consent。快捷键动作携带原生 revision 和受限 slot，拒绝旧快照；取消捕获为独立无参 query，可取消尚未执行的 capture。字段和类型均白名单，拒绝分数、越界、未知字段、无效 locale 和超 4096 字节 payload；协议不接受 uiScale。
 - input/HotkeyCapture 抽出旧菜单原有捕获规则，两个入口共用，原生正式前端不自行翻译 KeyboardEvent.key。Overlay 在 OreUI 激活捕获期间只把按键/中键/侧键交给捕获器，其余时候仍由原版场景接收；保留 F11 的完整生命周期，认领的重复按下和释放不泄漏给场景。Esc 取消捕获不会同时关闭菜单。切页 query、关闭菜单、原生上下文销毁清理捕获。HotkeyDefinitions 共用于输入处理和 OreUI 标签，按键名称仍由 HotkeyFormat 格式化；默认键值只在 StructureUiState 原有表中维护。
 - 语言代码和列表来自 i18n 动态注册表，不硬编码四个语言索引。OreUiBridge 观察语言变化主动重发 labels，开屏中后端改变语言也能刷新；名称沿用每种语言自己的 displayName。
 - OreUI 界面设置仅提供语言选择，已移除缩放占位控件、说明与局部状态；旧 ImGui 菜单缩放状态也已删除。HUD 通过 StructureUiState 的原子单字段 setter 修改目标字段，保留各自的原生缩放设置。
-- 实验性说明继续使用旧 UI 的原文和确认流程；取消无启用请求，确认后等原生授权/模式应答。后端独立校验授权，模式勾选不能由前端草稿自称成功。半径 1～4、冷却 0～60，原生与前端均验证。
+- 实验性说明继续使用旧 UI 的原文和确认流程；取消无启用请求，确认后等原生授权/模式应答。后端独立校验授权，模式勾选不能由前端草稿自称成功。旧模式半径 1～4、单人模式半径 1～64，冷却 0～60 秒，原生与前端均验证。
 
 本次检查纠正了前端写死语言表/语言索引、复制快捷键默认值、将 Esc/退格/F11 当普通绑定、恢复默认仅改前端、知情授权和模式互斥只存在于草稿的问题。这些状态现在由原生拥有，正式页面只保留 UI 文本/弹窗；没有新增用户操作。检查范围是这些页面与共用设置/输入通路，不宣称完成全仓库审计。
 

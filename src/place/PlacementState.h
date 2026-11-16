@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -51,6 +52,12 @@ struct FailedPlanKeyHash {
     }
 };
 
+inline std::int64_t packPlacementCell(int x, int y, int z) {
+    return (static_cast<std::int64_t>(x) & 0x3FFFFFF) << 38
+         | (static_cast<std::int64_t>(z) & 0x3FFFFFF) << 12
+         | (static_cast<std::int64_t>(y) & 0xFFF);
+}
+
 class PlacementState {
 public:
     static PlacementState& getInstance();
@@ -68,10 +75,19 @@ public:
     void setManualMode(bool manual);
     [[nodiscard]] int radius() const;
     void setRadius(int radius);
+    [[nodiscard]] int localRadius() const { return mLocalRadius.load(); }
+    void setLocalRadius(int radius) { mLocalRadius.store(radius); }
+    [[nodiscard]] bool localLiquidsDisabled() const { return mLocalLiquidsDisabled.load(); }
+    void setLocalLiquidsDisabled(bool disabled) { mLocalLiquidsDisabled.store(disabled); }
+    [[nodiscard]] bool localShulkerRestock() const { return mLocalShulkerRestock.load(); }
+    void setLocalShulkerRestock(bool enabled) { mLocalShulkerRestock.store(enabled); }
+    [[nodiscard]] bool localCreativeRestock() const { return mLocalCreativeRestock.load(); }
+    void setLocalCreativeRestock(bool enabled) { mLocalCreativeRestock.store(enabled); }
+    [[nodiscard]] bool localCreativeRestockOverwrite() const { return mLocalCreativeRestockOverwrite.load(); }
+    void setLocalCreativeRestockOverwrite(bool enabled) { mLocalCreativeRestockOverwrite.store(enabled); }
     [[nodiscard]] int autoPlacementBreakCooldownSeconds() const;
     void setAutoPlacementBreakCooldownSeconds(int seconds);
 
-    [[nodiscard]] bool manualHeld() const;
     // Starts one logical right-button press. Repeated Bedrock callbacks while
     // the same press is held are idempotent and must not reset repeat timing.
     [[nodiscard]] bool beginManualPress(std::uint64_t time);
@@ -80,11 +96,8 @@ public:
     // Cancels both the held state and any unconsumed first-placement request.
     void cancelManualPress();
     void resetManualInput();
-    [[nodiscard]] bool manualPlaceRequested() const;
-    void setManualPlaceRequested(bool requested);
-    [[nodiscard]] std::uint64_t manualPressAt() const;
-    [[nodiscard]] std::uint64_t lastManualPlaceAt() const;
-    void setLastManualPlaceAt(std::uint64_t time);
+    [[nodiscard]] std::optional<std::uint64_t> dueManualPress(std::uint64_t now);
+    void recordManualAttempt(std::uint64_t pressId, std::uint64_t now);
 
     [[nodiscard]] std::uint64_t nextPlaceAt() const;
     void setNextPlaceAt(std::uint64_t time);
@@ -111,14 +124,22 @@ private:
     std::atomic_bool     mEnabled{false};
     std::atomic_bool     mRangeEnabled{false};
     std::atomic_bool     mManualMode{false};
-    std::atomic_bool     mManualHeld{false};
-    std::atomic_bool     mManualPlaceRequested{false};
-    std::atomic_uint64_t mManualPressAt{0};
-    std::atomic_uint64_t mLastManualPlaceAt{0};
     std::atomic_int      mRadius{4};
+    std::atomic_int      mLocalRadius{4};
+    std::atomic_bool     mLocalLiquidsDisabled{true};
+    std::atomic_bool     mLocalShulkerRestock{};
+    std::atomic_bool     mLocalCreativeRestock{};
+    std::atomic_bool     mLocalCreativeRestockOverwrite{};
     std::atomic_int      mAutoPlacementBreakCooldownSeconds{10};
     std::atomic_uint64_t mNextPlaceAt{0};
     std::atomic_uint64_t mNextSwapAt{0};
+
+    std::mutex mManualInputMutex;
+    bool mManualHeld{};
+    bool mManualPlaceRequested{};
+    std::uint64_t mManualPressId{};
+    std::uint64_t mManualPressAt{};
+    std::uint64_t mLastManualAttemptAt{};
 
     mutable std::mutex                               mSessionCacheMutex;
     std::unordered_map<std::int64_t, std::uint64_t> mRecentPlacements;

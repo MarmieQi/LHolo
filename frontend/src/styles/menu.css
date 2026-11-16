@@ -216,7 +216,7 @@
 
 
 .lholo-hotkey-list { margin-top:0.4rem; }
-.lholo-hotkey-group + .lholo-hotkey-group { margin-top:1.2rem; padding-top:0.9rem; border-top:0.06rem solid #2b2b2b; }
+.lholo-hotkey-group + .lholo-hotkey-group, .lholo-placement-options { margin-top:1.2rem; padding-top:0.9rem; border-top:0.06rem solid #2b2b2b; }
 .lholo-hotkey-group-title { color:#a0a0a0; font-size:0.95rem; line-height:1.5; margin-bottom:0.45rem; }
 .lholo-hotkey-gesture { margin-top:0.65rem; }
 .lholo-hotkey-row { flex-direction:row; align-items:center; flex-wrap:wrap; margin-top:0.55rem; }

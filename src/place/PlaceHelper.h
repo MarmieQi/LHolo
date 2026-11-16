@@ -18,6 +18,7 @@
 
 #include <string>
 #include "place/AimedProjectedBlock.h"
+#include "place/LocalPlacementMode.h"
 
 namespace lholo::place {
 
@@ -27,8 +28,21 @@ bool isEnabled();
 // player (still bounded by the player's actual placement reach).
 void setRangeEnabled(bool enabled);
 bool isRangeEnabled();
+void setLocalPlacementMode(LocalPlacementMode mode);
+LocalPlacementMode getLocalPlacementMode();
+bool localRangeAvailable();
 void setPlacementRadius(int radius);
 int  getPlacementRadius();
+void setLocalPlacementRadius(int radius);
+int getLocalPlacementRadius();
+void setLocalPlacementLiquidsDisabled(bool disabled);
+bool getLocalPlacementLiquidsDisabled();
+void setLocalShulkerRestock(bool enabled);
+bool getLocalShulkerRestock();
+void setLocalCreativeRestock(bool enabled);
+bool getLocalCreativeRestock();
+void setLocalCreativeRestockOverwrite(bool enabled);
+bool getLocalCreativeRestockOverwrite();
 void setAutoPlacementBreakCooldownSeconds(int seconds);
 int  getAutoPlacementBreakCooldownSeconds();
 // Manual mode: only place while the right mouse button is held, instead of

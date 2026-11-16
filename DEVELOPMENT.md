@@ -49,7 +49,7 @@ OreUI 渐进迁移状态（2026-11-01）：聊天命令和菜单快捷键均打�
 
 渲染设置经 application/useRenderSettings → RenderSettingsBindings/Protocol → app/RenderSettingsActions 接入。AppKernel::processControlFrame 在客户端更新时编排结构动作与渲染设置，并复用 saveSettings。应用启用时向 Overlay 注册原子帧回调，Overlay 不依赖 AppKernel，关闭时移除回调。投影视觉参数仍由 projection 持有，分层和真实范围由 StructureSession / LayerSettings 持有；下层不得反向依赖 app 或 OreUI。请求只包含改动字段，控制帧校验原值、会话和分层轴，避免整页配置覆盖。
 
-HUD/快捷键/语言/实验性功能由 app/SettingsActions 统一接收字段或具体命令，原生持有实际状态；前端共享 useSettings 的应答调度，各页 hook 只持有局部编辑状态。语言列表/快捷键标签与默认值不在正式前端复制；input/HotkeyCapture 共用原有输入规则。模式不持久化，知情确认和参数沿用原有保存；缩放协议不开放。详见迁移说明。
+HUD/快捷键/语言/实验性功能由 app/SettingsActions 统一接收字段或具体命令，原生持有实际状态；前端共享 useSettings 的应答调度，各页 hook 只持有局部编辑状态。语言列表/快捷键标签与默认值不在正式前端复制；input/HotkeyCapture 共用原有输入规则。实验性功能页的模式、知情确认和参数均为游戏进程内状态。缩放协议不开放。详见迁移说明。
 
 建造任务的数据规则和原子存储位于 `src/tasks/`，`app/TaskActions` 负责编排、版本和发布。`structure/IndependentTaskFiles` 生成仅含原文件引用的任务快照，`TaskProjectionView` 统一解释顺序、切片、重叠获胜者与真实覆盖区域；原生投影保留每文件实例。选中文件决定变换、HUD/材料和放置目标。任务保存在 `data/tasks.json`，与全局配置及旧单文件恢复记录分离。实现边界和验证清单见 [建造任务](docs/TASKS_DESIGN.md)。
 
@@ -191,10 +191,17 @@ LHolo/
 │  │     ├─ ProjectionGameHooks.* 无状态 BlockSource 虚拟查询与客户端命令 Hook
 │  │     └─ ProjectionRenderHooks.* 有状态 LevelRendererPlayer 渲染 Hook 薄壳
 │  ├─ place/
-│  │  ├─ PlaceHelper.cpp        放置 Hook、开关与公开接口
+│  │  ├─ PlaceHelper.*          客户端 tick、开关与 Hook 生命周期入口
+│  │  ├─ AimedPlacementTarget.*  新旧模式共用的投影准心选格
+│  │  ├─ ManualPlacementHooks.* 新旧手动模式共用的右键 Hook 和释放检测
 │  │  ├─ PlacementState.*       放置会话状态（开关、定时、近期格、失败计划缓存）
-│  │  ├─ PlacementExecutor.*    轻松/手动/范围放置规划与执行
-│  │  └─ PlaceHelper.h          配置开关与 Hook 生命周期接口
+│  │  ├─ legacy/
+│  │  │  └─ PlacementExecutor.*    旧版轻松、手动和范围放置规划与执行
+│  │  └─ local/
+│  │     ├─ LocalPlacement.*      单人手动、轻松和范围放置的服务端调度
+│  │     ├─ LocalPlacementUse.*   原版物品使用和本次落块状态替换
+│  │     ├─ PlacementRestock.*   创造补货和共享的库存转移、回退
+│  │     └─ ShulkerRestock.*      背包潜影盒识别、物品转移和同步
 │  └─ input/
 │     ├─ WindowHotkeys.*       游戏窗口快捷键与录制输入
 │     ├─ HotkeyTypes.h          快捷键槽位、顺序与数量的唯一共享定义
@@ -349,12 +356,12 @@ LHolo/
   `gState`，也不决定 section 如何失效；事件消费、纠错更新和 dirty 传播由
   `ProjectionFramePipeline`/`ProjectionCorrectionTracker` 负责。
 - `overlay` 负责“外部 GUI 如何安全进入游戏图形链”，不解析结构或扫描世界方块。
-- `place` 负责轻松、手动和范围放置：调用 projection 查询接口，在完整背包中查找物品，必要时交换到快捷栏，并发送 `InventoryTransactionPacket`；不碰渲染与配置。
+- `place` 通过投影查询获取目标。旧版放置经背包、快捷栏和 `InventoryTransactionPacket` 执行。单人范围放置经内置服务器的原版物品使用入口执行。
 - `place/PlacementState` 持有放置会话状态：开关、幂等的手动按下/释放状态、手动/范围定时、近期放置格、失败计划缓存与准心投影方块名称；
   atomic、mutex、字符串和容器均不向调用者暴露，`PlaceHelper`/`PlacementExecutor` 只通过具体操作读写。
-- `place/PlacementExecutor` 承载轻松/手动/范围放置的规划与执行（背包查找、交换、放置事务、
-  点击候选与预测匹配），不直接读取操作系统物理输入；游戏 Hook 和右键物理状态边界留在 `PlaceHelper`，
-  只向 `PlacementState` 提交状态转换并调用 `tickEasyPlace`/`tickRangePlace`。
+- `place/legacy/PlacementExecutor` 承载旧版轻松、手动和范围放置的背包查找、交换、放置事务、点击候选与预测匹配。
+  `place/ManualPlacementHooks` 处理新旧手动放置的右键 Hook 和物理释放检测，经 `PlacementState` 更新按压和连放状态。
+  `PlaceHelper` 持有客户端 tick Hook，每 tick 调用释放检测和放置执行。
 - `input` 负责窗口快捷键、按键录制和投影滚轮保护。原生页面管理自身输入。
 - `plugin` 只把生命周期委托给 `app/AppKernel`，不承载业务逻辑。
 
@@ -474,7 +481,7 @@ LevelListener，即使首个投影尚未激活，世界销毁回调也先清空�
 - 气泡柱必须保留独立的实体/液体语义：`RenderBlock::block` 是气泡柱本体，`liquid` 只保留原版加载器实际解析出的另一层液体。无水气泡柱不补造水；含水气泡柱保留气泡本体与独立水体绘制。不能仅凭原始文件的索引层数判断含水，格式升级由原版 StructureTemplate 负责；Java 映射仍依据其来源格式的映射规则处理水层。
 - 气泡柱保留通用 `tessellateInWorld` 的世界/缓存设置；若该入口未追加顶点，调用实际 SDK 提供的 `tessellateBubbleColumnInWorld` 一次。2026-10-19 无水与含水样本实测中，通用入口均追加 0 个顶点（graphics shape=-1），专用入口追加 32/36 个顶点；其返回值为 false 时也可能有 36 个顶点，因此仍以网格增量判断几何。无几何的气泡柱跳过通用方块实体占位壳，避免白色立方体。原版资源提供气泡柱动画 atlas，实际存在的水副层独立生成几何后进入统一透明提交。本修复不修改分层数据、纠错、世界或任务生命周期，不新增刷新/重试队列。
 - 用户已确认无水样本 `D:/temp/气泡柱.mcstructure` 和含水样本均显示通过。临时诊断日志、原子计数、同步 flush 和仅供诊断的日志依赖已移除；保留实测有效调用顺序，不在本轮清理中推断专用入口可绕过通用前置设置。
-- 纠错分别比较 `BlockSource::getBlock()` 与 `getLiquidBlock()`；气泡柱使用 `getExtraBlock()` 取得实际副层，避免把气泡柱本体误认作副层水。只对结构实际要求的液体检查缺失、类型和状态，不因无水样本缺少副层水而误报。
+- 纠错分别比较 `BlockSource::getBlock()` 与 `getLiquidBlock()`；气泡柱使用 `getExtraBlock()` 取得实际副层，避免把气泡柱本体误认作副层水。只对结构实际要求的液体检查缺失、类型和状态，不因无水样本缺少副层水而误报。独立源格被同类流动液体占据时仍计为缺失。同类液体已经形成源时计为正确，使用原版液体材料类型和 BlockUtils::isLiquidSource 判断。
 - 材料轴的完整视图仍显示没有材料索引的 Extra 世界方块；选择具体材料或材料范围时，Extra 因无法归属某项材料而隐藏。
 - 投影进度仍以结构坐标计数，而不是把同一坐标的实体层和液体层重复计数。
 
@@ -934,7 +941,7 @@ LeviLamina Hook：
 - `GameMode::$useItem`（`place` 模块）：手动模式指向空气时创建单次放置请求，使浮空投影方块也能进入放置链路。
 - `MouseDevice::feed`（`input` 模块）：Alt 投影移动期间只阻止对应的滚轮动作进入原生热栏路径。
 
-`PlaceHelper` 分别记录上述放置 Hook 的安装结果，并且卸载时只逆序卸载成功安装的入口。Hook 返回值按
+`PlaceHelper` 持有客户端 tick Hook 的安装结果，`ManualPlacementHooks` 持有四个手动 Hook 的安装结果。卸载时只逆序卸载成功安装的入口。Hook 返回值按
 PreLoader/LeviLamina 的约定处理：`0` 表示成功，任何非 `0` 值都表示失败；不得用 `< 0` 判断。
 
 新版本最容易变化的是成员函数符号、签名、调用层次和 render pass 时序，必须逐一验证，不能只以“Hook 安装成功”判断适配完成。
@@ -945,7 +952,7 @@ PreLoader/LeviLamina 的约定处理：`0` 表示成功，任何非 `0` 值都�
 
 ### 12.1 行为
 
-菜单“投影”页提供三种互斥模式：
+“辅助放置”提供六种互斥模式。旧的页签提供以下三种：
 
 - 轻松放置：准心指向投影中的蓝色缺块位置（`correctionStates == Missing`）时自动放置。
 - 手动放置：准心定位规则相同，但只有按下/按住右键时才放置；命中真实方块时，首次按下立即尝试，持续按住经过 150 ms 初始延迟后每 120 ms 重复；指向空气中的浮空投影时，空气右键入口创建同一幂等按下请求，重复 `$useItem` 回调不会重置初始延迟或重复首击。
@@ -953,20 +960,26 @@ PreLoader/LeviLamina 的约定处理：`0` 表示成功，任何非 `0` 值都�
 
 三种模式都会在完整 36 格玩家背包中寻找对应物品；背包栏命中时先通过服务端同步的普通背包事务与当前快捷栏槽位交换，下一 tick 再放置。液体单元与隐藏层不参与放置。
 
+“单人存档”页签提供手动、轻松和范围放置。手动和轻松使用玩家准心和原版触及距离，每 tick 只提交当前瞄准的待放格。手动与旧手动模式共用按下、释放与连放规则，服务端确认同一次按压仍可执行后才放置。三种模式共用单人服务端放置、液体限制和补货规则，破坏冷却应用于自动放置模式。有内置服务器的本地存档可启用，使用独立的 1～64 格放置半径，默认 4 格，与旧模式共用破坏冷却。主本地玩家的客户端 tick 提交当前选中文件的可见缺块。手动和轻松的准心候选由服务端消费一次，范围候选按距离提交。大于 4 格时按已有投影分区查询，候选列表最多每 250 ms 刷新一次，内置服务器在 `ServerLevelTickEvent` 中确认玩家、世界、维度、范围、投影状态、区块、空位和材料。每 tick 最多检查 128 个候选、完成一次原版 `GameMode::useItemOn` 放置。范围模式按距离和坐标顺序扫描。放置成功、原版返回未匹配的写入、累计拒绝 4 个候选或用完本 tick 的检查额度后，下个 tick 从上次检查坐标的后继继续，扫到末尾再从头开始。刷新列表时即使已放置的格子被移除，也沿用这个坐标。手动模式的原版放置尝试成功或失败均计入 120 ms 连放间隔。按相邻点击面尝试，悬空单格以目标空气格发起原版交互。独立方块、完整上下两格和水源、岩浆源分别使用对应的物品和原版放置路径。“禁用液体自动放置”默认开启。允许放置液体时只处理原版认定的源格，可在空格或同类流动液体所在格使用原版桶。桶的实际倒出坐标须与目标格一致，源的形成、液体流动和物品消耗由原版处理。原版处理交互、落块和材料消耗，LHolo 提交原版返回的物品栈并同步背包。正常落块使用原版选定的方块类型，本次调用内只有同一维度、目标坐标和方块类型匹配的首次写入会替换为投影旋转、镜像后的状态。双层半砖由原版分两次放置。空格先放对应的单层半砖，已有相同材料的半砖时，点击露出的水平面由原版合并并扣物。横向多格方块和含水副层仍需各自的原版放置流程。`[LocalRange]` 日志按原因限频，记录方块名及坐标。范围设置控制选格，实际能否放置由原版入口决定。关闭模式、换维度或退出存档时撤销待处理候选。实机验证检查背对投影时的朝向、上下半格、落块后库存以及保存重进。
+
+“潜影盒自动补货”默认关闭。背包缺少当前放置材料时先准备转移，只有找到点击位置并发起原版物品使用时才临时取出一组匹配物品。原版拒绝且没有改变方块或物品时恢复原盒和空槽，然后同步库存。背包满时跳过补货。潜影盒以原生方块实体类型识别，以对应物品 ID 与附加值匹配盒内材料。物品数据的读取和写回集中在 ShulkerRestock，盒内其他槽位和盒子元数据原样保留。
+
 ### 12.2 实现要点
 
-- 驱动：直接 Hook `LocalPlayer::$tickWorld`，模拟线程每 tick 一次，不使用 LL 事件系统（与全项目 Hook 风格一致）。手动模式另外 Hook `GameMode::$startBuildBlock`、`$buildBlock` 和 `$stopBuildBlock` 获取命中真实方块时的右键按下、持续与释放状态，并阻止同一次操作被原版重复放置；指向空气时 Bedrock 不进入 build 链路，因此通过官方 `GameMode::$useItem(ItemStack&)` 入口创建幂等按下请求。浮空路径可能缺少 `$stopBuildBlock`，所以右键物理释放仅在 `PlaceHelper` 的 tick Hook 边界补充检测；`PlacementExecutor` 只消费逻辑状态。
+“创造模式自动补货”默认关闭，仅在本次游戏进程内生效。背包缺少材料且服务端玩家处于创造模式时，优先在空槽补一件原版映射出的物品，再发起原版放置。背包满时，启用“允许创造模式补货覆盖物品栏物品”才使用当前手持槽。该选项默认关闭，随实验性设置在游戏进程内生效。两种补货共用库存变更，原版拒绝且没有改变方块或物品时恢复目标槽原有物品。
+
+- 驱动：直接 Hook `LocalPlayer::$tickWorld`，模拟线程每 tick 一次。手动模式另外 Hook `GameMode::$startBuildBlock`、`$buildBlock` 和 `$stopBuildBlock` 获取命中真实方块时的右键按下、持续与释放状态，并阻止同一次操作被原版重复放置；指向空气时 Bedrock 不进入 build 链路，因此通过官方 `GameMode::$useItem(ItemStack&)` 入口创建幂等按下请求。空手右键可能跳过两个 GameMode 入口，单人手动模式在客户端 tick 消费 `MouseDevice::feed` 收到的游戏内右键按下。原版准心未命中且瞄准待放投影格时，创建同一个手动按压请求，使补货判断仍由服务端执行。浮空路径可能缺少 `$stopBuildBlock`，所以 `PlaceHelper` 在 tick 中调用 `ManualPlacementHooks` 补充检测右键物理释放。旧路径和单人路径通过 `PlacementState` 读取待执行按压并在执行后记录。准心外的原版放置被拦截时，开始与持续放置 Hook 共用动作 HUD 提示，同一次按住右键只显示一次。
 - 定位：不能使用 `Level::getHitResult()`——那是原版射线，只命中真实世界方块，永远看不到 LHolo 自绘的投影幽灵。改为自身体素 DDA（Amanatides & Woo）射线：原点 `Actor::getEyePos()`、方向 `Actor::getViewVector(1.0f)`、上限 `LocalPlayer::getPickRange()`。逐格判定：真实方块挡住射线（此时检查其相机侧邻居是否为待放幽灵），投影 `Missing` 幽灵格直接作为放置目标；支持面用 `BlockPos::neighbor` + `Facing::getOpposite` 选取朝向相机、且为真实方块的邻居。
 - 投影查表：`Projection::queryProjection()`——一次锁 `gStateMutex` 内同时查 `expectedWorldBlocks`（期望块，液体/隐藏层返回 null）与 `expectedWorldBlockIndices`/`correctionStates`（是否 Missing）。DDA 每格只调一次，避免两次独立加锁；命中结果（含期望块指针）随 `ProjectionTarget` 一并返回，`tickEasyPlace` 不再二次查询。
-- 取物：遍历完整背包（36 格）用 `sameItemAndAux` 匹配。快捷栏命中直接 `Player::setSelectedSlot`；背包命中用 legacy `NormalTransaction`（`ComplexInventoryTransaction::fromType` + 两个 `InventoryAction`）把物品与当前选中格**交换**（服务器同步，不假设目标格为空，避免被 net 管理器回滚）。交换后本 tick 不放置，下一 tick 物品已在选中格、走单包快速路径——同 tick 立即放置会被服务器 net 记账滞后拒绝，再触发格锁反而更慢。服务器只接受选中快捷栏槽位的放置事务。
-- 放置：直接构造 `ItemUseInventoryTransaction`(Place) 经 `IClientInstance::getPacketSender().sendToServer()` 发送（单机走 LoopbackPacketSender，联机走网络发送器），服务器权威落块并保存。**关键细节**（踩坑记录）：
+- 旧模式取物：遍历完整背包（36 格）用 `sameItemAndAux` 匹配。快捷栏命中直接 `Player::setSelectedSlot`；背包命中用 legacy `NormalTransaction`（`ComplexInventoryTransaction::fromType` + 两个 `InventoryAction`）把物品与当前选中格**交换**（服务器同步，不假设目标格为空，避免被 net 管理器回滚）。交换后本 tick 不放置，下一 tick 物品已在选中格、走单包快速路径——同 tick 立即放置会被服务器 net 记账滞后拒绝，再触发格锁反而更慢。服务器只接受选中快捷栏槽位的放置事务。
+- 旧模式放置：直接构造 `ItemUseInventoryTransaction`(Place) 经 `IClientInstance::getPacketSender().sendToServer()` 发送（单机走 LoopbackPacketSender，联机走网络发送器），服务器权威落块并保存。**关键细节**（踩坑记录）：
   - `mPos` 是“被点击的方块”，服务器在 `mPos.neighbor(mFace)` 落块——必须填支撑块 `at`，填目标格会导致偏一格。
   - `setIncludeNetIds(true)`：服务器栈 net-id 系统按“含 net id”读包，缺此标志流错位、包被静默丢弃（`onTransactionError` 都不会触发）。
   - `setTargetBlock` / `setSelectedItem` 用导出 setter 填 `mTargetBlockId` / `mItem`，避免未导出的赋值运算符。
   - 点击点取支撑面中心：`(cell + at)` 的中点。
   - `GameMode::useItemOn`（客户端）只做本地预测不持久；`Player::sendNetworkPacket` 在单机不送达集成服务器，两条路都不可用。
-- 节流：只有 `Missing` 格可进入规划，发送前再次读取真实世界；目标格只要已存在任何方块（包括错误类型或错误朝向/状态）就停止，不允许再次尝试放置。实际发包后才写入逐格锁，在 `kCellLockMs`（500 ms）内不重复发包，等待服务器应用和纠错扫描更新；新格可立即放置（受 tick 20 Hz 上限约束）。发送地板间隔 `kMinSendIntervalMs`（40 ms）防异常 tick 率双发。背包交换未生效时由 `kSwapRetryMs`（200 ms）限制重发；成功交换仍在下一游戏 tick 尝试放置。范围模式每 tick 最多执行 16 次昂贵的放置规划，失败规划缓存 250 ms。
-- 破坏抑制：复用投影的 `BlockSourceListener::onBlockChanged`，以主方块层 `oldBlock` 非空气且 `block` 为空气识别破坏；纠错层只转发属于当前投影的坐标和原始发生时间。放置层用压缩坐标稀疏保存截止时间，时长为持久化的 0～60 秒用户偏好（默认 10 秒，0 表示不登记）；轻松/范围放置在库存搜索和方向规划前跳过，手动放置绕过。空表通过最早到期时间原子值直接返回，不扫描投影、不轮询世界、也不启动计时线程。修改时长只影响后续破坏，已经登记的位置沿用破坏时的截止时间。
+- 旧模式节流：只有 `Missing` 格可进入规划，发送前再次读取真实世界；目标格只要已存在任何方块（包括错误类型或错误朝向/状态）就停止，不允许再次尝试放置。实际发包后才写入逐格锁，在 `kCellLockMs`（500 ms）内不重复发包，等待服务器应用和纠错扫描更新；新格可立即放置（受 tick 20 Hz 上限约束）。发送地板间隔 `kMinSendIntervalMs`（40 ms）防异常 tick 率双发。背包交换未生效时由 `kSwapRetryMs`（200 ms）限制重发；成功交换仍在下一游戏 tick 尝试放置。范围模式每 tick 最多执行 16 次昂贵的放置规划，失败规划缓存 250 ms。
+- 破坏抑制：复用投影的 `BlockSourceListener::onBlockChanged`，以主方块层 `oldBlock` 非空气且 `block` 为空气识别破坏；纠错层只转发属于当前投影的坐标和原始发生时间。放置层用压缩坐标稀疏保存截止时间，时长为进程内的 0～60 秒设置（默认 10 秒，0 表示不登记）；轻松/范围放置在库存搜索和方向规划前跳过，手动放置绕过。空表通过最早到期时间原子值直接返回，不扫描投影、不轮询世界、也不启动计时线程。修改时长只影响后续破坏，已经登记的位置沿用破坏时的截止时间。
 - 守卫：开关关闭、未进世界、`isInGameInputEnabled()` 为假（菜单/暂停）或 LHolo 菜单打开时全部跳过。
 
 ### 12.3 已知限制
@@ -987,13 +1000,13 @@ mods/LHolo/config/config.json
 
 当前配置版本：`13`。字段、快捷键写法及迁移规则见 [配置文件说明](docs/CONFIGURATION.md)，默认配置由模组首次运行时生成。
 
-配置只保存界面、渲染、HUD、输入、辅助放置偏好，按 `interface`、`rendering`、`hud`、`input`、`placement` 分组。HUD 内容、位置、缩放与背景不透明度归入各自面板；快捷键以 `Alt+M` 等组合字符串或 `null` 保存；百分比与秒明确标注单位，固定分组顺序、4 空格缩进和末尾换行。
+配置只保存界面、渲染、HUD 和输入偏好，按 `interface`、`rendering`、`hud`、`input` 分组。HUD 内容、位置、缩放与背景不透明度归入各自面板；快捷键以 `Alt+M` 等组合字符串或 `null` 保存；百分比明确标注单位，固定分组顺序、4 空格缩进和末尾换行。
 
 旧单文件最近路径、`saved*` 恢复记录及旧 ImGui `uiScale` 不再进入正式偏好文件。任务与各文件维度/坐标继续由 tasks 独立保存。旧 ImGui 菜单状态已删除，单文件恢复快照仍只保留在内存中，不从配置恢复或写入。运行态 Settings 值只保留实际偏好，菜单/应用用例不依赖新 JSON 分组。
 
 SettingsStore 在读取时兼容旧平铺字段（包括旧世界轴快捷键和 hudShowBlockEntity 别名），完整校验后一次性发布；保存只写 v13，第一次覆盖旧格式前备份为 config.json.legacy.bak。有效配置在启动应用后规范化；损坏、错误类型、非法组合键/锚点和未来版本拒绝读取，后续保存也不会覆盖。写入经临时文件关闭和系统原子替换，进程内写入串行化。原生 HUD 使用的归一化位置、缩放和不透明度均保持原偏好。
 
-堆叠换算默认关闭、每页默认 5 项，翻页快捷键默认不绑定。手动/轻松/范围放置模式和 HUD 页码是会话状态；只有知情确认、放置半径与冷却参数持久化。
+堆叠换算默认关闭、每页默认 5 项，翻页快捷键默认不绑定。辅助放置模式和 HUD 页码是会话状态。实验性功能页的参数、开关和知情确认均在重启后恢复默认值。
 
 ---
 

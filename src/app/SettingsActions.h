@@ -9,7 +9,7 @@ namespace lholo::app {
 enum class SettingsField {
     HudEnabled, HudPosition, HudFileName, HudLayer, HudOverallProgress, HudProgress,
     HudProjectedBlockName, HudWrongState, HudWrongType, HudExtraBlocks,
-    MaterialHudEnabled, MaterialHudStackConversion, MaterialHudMaxItems, MaterialHudPosition, AltWheel, Radius, Cooldown, Mode, Language, WriteHudEnabled, Count
+    MaterialHudEnabled, MaterialHudStackConversion, MaterialHudMaxItems, MaterialHudPosition, AltWheel, Radius, Cooldown, Mode, Language, WriteHudEnabled, LocalRadius, LocalLiquidsDisabled, LocalShulkerRestock, LocalCreativeRestock, LocalCreativeRestockOverwrite, Count
 };
 inline constexpr auto kSettingsFieldCount = static_cast<std::size_t>(SettingsField::Count);
 using SettingsValue = std::variant<bool, int, std::string>;
@@ -31,7 +31,7 @@ struct SettingsSnapshot {
     std::array<SettingsValue, kSettingsFieldCount> values;
     std::array<SettingsHotkey, input::kHotkeyCount> hotkeys;
     std::uint64_t hotkeysRevision{}, context{}, ack{};
-    bool consent{}, accepted{};
+    bool consent{}, accepted{}, localRangeAvailable{};
 };
 bool validSettingsIntent(SettingsIntent const& intent);
 bool submitSettingsIntent(SettingsIntent const& intent);

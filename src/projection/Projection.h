@@ -64,8 +64,10 @@ bool isLayerVisible(
 );
 std::vector<BrokenProjectionCell> takeBrokenProjectionCells(LocalPlayer& player);
 
-ProjectionQuery queryProjection(LocalPlayer& player, BlockPos const& worldPos);
+ProjectionQuery queryProjection(LocalPlayer& player, BlockPos const& worldPos, bool localPlacement = false);
 
-std::vector<RangeCandidate> queryMissingCellsInRange(LocalPlayer& player, Vec3 const& center, float radius);
+std::vector<RangeCandidate> queryMissingCellsInRange(
+    LocalPlayer& player, Vec3 const& center, float radius, bool localPlacement = false);
+std::optional<RangeCandidate> queryCurrentPlacementCandidate(BlockPos const& position, int dimension);
 
 } // namespace lholo::projection

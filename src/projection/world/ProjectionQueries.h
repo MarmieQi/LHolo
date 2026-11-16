@@ -19,13 +19,15 @@ struct ProjectionState;
 
 ProjectionQuery queryProjectionCell(
     ProjectionState const& state,
-    BlockPos const&        worldPosition
+    BlockPos const&        worldPosition,
+    bool                   localPlacement
 );
 
 std::vector<RangeCandidate> queryMissingProjectionCells(
     ProjectionState const& state,
     Vec3 const&            center,
-    float                  radius
+    float                  radius,
+    bool                   localPlacement
 );
 
 } // namespace lholo::projection::detail

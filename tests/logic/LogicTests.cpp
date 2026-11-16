@@ -393,8 +393,9 @@ void testPlacementState() {
     state.setRadius(3);
     state.setAutoPlacementBreakCooldownSeconds(12);
     LHOLO_CHECK(state.beginManualPress(100));
+    auto const firstPress = state.dueManualPress(100);
+    LHOLO_CHECK(firstPress.has_value());
     LHOLO_CHECK(!state.beginManualPress(120));
-    state.setLastManualPlaceAt(80);
     state.setNextPlaceAt(140);
     state.setNextSwapAt(150);
 
@@ -403,17 +404,30 @@ void testPlacementState() {
     LHOLO_CHECK(state.manualMode());
     LHOLO_CHECK(state.radius() == 3);
     LHOLO_CHECK(state.autoPlacementBreakCooldownSeconds() == 12);
-    LHOLO_CHECK(state.manualPressAt() == 100);
-    LHOLO_CHECK(state.lastManualPlaceAt() == 80);
-    LHOLO_CHECK(state.manualPlaceRequested());
-    LHOLO_CHECK(state.manualHeld());
+    LHOLO_CHECK(state.dueManualPress(120) == firstPress);
     LHOLO_CHECK(state.nextPlaceAt() == 140);
     LHOLO_CHECK(state.nextSwapAt() == 150);
     state.releaseManualPress();
-    LHOLO_CHECK(!state.manualHeld());
-    LHOLO_CHECK(state.manualPlaceRequested());
+    LHOLO_CHECK(state.dueManualPress(125) == firstPress);
+    state.recordManualAttempt(*firstPress, 130);
+    LHOLO_CHECK(!state.dueManualPress(131));
+
+    LHOLO_CHECK(state.beginManualPress(160));
+    auto const heldPress = state.dueManualPress(160);
+    LHOLO_CHECK(heldPress.has_value() && heldPress != firstPress);
+    state.recordManualAttempt(*firstPress, 170);
+    LHOLO_CHECK(state.dueManualPress(170) == heldPress);
+    state.recordManualAttempt(*heldPress, 170);
+    LHOLO_CHECK(!state.dueManualPress(309));
+    LHOLO_CHECK(state.dueManualPress(310) == heldPress);
+    state.recordManualAttempt(*heldPress, 310);
+    LHOLO_CHECK(!state.dueManualPress(429));
+    LHOLO_CHECK(state.dueManualPress(430) == heldPress);
     state.cancelManualPress();
-    LHOLO_CHECK(!state.manualPlaceRequested());
+    LHOLO_CHECK(!state.dueManualPress(430));
+    LHOLO_CHECK(state.beginManualPress(440));
+    state.releaseManualPress();
+    LHOLO_CHECK(!state.dueManualPress(841));
 
     constexpr std::int64_t recentCell = 0x123456789LL;
     state.recordRecentPlacement(recentCell, 100, 150);
@@ -452,10 +466,7 @@ void testPlacementState() {
     LHOLO_CHECK(state.enabled());
     LHOLO_CHECK(state.rangeEnabled());
     LHOLO_CHECK(state.manualMode());
-    LHOLO_CHECK(!state.manualHeld());
-    LHOLO_CHECK(!state.manualPlaceRequested());
-    LHOLO_CHECK(state.manualPressAt() == 0);
-    LHOLO_CHECK(state.lastManualPlaceAt() == 0);
+    LHOLO_CHECK(!state.dueManualPress(900));
     LHOLO_CHECK(state.nextPlaceAt() == 0);
     LHOLO_CHECK(state.nextSwapAt() == 0);
     LHOLO_CHECK(!state.recentPlacementActive(recentCell, 400));
@@ -473,10 +484,7 @@ void testPlacementState() {
     LHOLO_CHECK(!state.enabled());
     LHOLO_CHECK(!state.rangeEnabled());
     LHOLO_CHECK(!state.manualMode());
-    LHOLO_CHECK(!state.manualHeld());
-    LHOLO_CHECK(!state.manualPlaceRequested());
-    LHOLO_CHECK(state.manualPressAt() == 0);
-    LHOLO_CHECK(state.lastManualPlaceAt() == 0);
+    LHOLO_CHECK(!state.dueManualPress(900));
     LHOLO_CHECK(state.nextPlaceAt() == 0);
     LHOLO_CHECK(state.nextSwapAt() == 0);
     LHOLO_CHECK(!state.recentPlacementActive(recentCell, 0));

@@ -42,6 +42,8 @@ struct PlacementPart {
 // Reads immutable native states/components on the game thread, once per palette
 // state. The resulting value can be used by background material counting.
 [[nodiscard]] PlacementPart placementPart(Block const& block);
+[[nodiscard]] bool isDoubleSlab(Block const& block);
+[[nodiscard]] bool sameLiquid(Block const& first, Block const& second);
 
 // Maps game-driven runtime variants to the block form the player can actually
 // place. Names without a runtime-only variant are returned unchanged.

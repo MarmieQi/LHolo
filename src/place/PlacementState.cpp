@@ -32,46 +32,55 @@ void PlacementState::setAutoPlacementBreakCooldownSeconds(int seconds) {
     mAutoPlacementBreakCooldownSeconds.store(seconds, std::memory_order_release);
 }
 
-bool PlacementState::manualHeld() const { return mManualHeld.load(std::memory_order_acquire); }
-
 bool PlacementState::beginManualPress(std::uint64_t time) {
-    if (mManualHeld.exchange(true, std::memory_order_acq_rel)) return false;
-    mManualPressAt.store(time, std::memory_order_relaxed);
-    mManualPlaceRequested.store(true, std::memory_order_release);
+    std::lock_guard lock(mManualInputMutex);
+    if (mManualHeld) return false;
+    mManualHeld = true;
+    mManualPressAt = time;
+    mManualPlaceRequested = true;
+    ++mManualPressId;
     return true;
 }
 
 void PlacementState::releaseManualPress() {
-    mManualHeld.store(false, std::memory_order_release);
+    std::lock_guard lock(mManualInputMutex);
+    mManualHeld = false;
 }
 
 void PlacementState::cancelManualPress() {
-    mManualHeld.store(false, std::memory_order_relaxed);
-    mManualPlaceRequested.store(false, std::memory_order_release);
+    std::lock_guard lock(mManualInputMutex);
+    mManualHeld = false;
+    mManualPlaceRequested = false;
 }
 
 void PlacementState::resetManualInput() {
-    cancelManualPress();
-    mManualPressAt.store(0, std::memory_order_relaxed);
-    mLastManualPlaceAt.store(0, std::memory_order_release);
+    std::lock_guard lock(mManualInputMutex);
+    mManualHeld = false;
+    mManualPlaceRequested = false;
+    mManualPressAt = 0;
+    mLastManualAttemptAt = 0;
+    ++mManualPressId;
 }
 
-bool PlacementState::manualPlaceRequested() const {
-    return mManualPlaceRequested.load(std::memory_order_acquire);
-}
-void PlacementState::setManualPlaceRequested(bool requested) {
-    mManualPlaceRequested.store(requested, std::memory_order_release);
+std::optional<std::uint64_t> PlacementState::dueManualPress(std::uint64_t now) {
+    constexpr std::uint64_t initialDelayMs = 150;
+    constexpr std::uint64_t repeatIntervalMs = 120;
+    constexpr std::uint64_t requestTimeoutMs = 400;
+    std::lock_guard lock(mManualInputMutex);
+    if (now < mManualPressAt) return std::nullopt;
+    auto const heldFor = now - mManualPressAt;
+    if (mManualPlaceRequested && heldFor <= requestTimeoutMs) return mManualPressId;
+    mManualPlaceRequested = false;
+    if (mManualHeld && heldFor >= initialDelayMs && now >= mLastManualAttemptAt
+        && now - mLastManualAttemptAt >= repeatIntervalMs) return mManualPressId;
+    return std::nullopt;
 }
 
-std::uint64_t PlacementState::manualPressAt() const {
-    return mManualPressAt.load(std::memory_order_acquire);
-}
-
-std::uint64_t PlacementState::lastManualPlaceAt() const {
-    return mLastManualPlaceAt.load(std::memory_order_acquire);
-}
-void PlacementState::setLastManualPlaceAt(std::uint64_t time) {
-    mLastManualPlaceAt.store(time, std::memory_order_release);
+void PlacementState::recordManualAttempt(std::uint64_t pressId, std::uint64_t now) {
+    std::lock_guard lock(mManualInputMutex);
+    if (pressId != mManualPressId) return;
+    mLastManualAttemptAt = now;
+    mManualPlaceRequested = false;
 }
 
 std::uint64_t PlacementState::nextPlaceAt() const {

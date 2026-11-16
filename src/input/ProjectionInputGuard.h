@@ -3,9 +3,12 @@
 
 #pragma once
 
+#include <cstdint>
+
 namespace lholo::input {
 
 bool installProjectionInputGuard();
 void uninstallProjectionInputGuard();
+std::uint64_t takeGameplayRightPress();
 
 } // namespace lholo::input

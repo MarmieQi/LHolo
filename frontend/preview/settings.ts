@@ -12,7 +12,7 @@ export function createPreviewSettings(emit: (name: string, value: unknown) => vo
   const locales: Record<string, typeof zh> = {en_US: en, ja_JP: ja, ru_RU: ru, zh_CN: zh, zh_TW: tw};
   let state: SettingsState = {values: {...fixture.values}, hotkeys: fixture.defaults.map((b, slot) => ({...b, slot, display: '', capturing: false})),
     languages: Object.entries(locales).map(([code, l]) => ({code, name: l._meta.displayName})),
-    consent: false, context: 0, ack: 0, accepted: false, hotkeysRevision: 0};
+    consent: false, localRangeAvailable: true, context: 0, ack: 0, accepted: false, hotkeysRevision: 0};
   const labels = () => {const {_meta, ...l} = locales[state.values.language]; return l as MenuLabels;};
   const refreshDisplays = () => {
     const l = labels(), names: Record<number, string> = {4:l['key.mouseMiddle'], 5:l['key.mouseSide1'], 6:l['key.mouseSide2'],
@@ -53,12 +53,15 @@ export function createPreviewSettings(emit: (name: string, value: unknown) => vo
       state.accepted = false; state.ack = i.id;
       if (i.context === state.context) {
         if (i.action === 'set' && i.field && state.values[i.field] === i.expected) {
-          if (!(i.field === 'activeMode' && i.value !== 0 && !state.consent)) {
+          const mode = Number(i.value);
+          if (i.field !== 'activeMode' || mode === 0 || (mode >= 4 ? state.localRangeAvailable : state.consent)) {
             Object.assign(state.values, {[i.field]: i.value}); state.accepted = true;
             if (i.field === 'language') emit('lholo:menu-labels', labels());
           }
         } else if (i.action === 'consent' && i.expected === state.values.activeMode) {
-          state.consent = true; state.values.activeMode = Number(i.value); state.accepted = true;
+          state.consent = true;
+          if (i.value !== 0) state.values.activeMode = Number(i.value);
+          state.accepted = true;
         } else if (i.hotkeysRevision === state.hotkeysRevision) {
           if (i.action === 'resetHotkeys') {
             cancel(); state.hotkeys = fixture.defaults.map((b, slot) => ({...b, slot, display:'', capturing:false})); state.values.altWheelOffsetEnabled = true;

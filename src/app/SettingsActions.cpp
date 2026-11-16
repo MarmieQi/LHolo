@@ -15,10 +15,22 @@ std::uint64_t ack{}, hotkeysRevision{};
 std::array<SettingsHotkey, input::kHotkeyCount> observedHotkeys{};
 bool accepted{}, cancelCapture{}, hudLayoutEditRequested{};
 auto& ui() { return structure::detail::StructureUiState::getInstance(); }
-int activeMode() { return place::isManualMode() ? 1 : place::isRangeEnabled() ? 3 : place::isEnabled() ? 2 : 0; }
+int activeMode() {
+    auto const localMode = place::getLocalPlacementMode();
+    if (localMode == place::LocalPlacementMode::Range) return 4;
+    if (localMode == place::LocalPlacementMode::Easy) return 5;
+    if (localMode == place::LocalPlacementMode::Manual) return 6;
+    return place::isManualMode() ? 1 : place::isRangeEnabled() ? 3 : place::isEnabled() ? 2 : 0;
+}
 void setMode(int mode) {
     // These are live session controls, deliberately excluded from config persistence.
     place::setManualMode(false); place::setEnabled(false); place::setRangeEnabled(false);
+    using LocalMode = place::LocalPlacementMode;
+    auto localMode = LocalMode::Off;
+    if (mode == 4) localMode = LocalMode::Range;
+    if (mode == 5) localMode = LocalMode::Easy;
+    if (mode == 6) localMode = LocalMode::Manual;
+    place::setLocalPlacementMode(localMode);
     if (mode == 1) place::setManualMode(true);
     if (mode == 2) place::setEnabled(true);
     if (mode == 3) place::setRangeEnabled(true);
@@ -29,9 +41,9 @@ SettingsSnapshot snapshot() {
         h.showProgress, h.showProjectedBlockName, h.showWrongState, h.showWrongType, h.showExtraBlocks,
         ui().materialHudEnabled(), ui().materialHudStackConversion(), ui().materialHudMaxItems(), ui().materialHudPosition(), ui().altWheelOffsetEnabled(),
         place::getPlacementRadius(), place::getAutoPlacementBreakCooldownSeconds(), activeMode(),
-        std::string{i18n::languagePreferenceCode()}, ui().writeHudEnabled()}, {}, 0,
+        std::string{i18n::languagePreferenceCode()}, ui().writeHudEnabled(), place::getLocalPlacementRadius(), place::getLocalPlacementLiquidsDisabled(), place::getLocalShulkerRestock(), place::getLocalCreativeRestock(), place::getLocalCreativeRestockOverwrite()}, {}, 0,
         structure::detail::StructureSession::getInstance().transformEditorState().context, ack,
-        ui().experimentalConsentGiven(), accepted};
+        ui().experimentalConsentGiven(), accepted, place::localRangeAvailable()};
     for (std::size_t n = 0; n < s.hotkeys.size(); ++n) {
         auto binding = ui().hotkey(n);
         s.hotkeys[n] = {binding.key, binding.modifiers, binding.capturing};
@@ -60,8 +72,13 @@ bool applyField(SettingsField field, SettingsValue const& value) {
     case F::MaterialHudMaxItems: ui().setMaterialHudMaxItems(std::get<int>(value)); return true;
     case F::MaterialHudPosition: ui().setMaterialHudPosition(std::get<int>(value)); return true;
     case F::AltWheel: return ui().setAltWheelOffsetEnabled(std::get<bool>(value));
-    case F::Radius: place::setPlacementRadius(std::get<int>(value)); return true;
-    case F::Cooldown: place::setAutoPlacementBreakCooldownSeconds(std::get<int>(value)); return true;
+    case F::LocalCreativeRestock: place::setLocalCreativeRestock(std::get<bool>(value)); return false;
+    case F::LocalCreativeRestockOverwrite: place::setLocalCreativeRestockOverwrite(std::get<bool>(value)); return false;
+    case F::LocalShulkerRestock: place::setLocalShulkerRestock(std::get<bool>(value)); return false;
+    case F::LocalLiquidsDisabled: place::setLocalPlacementLiquidsDisabled(std::get<bool>(value)); return false;
+    case F::LocalRadius: place::setLocalPlacementRadius(std::get<int>(value)); return false;
+    case F::Radius: place::setPlacementRadius(std::get<int>(value)); return false;
+    case F::Cooldown: place::setAutoPlacementBreakCooldownSeconds(std::get<int>(value)); return false;
     case F::Mode: setMode(std::get<int>(value)); return false;
     case F::Language: return i18n::setLanguageByCode(std::get<std::string>(value));
     default: return false;
@@ -71,7 +88,7 @@ bool applyField(SettingsField field, SettingsValue const& value) {
 bool validSettingsIntent(SettingsIntent const& i) {
     if (!i.id) return false;
     if (i.action == SettingsAction::Consent)
-        return std::holds_alternative<int>(i.expected) && std::get<int>(i.expected) >= 0 && std::get<int>(i.expected) <= 3
+        return std::holds_alternative<int>(i.expected) && std::get<int>(i.expected) >= 0 && std::get<int>(i.expected) <= 6
             && std::holds_alternative<int>(i.value) && std::get<int>(i.value) >= 0 && std::get<int>(i.value) <= 3;
     if (i.action == SettingsAction::ResetHotkeys) return true;
     if (i.action == SettingsAction::BeginCapture || i.action == SettingsAction::ResetHotkey || i.action == SettingsAction::ClearHotkey)
@@ -81,9 +98,11 @@ bool validSettingsIntent(SettingsIntent const& i) {
         using F = SettingsField;
         auto integer = [&](int low, int high) { auto n = std::get_if<int>(&v); return n && *n >= low && *n <= high; };
         switch (i.field) {
-        case F::HudPosition: case F::MaterialHudPosition: case F::Mode: return integer(0, 3);
+        case F::HudPosition: case F::MaterialHudPosition: return integer(0, 3);
+        case F::Mode: return integer(0, 6);
         case F::MaterialHudMaxItems: return integer(settings::kMinMaterialHudItems, settings::kMaxMaterialHudItems);
         case F::Radius: return integer(1, 4);
+        case F::LocalRadius: return integer(1, 64);
         case F::Cooldown: return integer(0, 60);
         case F::Language: { auto s = std::get_if<std::string>(&v); return s && !s->empty() && s->size() <= 32; }
         default: return std::holds_alternative<bool>(v);
@@ -114,14 +133,19 @@ bool processSettingsActions() {
             if (code != i18n::kFollowGameLanguageCode && !i18n::isValidLanguage(i18n::languageFromCode(code)))
                 return false;
         }
-        if (i.field == SettingsField::Mode && std::get<int>(i.value) != 0 && !s.consent) return false;
+        if (i.field == SettingsField::Mode) {
+            int const mode = std::get<int>(i.value);
+            if (mode >= 4 ? !s.localRangeAvailable : (mode != 0 && !s.consent)) return false;
+        }
         accepted = true;
         return i.value != i.expected && applyField(i.field, i.value);
     }
     if (i.action == SettingsAction::Consent) {
         if (activeMode() != std::get<int>(i.expected)) return false;
-        ui().setExperimentalConsentGiven(true); setMode(std::get<int>(i.value)); accepted = true;
-        return !s.consent;
+        ui().setExperimentalConsentGiven(true);
+        if (int const mode = std::get<int>(i.value); mode != 0) setMode(mode);
+        accepted = true;
+        return false;
     }
     if (i.hotkeysRevision != s.hotkeysRevision || (cancelled && i.action == SettingsAction::BeginCapture)) return false;
     accepted = true;

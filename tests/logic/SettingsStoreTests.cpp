@@ -31,7 +31,7 @@ int runSettingsStoreTests() {
     saveSettingsFile(path, defaults);
     auto canonical = contents(path);
     auto json = Json::parse(canonical);
-    check(json.at("version") == kSettingsVersion && json.size() == 6, "six canonical top-level sections");
+    check(json.at("version") == kSettingsVersion && json.size() == 5 && !json.contains("placement"), "session placement settings are omitted");
     check(json.at("input").at("hotkeys").at("openMenu") == "Alt+M", "readable default shortcut");
     check(json["input"]["hotkeys"]["materialHudPreviousPage"].is_null()
         && json["input"]["hotkeys"]["materialHudNextPage"].is_null(), "paging remains unbound by default");
@@ -51,10 +51,8 @@ int runSettingsStoreTests() {
     custom.language = "en_US";
     custom.correctionFillOpacity = 0.3f; custom.correctionOutlineOpacity = 0.7f;
     custom.structureBoundsEnabled = false; custom.correctionSeeThrough = true; custom.missingSeeThrough = true;
-    custom.experimentalConsent = true;
     custom.materialHudEnabled = true; custom.materialHudStackConversion = true; custom.materialHudMaxItems = 23;
     custom.materialHudPosition = 2; custom.hudPosition = 0;
-    custom.placementRadius = 2; custom.autoPlacementBreakCooldownSeconds = 27;
     custom.hudEnabled = false; custom.hudShowFileName = false; custom.hudShowLayer = false;
     custom.hudShowOverallProgress = true; custom.hudShowProgress = false; custom.hudShowWrongState = false;
     custom.hudShowWrongType = false; custom.hudShowExtraBlocks = false; custom.hudShowProjectedBlockName = false;
@@ -101,8 +99,7 @@ int runSettingsStoreTests() {
         && loaded.materialHudPreviousPageHotkey == 33 && loaded.materialHudPreviousPageHotkeyModifiers == 2,
         "legacy material controls and paging key migrate");
     check(loaded.correctionFillOpacity == 0.3f && loaded.correctionOutlineOpacity == 0.7f
-        && loaded.correctionSeeThrough && loaded.autoPlacementBreakCooldownSeconds == 27 && loaded.experimentalConsent,
-        "legacy render and placement preferences migrate");
+        && loaded.correctionSeeThrough, "legacy rendering preferences migrate");
     check(!loaded.altWheelOffsetEnabled && loaded.moveHotkeys[0] == 'A' && loaded.moveHotkeyModifiers[0] == 2
         && loaded.moveHotkeys[4] == 'W', "axis-era move bindings keep user choices");
     auto migrated = loaded;
@@ -110,7 +107,8 @@ int runSettingsStoreTests() {
     check(contents(backup) == legacy, "migration keeps an exact one-time legacy backup");
     check(loadSettingsFile(path, loaded) && loaded == migrated, "migration reopens without changing live preferences");
     json = Json::parse(contents(path));
-    check(json.size() == 6 && !json.contains("hasSavedProjection") && !json.contains("uiScale")
+    check(json.size() == 5 && !json.contains("experimentalConsent") && !json.contains("autoPlacementBreakCooldownSeconds")
+        && !json.contains("hasSavedProjection") && !json.contains("uiScale")
         && !json.contains("lastStructurePath") && !json.contains("opacity") && !json.contains("toggleManualHotkey"),
         "retired settings disappear from the canonical file");
     saveSettingsFile(path, loaded);
@@ -125,11 +123,13 @@ int runSettingsStoreTests() {
     write(R"({"version":13,"hud":{"materials":{"itemsPerPage":500,"scalePercent":500,"backgroundOpacityPercent":-1,
         "position":{"anchor":"bottomRight","custom":{"x":2,"y":-1}}}},
         "rendering":{"correction":{"fillOpacityPercent":-5,"outlineOpacityPercent":500}},
-        "placement":{"radius":100,"breakCooldownSeconds":-5}})");
+        "placement":{"consentGiven":true,"radius":2,"localRadius":64,"localLiquidsDisabled":false,
+        "shulkerRestock":true,"breakCooldownSeconds":27}})");
     check(loadSettingsFile(path, loaded) && loaded.materialHudMaxItems == 50 && loaded.hudScales[1] == 200
         && loaded.hudBackgroundOpacities[1] == 0 && loaded.hudPlacements[1] == HudPlacement{true, 1, 0}
-        && loaded.correctionFillOpacity == 0 && loaded.correctionOutlineOpacity == 1
-        && loaded.placementRadius == 4 && loaded.autoPlacementBreakCooldownSeconds == 0, "numeric fields clamp at the file boundary");
+        && loaded.correctionFillOpacity == 0 && loaded.correctionOutlineOpacity == 1, "numeric fields clamp at the file boundary");
+    saveSettingsFile(path, loaded);
+    check(!Json::parse(contents(path)).contains("placement"), "old placement preferences are removed when settings are saved");
 
     for (auto const* text : {"[1]", "{", "{\"version\":14}", "{\"version\":13.5}", "{\"version\":4294967309}",
         "{\"version\":13,\"hud\":{\"materials\":{\"itemsPerPage\":5.5}}}", "{\"version\":\"13\"}",

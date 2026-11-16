@@ -27,6 +27,7 @@
 #include <string_view>
 #include <tuple>
 
+#include "mc/util/BlockUtils.h"
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/BlockType.h"
@@ -133,6 +134,11 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
                                         (actual.getTypeName() == "minecraft:bubble_column");
             auto const& actualLiquid =
                 isBubbleColumn ? region.getExtraBlock(position) : region.getLiquidBlock(position);
+            if (!expected && expectedLiquid && BlockUtils::isLiquidSource(*expectedLiquid)
+                && (actual.isAir() || block::sameLiquid(*expectedLiquid, actual))
+                && block::sameLiquid(*expectedLiquid, actualLiquid)) {
+                return BlockUtils::isLiquidSource(actualLiquid) ? CorrectionState::Correct : CorrectionState::Missing;
+            }
             auto const bodyMissing = expected && actual.isAir();
             auto const liquidMissing = expectedLiquid && actualLiquid.isAir();
             auto const bodyTypeWrong =

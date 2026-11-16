@@ -14,7 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#include "place/PlacementExecutor.h"
+#include "place/legacy/PlacementExecutor.h"
+#include "place/AimedPlacementTarget.h"
 
 #include "place/PlacementState.h"
 
@@ -51,7 +52,6 @@
 #include "mc/world/level/Tick.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/BlockType.h"
-#include "mc/world/level/block/SlabBlock.h"
 #include "mc/deps/nbt/ByteTag.h"
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/deps/nbt/IntTag.h"
@@ -61,12 +61,8 @@
 #include <Windows.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cmath>
 #include <cstdint>
-#include <iterator>
-#include <limits>
-#include <mutex>
 #include <optional>
 #include <string_view>
 
@@ -75,8 +71,8 @@ namespace lholo::place {
 namespace {
 
 using detail::FailedPlanKey;
-using detail::FailedPlanKeyHash;
 using detail::PlacementContext;
+using detail::packPlacementCell;
 
 auto& placementState() {
     return detail::PlacementState::getInstance();
@@ -98,46 +94,13 @@ constexpr std::uint64_t kSwapRetryMs = 200;
 // changing the player's aim invalidates the cache immediately.
 constexpr int           kRangePlanBudgetPerTick = 16;
 constexpr std::uint64_t kFailedPlanCacheMs      = 250;
-// Manual-mode typematic repeat: after the first block on press, holding pauses
-// for kManualInitialDelayMs and then auto-repeats every kManualRepeatIntervalMs
-// (like keyboard key-repeat), so a tap places one and a hold streams at a steady
-// rate.
-constexpr std::uint64_t kManualInitialDelayMs   = 150;
-constexpr std::uint64_t kManualRepeatIntervalMs = 120;
-// A pending first-block request expires if it cannot be fulfilled this long
-// after the press, so a stale click never places a block later.
-constexpr std::uint64_t kManualRequestTimeoutMs = 400;
-
-
-std::int64_t packBlockPos(BlockPos const& p) {
-    return (static_cast<std::int64_t>(p.x) & 0x3FFFFFF) << 38
-         | (static_cast<std::int64_t>(p.z) & 0x3FFFFFF) << 12
-         | (static_cast<std::int64_t>(p.y) & 0xFFF);
-}
 
 bool recentlyPlaced(BlockPos const& cell, std::uint64_t now) {
-    return placementState().recentPlacementActive(packBlockPos(cell), now);
+    return placementState().recentPlacementActive(packPlacementCell(cell.x, cell.y, cell.z), now);
 }
 
 void markPlaced(BlockPos const& cell, std::uint64_t now) {
-    placementState().recordRecentPlacement(packBlockPos(cell), now, now + kCellLockMs);
-}
-
-void consumeBrokenProjectionCells(LocalPlayer& player, std::uint64_t now) {
-    auto const brokenCells = projection::takeBrokenProjectionCells(player);
-    auto const cooldownSeconds = placementState().autoPlacementBreakCooldownSeconds();
-    if (cooldownSeconds <= 0) return;
-    auto const cooldownMs = static_cast<std::uint64_t>(cooldownSeconds) * 1'000;
-    for (auto const& broken : brokenCells) {
-        // Use the event timestamp, not the consumption timestamp. Events held
-        // while placement is inactive therefore still expire after the
-        // configured real-time duration and never restart when placement resumes.
-        if (now - broken.destroyedAt >= cooldownMs) continue;
-        placementState().suppressAutoPlacement(
-            packBlockPos(BlockPos{broken.x, broken.y, broken.z}),
-            broken.destroyedAt + cooldownMs
-        );
-    }
+    placementState().recordRecentPlacement(packPlacementCell(cell.x, cell.y, cell.z), now, now + kCellLockMs);
 }
 
 void updateAimedProjectedBlock(Block const* block, std::shared_ptr<CompoundTag const> nbt = {}, Level* level = nullptr) {
@@ -194,7 +157,7 @@ FailedPlanKey makeFailedPlanKey(
     int                     itemAux
 ) {
     return {
-        packBlockPos(cell),
+        packPlacementCell(cell.x, cell.y, cell.z),
         block.mNetworkId,
         itemAux,
         context.eyeX,
@@ -302,123 +265,7 @@ struct ProjectionTarget {
     uchar        face;
     Block const* block;
     Vec3         clickPos{};  // Exact click point; chosen to reproduce the ghost.
-    std::shared_ptr<CompoundTag const> blockEntityNbt;
 };
-
-// Which face of a cell points most along the given (unit) direction.
-uchar faceToward(Vec3 const& v) {
-    float const absX = std::abs(v.x);
-    float const absY = std::abs(v.y);
-    float const absZ = std::abs(v.z);
-    if (absX >= absY && absX >= absZ) {
-        return v.x > 0 ? static_cast<uchar>(Facing::Name::East) : static_cast<uchar>(Facing::Name::West);
-    }
-    if (absY >= absZ) {
-        return v.y > 0 ? static_cast<uchar>(Facing::Name::Up) : static_cast<uchar>(Facing::Name::Down);
-    }
-    return v.z > 0 ? static_cast<uchar>(Facing::Name::South) : static_cast<uchar>(Facing::Name::North);
-}
-
-// Shared by easy-place and range placement: pick the placement target for a
-// ghost `cell` given the approach direction (unit vector from the player
-// toward the cell). Prefers a real, non-air neighbor as the support; when none
-// exists it falls back to pointing mPos at the ghost cell itself (the server
-// places at an air mPos).
-ProjectionTarget selectPlacementTarget(BlockSource& region, BlockPos const& cell, Vec3 const& approachDir, Block const* block) {
-    uchar bestFace = std::numeric_limits<uchar>::max();
-    float bestScore = std::numeric_limits<float>::lowest();
-    for (uchar face = 0; face < 6; ++face) {
-        BlockPos const at = neighborOf(cell, face);
-        if (region.getBlock(at).isAir()) continue;
-        float const offX = static_cast<float>(at.x - cell.x);
-        float const offY = static_cast<float>(at.y - cell.y);
-        float const offZ = static_cast<float>(at.z - cell.z);
-        float const score = -(offX * approachDir.x + offY * approachDir.y + offZ * approachDir.z);
-        if (score > bestScore) {
-            bestScore = score;
-            bestFace = face;
-        }
-    }
-    if (bestFace == std::numeric_limits<uchar>::max()) {
-        // No real support nearby. The server places the block AT an air mPos
-        // (instead of mPos.neighbor(mFace) for a solid mPos), so point mPos at
-        // the ghost cell itself to make the block land there.
-        return ProjectionTarget{cell, cell, oppositeFace(faceToward({-approachDir.x, -approachDir.y, -approachDir.z})), block};
-    }
-    return ProjectionTarget{cell, neighborOf(cell, bestFace), oppositeFace(bestFace), block};
-}
-
-// Voxel raycast (Amanatides & Woo) against the real world plus the projection's
-// virtual grid. The vanilla crosshair hit result never sees LHolo's drawn ghost
-// blocks, so the ray is traced manually: real blocks block it, projected
-// missing cells are the placement targets.
-std::optional<ProjectionTarget> findProjectionTarget(
-    LocalPlayer& player,
-    Vec3 const&  origin,
-    Vec3 const&  dir,
-    float        maxDist
-) {
-    auto& region = player.getDimensionBlockSource();
-
-    int const stepX = dir.x > 0.0f ? 1 : -1;
-    int const stepY = dir.y > 0.0f ? 1 : -1;
-    int const stepZ = dir.z > 0.0f ? 1 : -1;
-    float const tDeltaX = dir.x != 0.0f ? std::abs(1.0f / dir.x) : std::numeric_limits<float>::infinity();
-    float const tDeltaY = dir.y != 0.0f ? std::abs(1.0f / dir.y) : std::numeric_limits<float>::infinity();
-    float const tDeltaZ = dir.z != 0.0f ? std::abs(1.0f / dir.z) : std::numeric_limits<float>::infinity();
-
-    int x = static_cast<int>(std::floor(origin.x));
-    int y = static_cast<int>(std::floor(origin.y));
-    int z = static_cast<int>(std::floor(origin.z));
-    BlockPos const originCell{x, y, z};
-    float tMaxX = (stepX > 0 ? (static_cast<float>(x) + 1.0f - origin.x) : (origin.x - static_cast<float>(x))) * tDeltaX;
-    float tMaxY = (stepY > 0 ? (static_cast<float>(y) + 1.0f - origin.y) : (origin.y - static_cast<float>(y))) * tDeltaY;
-    float tMaxZ = (stepZ > 0 ? (static_cast<float>(z) + 1.0f - origin.z) : (origin.z - static_cast<float>(z))) * tDeltaZ;
-
-    for (int step = 0; step < 512; ++step) {
-        float tEnter;
-        uchar entryFace;
-        if (tMaxX < tMaxY && tMaxX < tMaxZ) {
-            x += stepX;
-            tEnter = tMaxX;
-            tMaxX += tDeltaX;
-            entryFace = stepX > 0 ? static_cast<uchar>(Facing::Name::West) : static_cast<uchar>(Facing::Name::East);
-        } else if (tMaxY < tMaxZ) {
-            y += stepY;
-            tEnter = tMaxY;
-            tMaxY += tDeltaY;
-            entryFace = stepY > 0 ? static_cast<uchar>(Facing::Name::Down) : static_cast<uchar>(Facing::Name::Up);
-        } else {
-            z += stepZ;
-            tEnter = tMaxZ;
-            tMaxZ += tDeltaZ;
-            entryFace = stepZ > 0 ? static_cast<uchar>(Facing::Name::North) : static_cast<uchar>(Facing::Name::South);
-        }
-        if (tEnter > maxDist) break;
-
-        BlockPos const cell{x, y, z};
-        if (!region.getBlock(cell).isAir()) {
-            // A real block blocks the ray. Placing into the camera-side cell
-            // (the vanilla placement position) fills an adjacent ghost. Never
-            // target the cell the camera itself is standing in.
-            BlockPos const neighbor = neighborOf(cell, entryFace);
-            auto const query = projection::queryProjection(player, neighbor);
-            if (neighbor != originCell && query.block && query.missing) {
-                return ProjectionTarget{neighbor, cell, entryFace, query.block, {}, query.blockEntityNbt};
-            }
-            break;
-        }
-        auto const query = projection::queryProjection(player, cell);
-        if (!query.block || !query.missing) continue;
-
-        // The ghost itself is the target; reuse the shared support selection
-        // (real neighbor preferred, air-mPos fallback when floating).
-        auto target = selectPlacementTarget(region, cell, dir, query.block);
-        target.blockEntityNbt = query.blockEntityNbt;
-        return target;
-    }
-    return std::nullopt;
-}
 
 bool placeBlock(LocalPlayer& player, ProjectionTarget const& target, int slot, ItemStack const& item) {
     auto& region = player.getDimensionBlockSource();
@@ -544,15 +391,9 @@ bool isTwoBlockDoor(Block const& block) {
         && !serializedState(block, "upper_block_bit").empty();
 }
 
-bool isDoubleSlab(Block const& block) {
-    auto const& blockType = block.getBlockType();
-    return blockType.isSlabBlock()
-        && static_cast<SlabBlock const&>(blockType).mIsDouble;
-}
-
 bool wouldMergeClickedSlab(Block const& ghost, Block const& support) {
     if (!ghost.getBlockType().isSlabBlock() || !support.getBlockType().isSlabBlock()
-        || isDoubleSlab(ghost) || isDoubleSlab(support)) {
+        || block::isDoubleSlab(ghost) || block::isDoubleSlab(support)) {
         return false;
     }
 
@@ -588,7 +429,7 @@ bool placementPredictionMatches(
     // click candidate) can satisfy a top-slab ghost and place the wrong half.
     // Newer versions store the half as minecraft:vertical_half, older ones as
     // top_slot_bit; a double slab has neither and stays on the strict compare.
-    if (ghost.getBlockType().isSlabBlock() && !isDoubleSlab(ghost)) {
+    if (ghost.getBlockType().isSlabBlock() && !block::isDoubleSlab(ghost)) {
         if (!serializedState(ghost, "minecraft:vertical_half").empty())
             return sameSerializedState(predicted, ghost, "minecraft:vertical_half");
         if (!serializedState(ghost, "top_slot_bit").empty())
@@ -783,7 +624,7 @@ void tickRangePlaceImpl(LocalPlayer& player, PlacementContext const& placementCo
         // Empty suppression state takes one branch for the entire candidate
         // batch; hash lookups happen only during an active ten-second window.
         if (suppressionsActive
-            && placementState().autoPlacementSuppressed(packBlockPos(cell), now)) {
+            && placementState().autoPlacementSuppressed(packPlacementCell(cell.x, cell.y, cell.z), now)) {
             continue;
         }
 
@@ -848,7 +689,6 @@ void tickEasyPlaceImpl() {
         return;
     }
     auto const tickNow = GetTickCount64();
-    consumeBrokenProjectionCells(*player, tickNow);
     // Only act during gameplay: menus, pause screens and the LHolo GUI itself
     // disable in-game input.
     if (!client->isInGameInputEnabled()) {
@@ -876,7 +716,7 @@ void tickEasyPlaceImpl() {
     Vec3 const dir{rawDir.x / length, rawDir.y / length, rawDir.z / length};
 
     float const pickRange = player->getPickRange();
-    auto target = findProjectionTarget(*player, origin, dir, pickRange);
+    auto target = findAimedPlacementTarget(*player, origin, dir, pickRange);
     updateAimedProjectedBlock(
         showProjectedBlockName && target ? target->block : nullptr,
         showProjectedBlockName && target ? target->blockEntityNbt : nullptr, &player->getLevel()
@@ -896,28 +736,8 @@ void tickEasyPlaceImpl() {
     // the press request, then repeats after the hold delay; the buildBlock hook
     // cancels vanilla placement so nothing is placed twice.
     bool const manualPlacement = placementState().manualMode();
-    if (manualPlacement) {
-        auto const nowManual = GetTickCount64();
-        bool allowed = false;
-        // First block of a press: place it even if the button was already
-        // released (a quick tap), until the request goes stale.
-        if (placementState().manualPlaceRequested()) {
-            if (nowManual - placementState().manualPressAt() <= kManualRequestTimeoutMs) {
-                allowed = true;
-            } else {
-                placementState().setManualPlaceRequested(false);
-            }
-        }
-        // While the button stays held, pause for the initial delay and then
-        // repeat at a steady rate (typematic), so a held right-click keeps
-        // placing along the projection cells the crosshair sweeps over.
-        if (!allowed && placementState().manualHeld()
-            && nowManual - placementState().manualPressAt() >= kManualInitialDelayMs
-            && nowManual - placementState().lastManualPlaceAt() >= kManualRepeatIntervalMs) {
-            allowed = true;
-        }
-        if (!allowed) return;
-    }
+    auto const manualPress = manualPlacement ? placementState().dueManualPress(GetTickCount64()) : std::nullopt;
+    if (manualPlacement && !manualPress) return;
     if (!target) return;
 
     // Skip cells placed a moment ago until the server applies them; new cells
@@ -925,7 +745,7 @@ void tickEasyPlaceImpl() {
     auto const now = GetTickCount64();
     if (!manualPlacement
         && placementState().autoPlacementSuppressionsActive(now)
-        && placementState().autoPlacementSuppressed(packBlockPos(target->cell), now)) {
+        && placementState().autoPlacementSuppressed(packPlacementCell(target->cell.x, target->cell.y, target->cell.z), now)) {
         return;
     }
     if (recentlyPlaced(target->cell, now)) return;
@@ -970,27 +790,16 @@ void tickEasyPlaceImpl() {
     player->setSelectedSlot(found.slot);
     if (!placeBlock(*player, placement, found.slot, *found.item)) return;
     markPlaced(placement.cell, now);
-    // Manual repeat bookkeeping: record this placement and mark the current
-    // press as having placed its first block (so holding then auto-repeats).
-    placementState().setLastManualPlaceAt(now);
-    placementState().setManualPlaceRequested(false);
+    if (manualPress) placementState().recordManualAttempt(*manualPress, now);
 }
 } // namespace
 
 namespace detail {
 
-ManualTargetStatus manualTargetStatusUnderCrosshair() {
-    auto client = ll::service::getClientInstance();
-    auto* player = client ? client->getLocalPlayer() : nullptr;
-    if (!player) return ManualTargetStatus::None;
-    Vec3 const eye = player->getEyePos();
-    Vec3 const rawDir = player->getViewVector(1.0f);
-    float const length = std::sqrt(rawDir.x * rawDir.x + rawDir.y * rawDir.y + rawDir.z * rawDir.z);
-    if (length <= 0.0f) return ManualTargetStatus::None;
-    Vec3 const dir{rawDir.x / length, rawDir.y / length, rawDir.z / length};
-    auto const target = findProjectionTarget(*player, eye, dir, player->getPickRange());
+ManualTargetStatus manualTargetStatusUnderCrosshair(LocalPlayer& player) {
+    auto const target = findAimedPlacementTarget(player);
     if (!target) return ManualTargetStatus::None;
-    return findItemSlot(*player, *target->block).slot >= 0
+    return findItemSlot(player, *target->block).slot >= 0
         ? ManualTargetStatus::Ready
         : ManualTargetStatus::MissingMaterial;
 }

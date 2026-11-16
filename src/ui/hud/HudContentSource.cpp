@@ -66,9 +66,9 @@ HudContent readHudContent() {
             data.aimedBlockIconItem = aimed.iconItem;
         }
         using i18n::TextKey;
-        if (place::isManualMode()) data.placementMode = i18n::tr(TextKey::ModeManual);
-        else if (place::isEnabled()) data.placementMode = i18n::tr(TextKey::ModeEasy);
-        else if (place::isRangeEnabled()) data.placementMode = i18n::tr(TextKey::ModeRange);
+        if (place::isManualMode() || place::getLocalPlacementMode() == place::LocalPlacementMode::Manual) data.placementMode = i18n::tr(TextKey::ModeManual);
+        else if (place::isEnabled() || place::getLocalPlacementMode() == place::LocalPlacementMode::Easy) data.placementMode = i18n::tr(TextKey::ModeEasy);
+        else if (place::isRangeEnabled() || place::getLocalPlacementMode() == place::LocalPlacementMode::Range) data.placementMode = i18n::tr(TextKey::ModeRange);
         result.projection = makeProjectionHud(settings, data);
     }
     if (materialEnabled) {

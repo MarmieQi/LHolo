@@ -16,10 +16,25 @@ void setEnabled(bool v) { detail::PlacementState::getInstance().setEnabled(v); }
 bool isEnabled() { return detail::PlacementState::getInstance().enabled(); }
 void setRangeEnabled(bool v) { detail::PlacementState::getInstance().setRangeEnabled(v); }
 bool isRangeEnabled() { return detail::PlacementState::getInstance().rangeEnabled(); }
+static LocalPlacementMode localMode{};
+static bool localAvailable{};
+void setLocalPlacementMode(LocalPlacementMode mode) { localMode = mode; }
+LocalPlacementMode getLocalPlacementMode() { return localMode; }
+bool localRangeAvailable() { return localAvailable; }
 void setManualMode(bool v) { if (!v) detail::PlacementState::getInstance().resetManualInput(); detail::PlacementState::getInstance().setManualMode(v); }
 bool isManualMode() { return detail::PlacementState::getInstance().manualMode(); }
 void setPlacementRadius(int v) { detail::PlacementState::getInstance().setRadius(v); }
 int getPlacementRadius() { return detail::PlacementState::getInstance().radius(); }
+void setLocalPlacementRadius(int v) { detail::PlacementState::getInstance().setLocalRadius(v); }
+int getLocalPlacementRadius() { return detail::PlacementState::getInstance().localRadius(); }
+void setLocalPlacementLiquidsDisabled(bool v) { detail::PlacementState::getInstance().setLocalLiquidsDisabled(v); }
+bool getLocalPlacementLiquidsDisabled() { return detail::PlacementState::getInstance().localLiquidsDisabled(); }
+void setLocalShulkerRestock(bool v) { detail::PlacementState::getInstance().setLocalShulkerRestock(v); }
+bool getLocalShulkerRestock() { return detail::PlacementState::getInstance().localShulkerRestock(); }
+void setLocalCreativeRestock(bool v) { detail::PlacementState::getInstance().setLocalCreativeRestock(v); }
+bool getLocalCreativeRestock() { return detail::PlacementState::getInstance().localCreativeRestock(); }
+void setLocalCreativeRestockOverwrite(bool v) { detail::PlacementState::getInstance().setLocalCreativeRestockOverwrite(v); }
+bool getLocalCreativeRestockOverwrite() { return detail::PlacementState::getInstance().localCreativeRestockOverwrite(); }
 void setAutoPlacementBreakCooldownSeconds(int v) { detail::PlacementState::getInstance().setAutoPlacementBreakCooldownSeconds(v); }
 int getAutoPlacementBreakCooldownSeconds() { return detail::PlacementState::getInstance().autoPlacementBreakCooldownSeconds(); }
 }
@@ -39,7 +54,7 @@ int runSettingsActionsTests() {
     auto bad = j; bad["value"] = 1;
     check(!oreui::parseSettingsIntent(bad.dump()), "boolean cannot become integer");
     bad = j; bad["field"] = "uiScale"; check(!oreui::parseSettingsIntent(bad.dump()), "OreUI cannot write ImGui scale");
-    bad = j; bad["field"] = "activeMode"; bad["expected"] = 0; bad["value"] = 4;
+    bad = j; bad["field"] = "activeMode"; bad["expected"] = 0; bad["value"] = 7;
     check(!oreui::parseSettingsIntent(bad.dump()), "mode range");
     bad["field"] = "placementRadius"; bad["expected"] = 1; bad["value"] = 18446744073709551615ULL;
     check(!oreui::parseSettingsIntent(bad.dump()), "integer overflow rejected");
@@ -71,14 +86,42 @@ int runSettingsActionsTests() {
     check(!oreui::parseSettingsIntent(conversion.dump()), "item count rejects booleans");
     check(apply(F::MaterialHudMaxItems, 5), "restore item limit");
     check(!apply(F::Mode, 2) && !getSettingsSnapshot().accepted && !place::isEnabled(), "backend refuses mode before consent");
+    check(!apply(F::Mode, 4) && !getSettingsSnapshot().accepted && place::getLocalPlacementMode() == place::LocalPlacementMode::Off,
+          "singleplayer range requires an eligible local world");
+    check(!apply(F::Mode, 5) && !getSettingsSnapshot().accepted && place::getLocalPlacementMode() == place::LocalPlacementMode::Off,
+          "singleplayer easy requires an eligible local world");
+    check(!apply(F::Mode, 6) && !getSettingsSnapshot().accepted && place::getLocalPlacementMode() == place::LocalPlacementMode::Off,
+          "singleplayer manual requires an eligible local world");
+    place::localAvailable = true;
+    check(!apply(F::Mode, 4) && getSettingsSnapshot().accepted && place::getLocalPlacementMode() == place::LocalPlacementMode::Range && !ui.experimentalConsentGiven(),
+          "singleplayer range is a live setting independent of legacy consent");
+    check(!apply(F::Mode, 5) && getSettingsSnapshot().accepted && place::getLocalPlacementMode() == place::LocalPlacementMode::Easy
+          && !ui.experimentalConsentGiven(), "singleplayer easy replaces range without saving or requiring consent");
+    check(!apply(F::Mode, 6) && getSettingsSnapshot().accepted && place::getLocalPlacementMode() == place::LocalPlacementMode::Manual
+          && !place::isManualMode() && !ui.experimentalConsentGiven(), "singleplayer manual replaces easy without saving or requiring consent");
     i = {}; snapshot = getSettingsSnapshot(); i.id = snapshot.ack + 1; i.context = snapshot.context;
-    i.action = SettingsAction::Consent; i.expected = 0; i.value = 1;
-    submitSettingsIntent(i); check(processSettingsActions() && ui.experimentalConsentGiven() && place::isManualMode(), "consent persists and activates requested mode");
+    i.action = SettingsAction::Consent; i.expected = 6; i.value = 1;
+    submitSettingsIntent(i); check(!processSettingsActions() && getSettingsSnapshot().accepted && ui.experimentalConsentGiven() && place::isManualMode()
+          && place::getLocalPlacementMode() == place::LocalPlacementMode::Off, "session consent activates legacy mode without saving");
+    place::localAvailable = false;
     check(!apply(F::Mode, 3) && getSettingsSnapshot().accepted && place::isRangeEnabled() && !place::isManualMode() && !place::isEnabled(), "live mode mutually exclusive and not persisted");
     check(!apply(F::Mode, 2) && place::isEnabled() && !place::isRangeEnabled(), "easy mode exclusive");
     check(!apply(F::Mode, 0) && !place::isEnabled(), "disable live modes without save");
-    place::setPlacementRadius(4); check(apply(F::Radius, 2), "radius persisted");
-    place::setAutoPlacementBreakCooldownSeconds(10); check(apply(F::Cooldown, 31), "cooldown persisted");
+    place::setPlacementRadius(4);
+    check(!apply(F::Radius, 2) && getSettingsSnapshot().accepted && place::getPlacementRadius() == 2, "legacy radius is session-only");
+    check(!apply(F::LocalCreativeRestock, true) && getSettingsSnapshot().accepted && place::getLocalCreativeRestock(), "creative restock is session-only");
+    check(!place::getLocalCreativeRestockOverwrite() && !std::get<bool>(getSettingsSnapshot().values[static_cast<std::size_t>(F::LocalCreativeRestockOverwrite)]),
+          "creative restock overwrite defaults off");
+    check(!apply(F::LocalCreativeRestockOverwrite, true) && getSettingsSnapshot().accepted && place::getLocalCreativeRestockOverwrite(),
+          "creative restock overwrite can be enabled without saving");
+    check(!apply(F::LocalCreativeRestockOverwrite, false) && getSettingsSnapshot().accepted && !place::getLocalCreativeRestockOverwrite(),
+          "creative restock overwrite can be disabled without saving");
+    check(!apply(F::LocalShulkerRestock, true) && getSettingsSnapshot().accepted && place::getLocalShulkerRestock(), "shulker restock is session-only");
+    check(!apply(F::LocalLiquidsDisabled, false) && getSettingsSnapshot().accepted && !place::getLocalPlacementLiquidsDisabled(), "liquid toggle is session-only");
+    check(!apply(F::LocalRadius, 64) && getSettingsSnapshot().accepted && place::getLocalPlacementRadius() == 64 && place::getPlacementRadius() == 2,
+          "singleplayer radius is independent and session-only");
+    place::setAutoPlacementBreakCooldownSeconds(10);
+    check(!apply(F::Cooldown, 31) && getSettingsSnapshot().accepted && place::getAutoPlacementBreakCooldownSeconds() == 31, "cooldown is session-only");
     auto originalLanguage = std::string{i18n::languagePreferenceCode()};
     auto target = i18n::languageCode(i18n::language()) == "en_US" ? "zh_CN" : "en_US";
     check(apply(F::Language, std::string{target}) && i18n::languageCode(i18n::language()) == target, "stable locale code applied");

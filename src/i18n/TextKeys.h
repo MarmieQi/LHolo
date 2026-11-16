@@ -271,6 +271,8 @@
                                                                                                          \
     /* Experimental page */                                                                              \
     LHOLO_TEXT_KEY("section.assistedPlacement", SectionAssistedPlacement, "")                            \
+    LHOLO_TEXT_KEY("placement.tabSingleplayer", PlacementTabSingleplayer, "")                            \
+    LHOLO_TEXT_KEY("placement.tabLegacy", PlacementTabLegacy, "")                                        \
     LHOLO_TEXT_KEY("button.experimentalInfoOpen", ButtonExperimentalInfoOpen, "")                        \
     LHOLO_TEXT_KEY("button.experimentalInfoView", ButtonExperimentalInfoView, "")                        \
     LHOLO_TEXT_KEY("modal.titleExperimental", ModalTitleExperimental, "")                                \
@@ -286,6 +288,10 @@
     LHOLO_TEXT_KEY("checkbox.manualPlace", CheckboxManualPlace, "")                                      \
     LHOLO_TEXT_KEY("checkbox.easyPlace", CheckboxEasyPlace, "")                                          \
     LHOLO_TEXT_KEY("checkbox.rangePlace", CheckboxRangePlace, "")                                        \
+    LHOLO_TEXT_KEY("checkbox.localPlacementLiquidsDisabled", CheckboxLocalPlacementLiquidsDisabled, "")                                        \
+    LHOLO_TEXT_KEY("checkbox.localShulkerRestock", CheckboxLocalShulkerRestock, "")                                        \
+    LHOLO_TEXT_KEY("checkbox.localCreativeRestock", CheckboxLocalCreativeRestock, "")                                        \
+    LHOLO_TEXT_KEY("checkbox.localCreativeRestockOverwrite", CheckboxLocalCreativeRestockOverwrite, "")                      \
     LHOLO_TEXT_KEY("mode.manual", ModeManual, "")                                                        \
     LHOLO_TEXT_KEY("mode.easy", ModeEasy, "")                                                            \
     LHOLO_TEXT_KEY("mode.range", ModeRange, "")                                                          \
@@ -293,6 +299,7 @@
     LHOLO_TEXT_KEY("hint.assistedDisabledByConsent", HintAssistedDisabledByConsent, "")                  \
     LHOLO_TEXT_KEY("hint.assistedDisabled", HintAssistedDisabled, "")                                    \
     LHOLO_TEXT_KEY("label.placementRadius", LabelPlacementRadius, "")                                    \
+    LHOLO_TEXT_KEY("label.localPlacementRadius", LabelLocalPlacementRadius, "")                                    \
     LHOLO_TEXT_KEY("label.autoPlacementCooldown", LabelAutoPlacementCooldown, "")                        \
                                                                                                          \
     /* Interface settings page */                                                                        \

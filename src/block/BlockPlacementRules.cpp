@@ -16,15 +16,28 @@
 #include "mc/world/level/block/actor/BannerBlockActor.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/BlockType.h"
+#include "mc/world/level/block/SlabBlock.h"
 #include "mc/world/Direction.h"
 #include "mc/world/level/block/VanillaStates.h"
 #include "mc/world/level/block/components/BlockMultiBlockComponent.h"
 #include "mc/world/level/block/states/BuiltInBlockStates.h"
+#include "mc/world/level/material/Material.h"
 
 #include <cstddef>
 #include <utility>
 
 namespace lholo::block {
+
+bool isDoubleSlab(Block const& block) {
+    auto const& type = block.getBlockType();
+    return type.isSlabBlock() && static_cast<SlabBlock const&>(type).mIsDouble;
+}
+
+bool sameLiquid(Block const& first, Block const& second) {
+    auto const& left = *first.getBlockType().mMaterial;
+    auto const& right = *second.getBlockType().mMaterial;
+    return left.mLiquid && right.mLiquid && left == right;
+}
 
 PlacementPart placementPart(Block const& block) {
     auto const* type = &block.getBlockType();

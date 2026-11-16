@@ -264,14 +264,6 @@ void resetDimensionSession() {
     uiState().clearMaterialHud();
 }
 
-bool experimentalConsentGiven() {
-    return uiState().experimentalConsentGiven();
-}
-
-void setExperimentalConsentGiven(bool given) {
-    uiState().setExperimentalConsentGiven(given);
-}
-
 bool materialHudEnabled() {
     return uiState().materialHudEnabled();
 }
@@ -330,7 +322,6 @@ void loadSettings() {
         projection::setStructureBoundsEnabled(settings.structureBoundsEnabled);
         projection::setCorrectionSeeThrough(settings.correctionSeeThrough);
         projection::setMissingSeeThrough(settings.missingSeeThrough);
-        setExperimentalConsentGiven(settings.experimentalConsent);
         setMaterialHudEnabled(settings.materialHudEnabled);
         uiState().setWriteHudEnabled(settings.writeHudEnabled);
         uiState().setWriteHudPosition(settings.writeHudPosition);
@@ -354,15 +345,6 @@ void loadSettings() {
         uiState().setHudPlacements(settings.hudPlacements);
         uiState().setHudBackgroundOpacities(settings.hudBackgroundOpacities);
         uiState().setHudScales(settings.hudScales);
-        // Assisted-placement modes are intentionally session-only. Ignore
-        // legacy persisted values and always begin a new game session disabled.
-        place::setEnabled(false);
-        place::setManualMode(false);
-        place::setRangeEnabled(false);
-        place::setPlacementRadius(std::clamp(settings.placementRadius, 1, 4));
-        place::setAutoPlacementBreakCooldownSeconds(
-            std::clamp(settings.autoPlacementBreakCooldownSeconds, 0, 60)
-        );
         uiState().setHotkey(
             kGuiHotkeyIndex,
             std::clamp(settings.guiHotkey, 0, 255),
@@ -411,14 +393,10 @@ void saveSettings() {
         settings.structureBoundsEnabled = projection::getStructureBoundsEnabled();
         settings.correctionSeeThrough = projection::getCorrectionSeeThrough();
         settings.missingSeeThrough = projection::getMissingSeeThrough();
-        settings.experimentalConsent = experimentalConsentGiven();
         settings.materialHudEnabled = materialHudEnabled();
         settings.materialHudStackConversion = uiState().materialHudStackConversion();
         settings.materialHudMaxItems = uiState().materialHudMaxItems();
         settings.materialHudPosition = materialHudPosition();
-        settings.placementRadius = place::getPlacementRadius();
-        settings.autoPlacementBreakCooldownSeconds
-            = place::getAutoPlacementBreakCooldownSeconds();
         settings.hudEnabled = hud.enabled;
         settings.hudShowFileName = hud.showFileName;
         settings.hudShowLayer = hud.showLayer;

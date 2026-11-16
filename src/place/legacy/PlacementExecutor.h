@@ -1,12 +1,13 @@
 // LHolo - Client-side projection renderer for Minecraft Bedrock Windows
 // Copyright (C) 2026  MarmieQi
 //
-// Placement planning and execution. The executor owns the easy/range tick
-// logic; game hooks stay in PlaceHelper and only call the public entry points.
+// Planning and execution for legacy manual, easy and range placement.
 
 #pragma once
 
 #include "mc/deps/core/math/Vec3.h"
+
+class LocalPlayer;
 
 namespace lholo::place::detail {
 
@@ -32,6 +33,6 @@ enum class ManualTargetStatus {
 // Fresh synchronous raytrace used by manual-mode hooks. Target detection and
 // inventory availability stay separate so a missing item is never reported as
 // an aiming failure or handed back to vanilla use-item handling.
-ManualTargetStatus manualTargetStatusUnderCrosshair();
+ManualTargetStatus manualTargetStatusUnderCrosshair(LocalPlayer& player);
 
 } // namespace lholo::place::detail

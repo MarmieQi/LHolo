@@ -28,10 +28,6 @@ struct Settings {
     bool structureBoundsEnabled{true};
     bool correctionSeeThrough{false};
     bool missingSeeThrough{false};
-    // Placement consent and parameters; live placement modes are never saved.
-    bool experimentalConsent{false};
-    int placementRadius{4};
-    int autoPlacementBreakCooldownSeconds{10};
 
     // Material and projection HUD preferences.
     bool writeHudEnabled{true};
