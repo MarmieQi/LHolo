@@ -29,7 +29,7 @@ bool exportCustomMcstructure(CustomStructure const& draft, std::filesystem::path
     blocks.add(std::make_unique<CompoundTag>(air->mSerializationId.get()));
     std::unordered_map<std::string, int> paletteIndices;
     for (auto const& layer : draft.layers) {
-        auto const& id = layer.second;
+        auto const& id = layer.block;
         if (paletteIndices.try_emplace(id, static_cast<int>(blocks.size())).second) {
             auto block = Block::tryGetFromRegistry(HashedString{id});
             if (!block || block->getTypeName() != id) return false;
@@ -37,8 +37,8 @@ bool exportCustomMcstructure(CustomStructure const& draft, std::filesystem::path
         }
     }
     std::vector<int> indices(*volume, 0);
-    for (auto const& [y, id] : draft.layers)
-        fillCustomLayer(indices, draft.size, y, paletteIndices.at(id));
+    for (auto const& layer : draft.layers)
+        fillCustomLayers(indices, draft.size, layer, paletteIndices.at(layer.block));
     ListTag layers;
     layers.add(std::make_unique<IntArrayTag>(std::move(indices)));
     CompoundTag palette;

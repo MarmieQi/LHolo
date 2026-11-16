@@ -118,17 +118,23 @@ int runCaptureActionsTests() {
     check(empty && empty->custom.size == std::array<int, 3>{32, 16, 24} && empty->custom.layers.empty(),
           "empty export reads dimensions without world draft");
     auto filledPayload = emptyPayload;
-    filledPayload["layers"] = {{{"y", 1}, {"block", "minecraft:glass"}}, {{"y", 0}, {"block", "minecraft:stone"}}};
+    filledPayload["layers"] = {
+        {{"y", 5}, {"endY", 5}, {"block", "minecraft:glass"}},
+        {{"y", 0}, {"endY", 4}, {"block", "minecraft:stone"}},
+    };
     auto filled = parseCaptureIntent(filledPayload.dump());
-    check(filled && filled->custom.layers == std::map<int, std::string>{{0, "minecraft:stone"}, {1, "minecraft:glass"}},
-          "layer entries carry their original block IDs and zero-based heights");
-    filledPayload["layers"][0]["y"] = 0;
-    check(!parseCaptureIntent(filledPayload.dump()), "duplicate layer height rejected");
-    filledPayload["layers"][0]["y"] = 16;
-    check(!parseCaptureIntent(filledPayload.dump()), "layer outside dimensions rejected");
-    std::vector<int> indices(12);
-    fillCustomLayer(indices, {2, 3, 2}, 1, 3);
-    check(indices == std::vector<int>{0, 0, 3, 3, 0, 0, 0, 0, 3, 3, 0, 0}, "layer fills its X/Z plane in Bedrock's order");
+    check(filled && filled->custom.layers == std::vector<CustomLayerFill>{{0, 4, "minecraft:stone"}, {5, 5, "minecraft:glass"}},
+          "adjacent fills retain their block IDs and inclusive zero-based bounds");
+    filledPayload["layers"][0]["y"] = 4;
+    check(!parseCaptureIntent(filledPayload.dump()), "overlap at an endpoint is rejected");
+    filledPayload["layers"][0]["y"] = 6;
+    check(!parseCaptureIntent(filledPayload.dump()), "reversed layer range is rejected");
+    filledPayload["layers"][0]["endY"] = 16;
+    check(!parseCaptureIntent(filledPayload.dump()), "range ending outside the structure is rejected");
+    std::vector<int> indices(16);
+    fillCustomLayers(indices, {2, 4, 2}, {1, 2, "minecraft:stone"}, 3);
+    check(indices == std::vector<int>{0, 0, 3, 3, 3, 3, 0, 0, 0, 0, 3, 3, 3, 3, 0, 0},
+          "both endpoints fill their X/Z planes in Bedrock's order");
     emptyPayload["size"]["x"] = 0;
     check(!parseCaptureIntent(emptyPayload.dump()), "zero extent rejected");
     emptyPayload["size"] = {{"x", 512}, {"y", 512}, {"z", 639}};

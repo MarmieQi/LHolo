@@ -150,8 +150,9 @@
 .lholo-custom-edit-row.lholo-transform-row { align-items:flex-start; margin-top:0.75rem; }
 .lholo-custom-edit-row.lholo-transform-row + .lholo-custom-edit-row { margin-top:0.45rem; }
 .lholo-custom-edit-row > .lholo-transform-label { width:4rem; margin-right:0.45rem; line-height:2.2rem; }
-.lholo-custom-layer-field { width:4.6rem; flex-shrink:0; }
+.lholo-custom-layer-field { width:9rem; flex-shrink:0; }
 .lholo-custom-layer-field > .lholo-input-shell { box-sizing:border-box; width:100%; }
+.lholo-settings-note.lholo-custom-layer-hint { align-self:center; margin:0 0 0 0.55rem; }
 .lholo-custom-search-field { flex:1 1 10rem; min-width:0; max-width:32rem; }
 .lholo-autocomplete { min-width:0; }
 .lholo-autocomplete-entry { flex-direction:row; align-items:center; }

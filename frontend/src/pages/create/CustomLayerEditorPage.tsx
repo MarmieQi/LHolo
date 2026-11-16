@@ -25,6 +25,7 @@ export function CustomLayerEditorPage({ labels, editor, draft, busy }: {
         <LHoloTextField label={labels['capture.layer']} value={draft.layerText}
           disabled={busy} onChange={layerText => editor.updateDraft({layerText})} />
       </div>
+      <div className="lholo-settings-note lholo-custom-layer-hint">{`(${labels['capture.layerInputFormat']})`}</div>
     </div>
     <div className="lholo-transform-row lholo-custom-edit-row">
       <div className="lholo-transform-label">{labels['capture.block']}</div>

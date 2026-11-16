@@ -1,6 +1,7 @@
 #include "oreui/CaptureProtocol.h"
 #include "structure/capture/CaptureBounds.h"
 #include "nlohmann/json.hpp"
+#include <algorithm>
 #include <limits>
 
 namespace lholo::oreui {
@@ -31,13 +32,22 @@ std::optional<structure::capture::Request> parseCaptureIntent(std::string_view p
             if (!customStructureVolume(request.custom.size)) return std::nullopt;
             auto const& layers = value.at("layers");
             if (!layers.is_array() || layers.size() > static_cast<std::size_t>(request.custom.size[1])) return std::nullopt;
+            auto& fills = request.custom.layers;
+            fills.reserve(layers.size());
             for (auto const& layer : layers) {
                 auto const& y = layer.at("y");
-                if (!y.is_number_unsigned() || y.get<std::uint64_t>() >= static_cast<unsigned>(request.custom.size[1]))
+                auto const& endY = layer.at("endY");
+                if (!y.is_number_unsigned() || !endY.is_number_unsigned()
+                    || y.get<std::uint64_t>() > endY.get<std::uint64_t>()
+                    || endY.get<std::uint64_t>() >= static_cast<unsigned>(request.custom.size[1]))
                     return std::nullopt;
                 auto const& block = layer.at("block").get_ref<std::string const&>();
-                if (block.empty() || !request.custom.layers.try_emplace(y.get<int>(), block).second) return std::nullopt;
+                if (block.empty()) return std::nullopt;
+                fills.push_back({y.get<int>(), endY.get<int>(), block});
             }
+            std::ranges::sort(fills, {}, &CustomLayerFill::y);
+            for (std::size_t i = 1; i < fills.size(); ++i)
+                if (fills[i - 1].endY >= fills[i].y) return std::nullopt;
             request.action = Action::ExportCustom;
             return request;
         }

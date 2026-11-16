@@ -150,6 +150,7 @@
     LHOLO_TEXT_KEY("capture.layerFill", CaptureLayerFill, "") \
     LHOLO_TEXT_KEY("capture.unfilledLayersAir", CaptureUnfilledLayersAir, "") \
     LHOLO_TEXT_KEY("capture.layer", CaptureLayer, "") \
+    LHOLO_TEXT_KEY("capture.layerInputFormat", CaptureLayerInputFormat, "") \
     LHOLO_TEXT_KEY("capture.layerNumber", CaptureLayerNumber, "") \
     LHOLO_TEXT_KEY("capture.block", CaptureBlock, "") \
     LHOLO_TEXT_KEY("capture.searchBlock", CaptureSearchBlock, "") \

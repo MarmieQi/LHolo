@@ -1,6 +1,6 @@
 import React from 'react';
 import type { CaptureControls } from '../../application/useCapture';
-import { sizeAxes, type CustomStructureControls } from '../../application/useCustomStructure';
+import { formatLayerRange, sizeAxes, type CustomStructureControls } from '../../application/useCustomStructure';
 import { LHoloButton, LHoloTextField } from '../../components/LHoloControls';
 import { LHoloItemIcon } from '../../components/LHoloItemIcon';
 import type { MenuLabels } from '../../platform/bridge';
@@ -9,7 +9,6 @@ export function CustomStructurePanel({ labels, capture, editor }: {
   labels: MenuLabels; capture: CaptureControls; editor: CustomStructureControls;
 }) {
   const { x, y, z } = editor.dimensions;
-  const layerLabel = (layer: number) => labels['capture.layerNumber'].replace('%d', String(layer + 1));
   let dimensionIndex = 0;
   const dimensions = labels['label.captureSize'].replace(/%llu/g, () => String([x, y, z][dimensionIndex++]));
   const volume = labels['label.captureVolume'].replace('%llu', String(editor.volume));
@@ -33,11 +32,11 @@ export function CustomStructurePanel({ labels, capture, editor }: {
         <LHoloButton label={labels['capture.addLayer']} disabled={capture.busy || !editor.canAddLayer}
           onClick={editor.addLayer} />
       </div>
-      {editor.sortedLayers.map(({y: layer, block}) => <div className="lholo-file-row lholo-custom-layer-row" key={layer}>
-        <div className="lholo-custom-layer-index">{layerLabel(layer)}</div>
-        <div className="lholo-custom-layer-block"><LHoloItemIcon iconId={block} /><div>{editor.names.get(block) ?? block}</div></div>
-        <LHoloButton label={labels['capture.editLayer']} disabled={capture.busy} onClick={() => editor.editLayer(layer, block)} />
-        <LHoloButton label={labels['capture.removeLayer']} disabled={capture.busy} onClick={() => editor.removeLayer(layer)} />
+      {editor.layers.map(entry => <div className="lholo-file-row lholo-custom-layer-row" key={entry.y}>
+        <div className="lholo-custom-layer-index">{labels['capture.layerNumber'].replace('%d', formatLayerRange(entry))}</div>
+        <div className="lholo-custom-layer-block"><LHoloItemIcon iconId={entry.block} /><div>{editor.names.get(entry.block) ?? entry.block}</div></div>
+        <LHoloButton label={labels['capture.editLayer']} disabled={capture.busy} onClick={() => editor.editLayer(entry)} />
+        <LHoloButton label={labels['capture.removeLayer']} disabled={capture.busy} onClick={() => editor.removeLayer(entry.y)} />
       </div>)}
       {y > 0 && editor.invalidLayers && <div className="lholo-settings-note">{labels['capture.invalidLayer']}</div>}
       <div className="lholo-settings-note">{labels['capture.unfilledLayersAir']}</div>

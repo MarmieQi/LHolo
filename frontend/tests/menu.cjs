@@ -540,6 +540,7 @@ click(labels['button.exportMcstructure']);
 assert.deepEqual(lastCapture(), {action: 'exportCustom', size: {x: 32, y: 16, z: 24}, layers: [], revision: 9, id: 9});
 captureState({revision: 9, ack: 9, worldAvailable: false, customStatus: labels['captureStatus.exported']});
 assert(JSON.stringify(tree.toJSON()).includes(labels['captureStatus.exported']));
+editCoordinate(1, '24');
 receive(JSON.stringify([
   {id: 'minecraft:mossy_stone_bricks', name: '苔石砖'},
   {id: 'minecraft:stone_bricks', name: '石砖'},
@@ -551,10 +552,11 @@ assert.equal(nodeText(searchEntry.findByProps({className: 'lholo-settings-note l
 assert(!inputMocks.get(inputs()[1].props['data-narrate']).attributes.has('placeholder'));
 assert.equal(buttonByLabel(labels['button.exportMcstructure']), undefined);
 assert.equal(inputs()[0].props.value, '1', 'Adding starts at the first unconfigured layer');
-editCoordinate(0, '17');
+assert.equal(nodeText(tree.root.findByProps({className: 'lholo-settings-note lholo-custom-layer-hint'})), '(例如 1 或 1-20)');
+editCoordinate(0, '1-25');
 assert(tree.root.findAllByProps({className: 'lholo-settings-note'})
-  .some(note => nodeText(note) === '层号必须在结构高度范围内'));
-editCoordinate(0, '1');
+  .some(note => nodeText(note) === labels['capture.invalidLayer']));
+editCoordinate(0, '1-20');
 editCoordinate(1, '石砖');
 const blockOptions = () => tree.root.findByProps({className: 'lholo-select-options lholo-autocomplete-options'}).findAllByType('button');
 assert.equal(nodeText(blockOptions()[0]), '石砖(minecraft:stone_bricks)');
@@ -575,33 +577,41 @@ assert.deepEqual(blockField.findByProps({className: 'lholo-autocomplete-measure 
 click(labels['capture.saveLayer']);
 const layerRows = () => tree.root.findAllByProps({className: 'lholo-file-row lholo-custom-layer-row'});
 assert.equal(layerRows().length, 1);
+assert(nodeText(layerRows()[0]).includes('第 1-20 层'));
 assert.equal(inputs().length, 3, 'Saving closes the layer editor');
 click(labels['capture.addLayer']);
-assert.equal(inputs()[0].props.value, '2', 'Add layer advances to the next free layer');
+assert.equal(inputs()[0].props.value, '21', 'Add layer advances past the saved range');
 editCoordinate(1, 'stone_bricks');
 pressSearchKey('Enter');
-editCoordinate(0, '1');
-assert(buttonByLabel(labels['capture.saveLayer']).props.disabled, 'Adding cannot replace a saved layer');
-editCoordinate(0, '3');
+editCoordinate(0, '20-21');
+assert(buttonByLabel(labels['capture.saveLayer']).props.disabled, 'Adding cannot overlap the last layer of a saved range');
+editCoordinate(0, '23-22');
+assert(buttonByLabel(labels['capture.saveLayer']).props.disabled, 'Reversed ranges cannot be saved');
+editCoordinate(0, '22');
 click(labels['capture.saveLayer']);
 assert.equal(layerRows().length, 2);
+renderer.act(() => layerRows()[0].findAllByType('button')[0].props.onClick());
+assert.equal(inputs()[0].props.value, '1-20', 'Editing restores both endpoints');
+assert.equal(buttonByLabel(labels['capture.saveLayer']).props.disabled, false, 'An edit may keep its own range');
+click(labels['button.back']);
 renderer.act(() => layerRows()[1].findAllByType('button')[0].props.onClick());
-assert.equal(inputs()[0].props.value, '3');
+assert.equal(inputs()[0].props.value, '22');
 assert.equal(inputs()[1].props.value, '石砖');
-editCoordinate(0, '4');
+editCoordinate(0, '23');
 click(labels['button.back']);
 assert.equal(layerRows().length, 2);
-assert(nodeText(layerRows()[1]).includes('第 3 层'), 'Back leaves the saved layer intact');
+assert(nodeText(layerRows()[1]).includes('第 22 层'), 'Back leaves the saved layer intact');
 assert.equal(inputs()[0].props.value, '32', 'Back preserves the parent dimensions');
 renderer.act(() => layerRows()[1].findAllByType('button')[0].props.onClick());
-editCoordinate(0, '2');
+editCoordinate(0, '21');
 click(labels['capture.saveLayer']);
-editCoordinate(1, '1');
-assert.equal(buttonByLabel(labels['button.exportMcstructure']).props.disabled, true, 'Shrinking height keeps out-of-range layers but blocks export');
-editCoordinate(1, '16');
+editCoordinate(1, '19');
+assert.equal(buttonByLabel(labels['button.exportMcstructure']).props.disabled, true, 'Shrinking across a filled range blocks export');
+editCoordinate(1, '24');
 click(labels['button.exportMcstructure']);
-assert.deepEqual(lastCapture(), {action: 'exportCustom', size: {x: 32, y: 16, z: 24},
-  layers: [{y: 0, block: 'minecraft:mossy_stone_bricks'}, {y: 1, block: 'minecraft:stone_bricks'}], revision: 9, id: 10});
+assert.deepEqual(lastCapture(), {action: 'exportCustom', size: {x: 32, y: 24, z: 24},
+  layers: [{y: 0, endY: 19, block: 'minecraft:mossy_stone_bricks'}, {y: 20, endY: 20, block: 'minecraft:stone_bricks'}],
+  revision: 9, id: 10});
 captureState({revision: 9, ack: 10, worldAvailable: false});
 click(labels['capture.removeLayer']);
 assert.equal(layerRows().length, 1);

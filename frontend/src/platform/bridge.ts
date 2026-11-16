@@ -28,7 +28,8 @@ export interface MaterialsBridge {
 }
 export interface CapturePoint { x: number; y: number; z: number }
 export interface CustomBlock { id: string; name: string }
-export interface CustomCaptureDraft { size: CapturePoint; layers: readonly { y: number; block: string }[] }
+export interface CustomLayerFill { y: number; endY: number; block: string }
+export interface CustomCaptureDraft { size: CapturePoint; layers: readonly CustomLayerFill[] }
 export interface CaptureDraft {
   first: CapturePoint | null;
   second: CapturePoint | null;
