@@ -77,18 +77,18 @@ std::optional<AimedPlacementTarget> findAimedPlacementTarget(
             BlockPos const neighbor = cell + Facing::DIRECTION()[entryFace];
             if (localPlacement) {
                 auto const hit = projection::queryProjection(player, cell, true);
-                if (hit.block && hit.missing) return AimedPlacementTarget{cell, hit.block, hit.blockEntityNbt, hit.hasLiquid};
+                if (hit.block && hit.missing) return AimedPlacementTarget{cell, hit.block, hit.hasLiquid};
             }
             auto const query = projection::queryProjection(player, neighbor, localPlacement);
             if (neighbor != originCell && query.block && query.missing) {
-                return AimedPlacementTarget{neighbor, query.block, query.blockEntityNbt, query.hasLiquid};
+                return AimedPlacementTarget{neighbor, query.block, query.hasLiquid};
             }
             break;
         }
         auto const query = projection::queryProjection(player, cell, localPlacement);
         if (!query.block || !query.missing) continue;
 
-        return AimedPlacementTarget{cell, query.block, query.blockEntityNbt, query.hasLiquid};
+        return AimedPlacementTarget{cell, query.block, query.hasLiquid};
     }
     return std::nullopt;
 }

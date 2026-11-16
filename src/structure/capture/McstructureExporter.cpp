@@ -11,6 +11,7 @@
 #include "mc/world/level/levelgen/structure/StructureManager.h"
 #include "mc/world/level/levelgen/structure/StructureTemplate.h"
 #include <fstream>
+#include <unordered_map>
 
 namespace lholo::structure::capture {
 
@@ -18,16 +19,28 @@ bool exportMcstructure(StructureTemplate const& structure, std::filesystem::path
     return StructureManager::exportStructure(structure, Core::Path{output});
 }
 
-bool exportEmptyMcstructure(std::array<int, 3> const& size, std::filesystem::path const& output) try {
-    auto const volume = emptyStructureVolume(size);
+bool exportCustomMcstructure(CustomStructure const& draft, std::filesystem::path const& output) try {
+    auto const volume = customStructureVolume(draft.size);
     if (!volume) return false;
     auto air = Block::tryGetFromRegistry(HashedString{"minecraft:air"});
     if (!air) return false;
 
-    ListTag layers;
-    layers.add(std::make_unique<IntArrayTag>(std::vector<int>(*volume, 0)));
     ListTag blocks;
     blocks.add(std::make_unique<CompoundTag>(air->mSerializationId.get()));
+    std::unordered_map<std::string, int> paletteIndices;
+    for (auto const& layer : draft.layers) {
+        auto const& id = layer.second;
+        if (paletteIndices.try_emplace(id, static_cast<int>(blocks.size())).second) {
+            auto block = Block::tryGetFromRegistry(HashedString{id});
+            if (!block || block->getTypeName() != id) return false;
+            blocks.add(std::make_unique<CompoundTag>(block->mSerializationId.get()));
+        }
+    }
+    std::vector<int> indices(*volume, 0);
+    for (auto const& [y, id] : draft.layers)
+        fillCustomLayer(indices, draft.size, y, paletteIndices.at(id));
+    ListTag layers;
+    layers.add(std::make_unique<IntArrayTag>(std::move(indices)));
     CompoundTag palette;
     palette["block_palette"] = std::move(blocks);
     palette["block_position_data"] = CompoundTag{};
@@ -39,7 +52,7 @@ bool exportEmptyMcstructure(std::array<int, 3> const& size, std::filesystem::pat
     structure["palette"] = std::move(palettes);
 
     ListTag dimensions, origin;
-    for (int extent : size) {
+    for (int extent : draft.size) {
         dimensions.add(std::make_unique<IntTag>(extent));
         origin.add(std::make_unique<IntTag>(0));
     }
@@ -49,6 +62,7 @@ bool exportEmptyMcstructure(std::array<int, 3> const& size, std::filesystem::pat
     root["structure_world_origin"] = std::move(origin);
     root["structure"] = std::move(structure);
     auto const bytes = root.toBinaryNbt();
+    if (bytes.size() > kMaximumMcstructureFileSize) return false;
     std::ofstream file(output, std::ios::binary);
     file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     file.close();

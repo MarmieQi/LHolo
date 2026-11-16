@@ -58,7 +58,7 @@ ProjectionQuery queryProjectionCell(
     bool const needsPlacement = correction == CorrectionState::Missing || (localPlacement
         && (correction == CorrectionState::WrongType || correction == CorrectionState::WrongState)
         && block::isDoubleSlab(*block));
-    return {block, needsPlacement, cell->blockEntityNbt,
+    return {block, needsPlacement,
         cell->block && cell->liquid && cell->block != cell->liquid};
 }
 

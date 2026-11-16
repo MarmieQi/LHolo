@@ -455,9 +455,8 @@ void testPlacementState() {
     LHOLO_CHECK(state.failedPlanCached(failedKey, 249));
     LHOLO_CHECK(!state.failedPlanCached(failedKey, 250));
 
-    state.setAimedProjectedBlock({"Test projected block", "minecraft:stone", {}});
-    LHOLO_CHECK(state.aimedProjectedBlock().name == "Test projected block"
-        && state.aimedProjectedBlock().iconId == "minecraft:stone");
+    state.setAimedProjectedBlock("Test projected block");
+    LHOLO_CHECK(state.aimedProjectedBlock() == "Test projected block");
 
     state.recordRecentPlacement(recentCell, 400, 500);
     state.suppressAutoPlacement(suppressedCell, 500);
@@ -473,12 +472,12 @@ void testPlacementState() {
     LHOLO_CHECK(!state.autoPlacementSuppressionsActive(400));
     LHOLO_CHECK(!state.autoPlacementSuppressed(suppressedCell, 400));
     LHOLO_CHECK(!state.failedPlanCached(failedKey, 400));
-    LHOLO_CHECK(state.aimedProjectedBlock().name.empty() && state.aimedProjectedBlock().iconId.empty() && !state.aimedProjectedBlock().iconItem);
+    LHOLO_CHECK(state.aimedProjectedBlock().empty());
     LHOLO_CHECK(state.radius() == 3);
     LHOLO_CHECK(state.autoPlacementBreakCooldownSeconds() == 12);
 
     LHOLO_CHECK(state.beginManualPress(450));
-    state.setAimedProjectedBlock({"World projected block", "minecraft:stone", {}});
+    state.setAimedProjectedBlock("World projected block");
     state.suppressAutoPlacement(suppressedCell, 500);
     state.resetWorldSession();
     LHOLO_CHECK(!state.enabled());
@@ -491,7 +490,7 @@ void testPlacementState() {
     LHOLO_CHECK(!state.autoPlacementSuppressionsActive(0));
     LHOLO_CHECK(!state.autoPlacementSuppressed(suppressedCell, 0));
     LHOLO_CHECK(!state.failedPlanCached(failedKey, 0));
-    LHOLO_CHECK(state.aimedProjectedBlock().name.empty() && state.aimedProjectedBlock().iconId.empty() && !state.aimedProjectedBlock().iconItem);
+    LHOLO_CHECK(state.aimedProjectedBlock().empty());
     // User configuration survives a world transition.
     LHOLO_CHECK(state.radius() == 3);
     LHOLO_CHECK(state.autoPlacementBreakCooldownSeconds() == 12);

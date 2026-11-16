@@ -173,12 +173,12 @@ void PlacementState::cacheFailedPlan(
     mFailedRangePlans[key] = expiresAt;
 }
 
-AimedProjectedBlock PlacementState::aimedProjectedBlock() const {
+std::string PlacementState::aimedProjectedBlock() const {
     std::lock_guard lock(mAimedProjectedBlockMutex);
     return mAimedProjectedBlock;
 }
 
-void PlacementState::setAimedProjectedBlock(AimedProjectedBlock value) {
+void PlacementState::setAimedProjectedBlock(std::string value) {
     std::lock_guard lock(mAimedProjectedBlockMutex);
     mAimedProjectedBlock = std::move(value);
 }

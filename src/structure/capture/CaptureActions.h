@@ -1,17 +1,17 @@
 #pragma once
 
+#include "structure/capture/CustomStructure.h"
 #include "structure/capture/StructureCapture.h"
-#include <array>
 
 namespace lholo::structure::capture {
-enum class Action { Apply, FirstFromPlayer, SecondFromPlayer, Clear, Export, ExportEmpty };
+enum class Action { Apply, FirstFromPlayer, SecondFromPlayer, Clear, Export, ExportCustom };
 struct Request {
     Action action{};
     Draft draft;
     std::uint64_t revision{};
     std::uint64_t id{};
     std::filesystem::path output;
-    std::array<int, 3> size{};
+    CustomStructure custom;
 };
 // Producers only enqueue data; the client logic update drains the queue.
 // No UI/protocol dependencies.
@@ -22,5 +22,5 @@ void resetActions();
 void resetWorldActions();
 bool actionPending();
 std::uint64_t completedAction();
-bool emptyExportSucceeded();
+bool customExportSucceeded();
 }

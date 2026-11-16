@@ -25,7 +25,7 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
   let projection: ProjectionState = {worldAvailable:true,loading:false,hasProjection:false};
   let capture: CaptureState = {
     draft:{first:null,second:null,includeEntities:false},revision:0,ack:0,
-    worldAvailable:true,busy:false,status:labels['captureStatus.needTwoPoints'],customStatus:'',maxEmptyCells:167771904,error:'',
+    worldAvailable:true,busy:false,status:labels['captureStatus.needTwoPoints'],customStatus:'',maxCustomCells:167771904,maxRequestBytes:262144,error:'',
   };
   const emit = (name: string, value: unknown) => {
     const payload = JSON.stringify(value);
@@ -95,7 +95,7 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
       if (name === 'facet:request' && args[0] === 'lholo.capture.intent') {
         const request = JSON.parse((args[2] as { request: string }).request);
         if (capture.busy) return;
-        if (request.action === 'exportEmpty') {
+        if (request.action === 'exportCustom') {
           capture = { ...capture, ack: request.id, busy: true, customStatus: '', error: '' }; publish();
           later(() => { capture = { ...capture, busy: false, customStatus: '开发预览：已模拟导出，未生成结构文件' }; });
           return;
@@ -126,6 +126,16 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
         case 'lholo.menu.close': notice('这是浏览器开发预览。关闭此标签页即可退出。');break;
         case 'lholo.materials.request':
           materials=projection.hasProjection?{ready:true,items:previewMaterials}:{ready:false,items:[]};publish();break;
+        case 'lholo.capture.blocks':
+          emit('lholo:capture-blocks', [
+            {id:'minecraft:stone_bricks', name:'石砖'},
+            {id:'minecraft:mossy_stone_bricks', name:'苔石砖'},
+            {id:'minecraft:cracked_stone_bricks', name:'裂纹石砖'},
+            {id:'minecraft:oak_planks', name:'橡木木板'},
+            {id:'minecraft:glass', name:'玻璃'},
+            {id:'minecraft:diamond_ore', name:'钻石矿石'},
+            {id:'minecraft:deepslate_diamond_ore', name:'深板岩钻石矿石'},
+          ]);break;
       }
     },
   };

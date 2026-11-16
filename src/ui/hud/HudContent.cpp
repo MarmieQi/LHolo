@@ -69,26 +69,10 @@ HudPanel makeProjectionHud(structure::detail::HudStateSnapshot const& s, Project
         static_cast<unsigned long long>(p.placed), static_cast<unsigned long long>(p.total)));
     if (s.showProgress) add(text(TextKey::HudBuildProgress,
         static_cast<unsigned long long>(p.visiblePlaced), static_cast<unsigned long long>(p.visibleTotal)));
+    if (s.showProjectedBlockName && !d.aimedBlock.empty()) add(text(TextKey::HudProjectedBlock, d.aimedBlock.c_str()));
     if (s.showWrongState && p.wrongState) add(text(TextKey::HudWrongState, static_cast<unsigned long long>(p.wrongState)), TextTone::WrongState);
     if (s.showWrongType && p.wrongType) add(text(TextKey::HudWrongType, static_cast<unsigned long long>(p.wrongType)), TextTone::WrongType);
     if (s.showExtraBlocks && p.extra) add(text(TextKey::HudExtraBlocks, static_cast<unsigned long long>(p.extra)), TextTone::Extra);
-    if (s.showProjectedBlockName && !d.aimedBlock.empty()) {
-        HudLine line{text(TextKey::HudProjectedBlock, d.aimedBlock.c_str())};
-        // Temporarily disabled pending layout review; keep the icon implementation for later.
-        /*
-        std::string const format = i18n::tr(TextKey::HudProjectedBlock);
-        auto const marker = format.find("%s");
-        if (!d.aimedBlockIconId.empty() && marker != std::string::npos) {
-            // Keep the icon at the localized value placeholder, not at a
-            // hard-coded colon/byte offset that only works in one language.
-            line.iconPrefix = format.substr(0, marker);
-            line.text = d.aimedBlock + format.substr(marker + 2);
-            line.iconId = d.aimedBlockIconId;
-            line.iconItem = d.aimedBlockIconItem;
-        }
-        */
-        panel.lines.push_back(std::move(line));
-    }
     if (!d.placementMode.empty()) add(text(TextKey::HudPlacementMode, d.placementMode.c_str()), TextTone::Placement);
     return panel;
 }

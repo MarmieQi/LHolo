@@ -7,8 +7,6 @@
 
 #pragma once
 
-#include "place/AimedProjectedBlock.h"
-
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -112,8 +110,8 @@ public:
     [[nodiscard]] bool failedPlanCached(FailedPlanKey const& key, std::uint64_t now) const;
     void cacheFailedPlan(FailedPlanKey const& key, std::uint64_t now, std::uint64_t expiresAt);
 
-    [[nodiscard]] AimedProjectedBlock aimedProjectedBlock() const;
-    void setAimedProjectedBlock(AimedProjectedBlock value);
+    [[nodiscard]] std::string aimedProjectedBlock() const;
+    void setAimedProjectedBlock(std::string value);
 
     void resetDimensionSession();
     void resetWorldSession();
@@ -148,7 +146,7 @@ private:
     std::unordered_map<FailedPlanKey, std::uint64_t, FailedPlanKeyHash> mFailedRangePlans;
 
     mutable std::mutex mAimedProjectedBlockMutex;
-    AimedProjectedBlock mAimedProjectedBlock;
+    std::string mAimedProjectedBlock;
 };
 
 } // namespace lholo::place::detail

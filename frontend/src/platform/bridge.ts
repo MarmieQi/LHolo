@@ -27,12 +27,14 @@ export interface MaterialsBridge {
   requestMaterials(): void;
 }
 export interface CapturePoint { x: number; y: number; z: number }
+export interface CustomBlock { id: string; name: string }
+export interface CustomCaptureDraft { size: CapturePoint; layers: readonly { y: number; block: string }[] }
 export interface CaptureDraft {
   first: CapturePoint | null;
   second: CapturePoint | null;
   includeEntities: boolean;
 }
-export type CaptureAction = 'apply' | 'first' | 'second' | 'clear' | 'export' | 'exportEmpty';
+export type CaptureAction = 'apply' | 'first' | 'second' | 'clear' | 'export' | 'exportCustom';
 export interface CaptureState {
   draft: CaptureDraft;
   revision: number;
@@ -41,12 +43,15 @@ export interface CaptureState {
   busy: boolean;
   status: string;
   customStatus: string;
-  maxEmptyCells: number;
+  maxCustomCells: number;
+  maxRequestBytes: number;
   error: string;
 }
 export interface CaptureBridge {
   subscribeCapture(listener: (state: CaptureState) => void): () => void;
-  capture(action: CaptureAction, draft: CaptureDraft, revision: number, id: number, size?: CapturePoint): void;
+  subscribeCustomBlocks(listener: (blocks: readonly CustomBlock[]) => void): () => void;
+  requestCustomBlocks(): void;
+  capture(action: CaptureAction, draft: CaptureDraft, revision: number, id: number, maxBytes: number, custom?: CustomCaptureDraft): boolean;
 }
 export type TransformField = 'rotation' | 'mirror' | 'x' | 'y' | 'z';
 export type TransformValues = Record<TransformField, number>;
@@ -153,7 +158,8 @@ export function parseCapture(payload: string): CaptureState {
     || !Number.isSafeInteger(state.revision) || state.revision < 0
     || !Number.isSafeInteger(state.ack) || state.ack < 0
     || typeof state.worldAvailable !== 'boolean' || typeof state.busy !== 'boolean'
-    || !Number.isSafeInteger(state.maxEmptyCells) || state.maxEmptyCells <= 0
+    || !Number.isSafeInteger(state.maxCustomCells) || state.maxCustomCells <= 0
+    || !Number.isSafeInteger(state.maxRequestBytes) || state.maxRequestBytes <= 0
     || typeof state.status !== 'string' || typeof state.customStatus !== 'string'
     || typeof state.error !== 'string') throw new Error('Invalid LHolo capture state');
   return state as CaptureState;
@@ -243,13 +249,29 @@ export const menuBridge: MenuBridge = {
     window.engine.on('lholo:capture', receive);
     return () => window.engine.off('lholo:capture', receive);
   },
-  capture(action, draft, revision, id, size) {
+  subscribeCustomBlocks(listener) {
+    const receive = (payload: string) => {
+      try {
+        const blocks = JSON.parse(payload);
+        if (!Array.isArray(blocks) || !blocks.every(block => typeof block?.id === 'string' && typeof block.name === 'string'))
+          throw new Error('Invalid LHolo block catalog');
+        listener(blocks);
+      } catch (error) { console.error(error); }
+    };
+    window.engine.on('lholo:capture-blocks', receive);
+    return () => window.engine.off('lholo:capture-blocks', receive);
+  },
+  requestCustomBlocks: () => send('lholo.capture.blocks'),
+  capture(action, draft, revision, id, maxBytes, custom) {
     // Original typed facet activation carries one JSON string. The native
     // adapter validates it and queues an application-frame action.
+    const request = JSON.stringify(action === 'exportCustom' ? { action, ...custom, revision, id } : { action, draft, revision, id });
+    if (encodeURIComponent(request).replace(/%[0-9A-F]{2}/g, 'x').length > maxBytes) return false;
     window.engine.trigger('facet:discard', 'lholo.capture.intent');
     window.engine.trigger('facet:request', 'lholo.capture.intent', 'lholo.capture.intent', {
-      request: JSON.stringify(action === 'exportEmpty' ? { action, size, revision, id } : { action, draft, revision, id }),
+      request,
     });
+    return true;
   },
   close: () => send('lholo.menu.close'),
   editHudLayout: () => send('lholo.hud.edit-layout'),

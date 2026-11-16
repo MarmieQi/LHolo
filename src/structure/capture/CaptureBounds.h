@@ -5,13 +5,13 @@
 #include <limits>
 
 namespace lholo::structure::capture {
-// One int32 per cell, with room for the fixed NBT envelope and air palette.
-inline constexpr auto kMaximumEmptyStructureCells = (kMaximumMcstructureFileSize - 1024) / sizeof(int);
+// One int32 per cell, reserving the fixed NBT envelope. The exporter checks the complete file size.
+inline constexpr auto kMaximumCustomStructureCells = (kMaximumMcstructureFileSize - 1024) / sizeof(int);
 
-inline std::optional<std::size_t> emptyStructureVolume(std::array<int, 3> const& size) {
+inline std::optional<std::size_t> customStructureVolume(std::array<int, 3> const& size) {
     std::size_t volume = 1;
     for (int extent : size) {
-        if (extent <= 0 || volume > kMaximumEmptyStructureCells / extent) return {};
+        if (extent <= 0 || volume > kMaximumCustomStructureCells / extent) return {};
         volume *= extent;
     }
     return volume;

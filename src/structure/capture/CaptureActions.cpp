@@ -11,7 +11,7 @@ std::mutex mutex;
 std::optional<Request> pending;
 bool executing{};
 std::uint64_t completed{};
-bool emptyExported{};
+bool customExported{};
 }
 bool submitAction(Request request) {
     std::lock_guard lock(mutex);
@@ -21,11 +21,11 @@ bool submitAction(Request request) {
 }
 bool actionPending() { std::lock_guard lock(mutex); return pending.has_value() || executing; }
 std::uint64_t completedAction() { std::lock_guard lock(mutex); return completed; }
-bool emptyExportSucceeded() { std::lock_guard lock(mutex); return emptyExported; }
+bool customExportSucceeded() { std::lock_guard lock(mutex); return customExported; }
 void resetActions() { std::lock_guard lock(mutex); pending.reset(); }
 void resetWorldActions() {
     std::lock_guard lock(mutex);
-    if (pending && pending->action != Action::ExportEmpty) pending.reset();
+    if (pending && pending->action != Action::ExportCustom) pending.reset();
 }
 void processActions() {
     std::optional<Request> request;
@@ -38,12 +38,12 @@ void processActions() {
     bool exported{};
     auto finish = gsl::finally([&] {
         std::lock_guard lock(mutex);
-        emptyExported = exported;
+        customExported = exported;
         completed = request->id;
         executing = false;
     });
-    if (request->action == Action::ExportEmpty) {
-        exported = exportEmptyMcstructure(request->size, request->output);
+    if (request->action == Action::ExportCustom) {
+        exported = exportCustomMcstructure(request->custom, request->output);
         return;
     }
     auto const snapshot = getSnapshot();
@@ -58,7 +58,7 @@ void processActions() {
     case Action::SecondFromPlayer: setPointFromPlayer(PointSlot::Second); break;
     case Action::Export: exportStructure(request->draft, request->output); break;
     case Action::Clear: break;
-    case Action::ExportEmpty: break;
+    case Action::ExportCustom: break;
     }
 }
 }

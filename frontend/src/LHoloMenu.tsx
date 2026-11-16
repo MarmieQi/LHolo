@@ -80,26 +80,27 @@ export function LHoloMenu({
         <div className="lholo-navigation"><NativeScrollView>
           <MenuNavigation page={page} labels={labels} onSelect={selectPage} />
         </NativeScrollView></div>
-        <div className="lholo-content-viewport"><NativeScrollView>
-          <div className="lholo-content" key={page}>
-            {(page === 'transform' || page === 'render') && activeTask ? (
-              <SelectedFileContext label={labels['tasks.currentSelection']}
-                name={activeFile?.name ?? labels['tasks.noSelection']} />
-            ) : null}
-            {page === 'tasks' ? <TasksPage labels={labels} tasksCtrl={tasks} preview={preview} hasProjection={projection.hasProjection} onMaterials={materialsState.openModal} />
-              : page === 'createStructure' ? <CreateStructurePage labels={labels} capture={capture} />
-              : page === 'writeWorld' ? <WriteWorldPage
-                key={JSON.stringify([tasks.currentTaskId, tasks.state?.activeTaskId, tasks.selectedLayerId,
-                  tasks.selectedLayer?.path, tasks.selectedLayer?.dimension, writer.state?.worldRevision, writer.state?.dimension])}
-                labels={labels} tasks={tasks} writer={writer} />
-              : page === 'transform' ? <TransformPage labels={labels} transform={{...transform, ready: transform.ready && !taskBusy && (!activeTask || !!activeFile)}} />
-              : page === 'render' ? <RenderPage labels={labels} render={{...render, ready: render.ready && !taskBusy}} />
-              : page === 'hud' ? <HudPage labels={labels} hud={hud} worldAvailable={projection.worldAvailable} />
-              : page === 'hotkeys' ? <HotkeysPage labels={labels} hotkeys={hotkeys} />
-              : page === 'interface' ? <InterfacePage labels={labels} interfaceSettings={interfaceSettings} />
-              : <ExperimentalPage labels={labels} experimental={experimental} worldAvailable={projection.worldAvailable} />}
-          </div>
-        </NativeScrollView></div>
+        <div className="lholo-content-viewport">
+          {page === 'createStructure' ? <CreateStructurePage labels={labels} capture={capture} /> : <NativeScrollView>
+            <div className="lholo-content" key={page}>
+              {(page === 'transform' || page === 'render') && activeTask ? (
+                <SelectedFileContext label={labels['tasks.currentSelection']}
+                  name={activeFile?.name ?? labels['tasks.noSelection']} />
+              ) : null}
+              {page === 'tasks' ? <TasksPage labels={labels} tasksCtrl={tasks} preview={preview} hasProjection={projection.hasProjection} onMaterials={materialsState.openModal} />
+                : page === 'writeWorld' ? <WriteWorldPage
+                  key={JSON.stringify([tasks.currentTaskId, tasks.state?.activeTaskId, tasks.selectedLayerId,
+                    tasks.selectedLayer?.path, tasks.selectedLayer?.dimension, writer.state?.worldRevision, writer.state?.dimension])}
+                  labels={labels} tasks={tasks} writer={writer} />
+                : page === 'transform' ? <TransformPage labels={labels} transform={{...transform, ready: transform.ready && !taskBusy && (!activeTask || !!activeFile)}} />
+                : page === 'render' ? <RenderPage labels={labels} render={{...render, ready: render.ready && !taskBusy}} />
+                : page === 'hud' ? <HudPage labels={labels} hud={hud} worldAvailable={projection.worldAvailable} />
+                : page === 'hotkeys' ? <HotkeysPage labels={labels} hotkeys={hotkeys} />
+                : page === 'interface' ? <InterfacePage labels={labels} interfaceSettings={interfaceSettings} />
+                : <ExperimentalPage labels={labels} experimental={experimental} worldAvailable={projection.worldAvailable} />}
+            </div>
+          </NativeScrollView>}
+        </div>
       </div>
     </div>
     <MaterialListModal

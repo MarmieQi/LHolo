@@ -27,6 +27,8 @@ export function LHoloTextField({
   autoFocus,
   onEnter,
   onEscape,
+  onKeyDown,
+  leadingIcon,
 }: {
   label: string;
   value: string;
@@ -39,6 +41,8 @@ export function LHoloTextField({
   autoFocus?: boolean;
   onEnter?(): void;
   onEscape?(): void;
+  onKeyDown?(event: React.KeyboardEvent<HTMLInputElement>): boolean;
+  leadingIcon?: React.ReactNode;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const composing = useRef(false);
@@ -49,6 +53,14 @@ export function LHoloTextField({
       input.current.focus();
     }
   }, [autoFocus]);
+
+  // dom-fiber does not forward the placeholder JSX prop to the input.
+  useEffect(() => {
+    const element = input.current;
+    if (!element) return;
+    if (placeholder === undefined) element.removeAttribute('placeholder');
+    else element.setAttribute('placeholder', placeholder);
+  }, [placeholder]);
 
   // dom-fiber only forwards a documented subset of JSX event props. Bind the
   // real input event explicitly so keyboard, paste and IME changes all work.
@@ -77,12 +89,12 @@ export function LHoloTextField({
       className={combinedClass}
       onClick={() => { if (!disabled) input.current?.focus(); }}
     >
+      {leadingIcon && <div className="lholo-input-leading-icon">{leadingIcon}</div>}
       <input
         ref={input}
         className="lholo-text-input"
         type="text"
         value={value}
-        placeholder={placeholder}
         disabled={disabled}
         maxLength={maxLength}
         data-narrate={label}
@@ -90,6 +102,7 @@ export function LHoloTextField({
         onBlur={() => { setEditing(false); onBlur?.(); }}
         onKeyDown={event => {
           if (composing.current || event.nativeEvent?.isComposing || event.keyCode === 229) return;
+          if (onKeyDown?.(event)) return;
           if (event.key === 'Enter' || event.keyCode === 13) {
             input.current?.blur();
             onEnter?.();

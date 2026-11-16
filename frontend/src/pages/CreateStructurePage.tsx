@@ -1,63 +1,37 @@
 import React, { useState } from 'react';
 import type { CaptureControls } from '../application/useCapture';
+import { useCustomStructure } from '../application/useCustomStructure';
 import { selectionMetrics } from '../application/selectionMetrics';
 import type { MenuLabels } from '../platform/bridge';
 import { LHoloButton, LHoloCheckbox, LHoloTextField } from '../components/LHoloControls';
 import { LHoloTabs } from '../components/LHoloTabs';
+import { NativeScrollView } from '../platform/native';
+import { CustomStructurePanel } from './create/CustomStructurePanel';
+import { CustomLayerEditorPage } from './create/CustomLayerEditorPage';
 
 type CreateTab = 'world' | 'custom';
-const sizeAxes = ['x', 'y', 'z'] as const;
-type SizeDraft = Record<typeof sizeAxes[number], string>;
 type CreateStructureProps = { labels: MenuLabels; capture: CaptureControls };
 
 export function CreateStructurePage({ labels, capture }: CreateStructureProps) {
   const [tab, setTab] = useState<CreateTab>('world');
-  const [size, setSize] = useState<SizeDraft>({x: '', y: '', z: ''});
-  return <>
-    <div className="lholo-section-title">{labels['section.captureSource']}</div>
-    <LHoloTabs<CreateTab> selected={tab} onSelect={setTab} tabs={[
-      { id: 'world', label: labels['capture.tabWorld'] },
-      { id: 'custom', label: labels['capture.tabCustom'] },
-    ]} />
-    <div className="lholo-tab-content">
-      {tab === 'world' ? <WorldSelection labels={labels} capture={capture} />
-        : <EmptyStructure labels={labels} capture={capture} size={size} setSize={setSize} />}
+  const custom = useCustomStructure(capture, tab === 'custom');
+  // A new scroll view starts each level at its own header. The hook above
+  // retains the dimensions and saved layers while either level is visible.
+  return <NativeScrollView key={custom.draft ? 'layer-editor' : 'create-structure'}>
+    <div className="lholo-content">
+      {custom.draft ? <CustomLayerEditorPage labels={labels} editor={custom} draft={custom.draft} busy={capture.busy} /> : <>
+        <div className="lholo-section-title">{labels['section.captureSource']}</div>
+        <LHoloTabs<CreateTab> selected={tab} onSelect={setTab} tabs={[
+          { id: 'world', label: labels['capture.tabWorld'] },
+          { id: 'custom', label: labels['capture.tabCustom'] },
+        ]} />
+        <div className="lholo-tab-content">
+          {tab === 'world' ? <WorldSelection labels={labels} capture={capture} />
+            : <CustomStructurePanel labels={labels} capture={capture} editor={custom} />}
+        </div>
+      </>}
     </div>
-  </>;
-}
-
-function EmptyStructure({ labels, capture, size, setSize }: CreateStructureProps & {
-  size: SizeDraft; setSize(value: SizeDraft): void;
-}) {
-  const fields = sizeAxes.map(axis => size[axis].trim());
-  const invalidField = fields.some(text => text !== '' && (!/^\d+$/.test(text) || Number(text) === 0));
-  const [x, y, z] = fields.map(Number);
-  const complete = !invalidField && x > 0 && y > 0 && z > 0;
-  const volume = x * y * z;
-  const tooLarge = capture.state !== null && complete && volume > capture.state.maxEmptyCells;
-  const valid = complete && !tooLarge;
-  return <>
-    <div className="lholo-section-title">{labels['capture.emptyDimensions']}</div>
-    <div className="lholo-size-fields">
-      {sizeAxes.map((axis, index) => <div className="lholo-coordinate-row" key={axis}>
-        <div className="lholo-capture-point-title">{axis.toUpperCase()}</div>
-        <LHoloTextField label={`${labels['capture.emptyDimensions']} ${axis.toUpperCase()}`}
-          placeholder={['32', '16', '24'][index]} value={size[axis]} disabled={capture.busy}
-          onChange={value => setSize({...size, [axis]: value})} />
-      </div>)}
-    </div>
-    {valid && <CaptureMetrics labels={labels} dimensions={[x, y, z]} volume={String(volume)} />}
-    {(invalidField || tooLarge) && <div className="lholo-notice">
-      {labels[tooLarge ? 'capture.invalidEmptyDimensions' : 'capture.emptyDimensionsFormat']}
-    </div>}
-    <div className="lholo-action-row">
-      <LHoloButton label={labels['button.exportMcstructure']} disabled={!capture.state || capture.busy || !valid}
-        onClick={() => capture.exportEmpty({x, y, z})} />
-    </div>
-    {capture.state?.customStatus && <div className="lholo-status">{capture.state.customStatus}</div>}
-    {capture.editingBusy && <div className="lholo-notice">{labels['oreui.captureBusy']}</div>}
-    {capture.state?.error && <div className="lholo-notice">{capture.state.error}</div>}
-  </>;
+  </NativeScrollView>;
 }
 
 function WorldSelection({ labels, capture }: CreateStructureProps) {

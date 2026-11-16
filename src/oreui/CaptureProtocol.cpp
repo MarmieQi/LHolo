@@ -6,7 +6,7 @@
 namespace lholo::oreui {
 std::optional<structure::capture::Request> parseCaptureIntent(std::string_view payload) {
     using namespace structure::capture;
-    if (payload.size() > 4096) return std::nullopt;
+    if (payload.size() > kCaptureIntentMaxBytes) return std::nullopt;
     try {
         auto const value = nlohmann::json::parse(payload);
         auto validId = [](auto const& number) {
@@ -18,7 +18,7 @@ std::optional<structure::capture::Request> parseCaptureIntent(std::string_view p
         request.id = value.at("id").get<std::uint64_t>();
         request.revision = value.at("revision").get<std::uint64_t>();
         auto const action = value.at("action").get<std::string>();
-        if (action == "exportEmpty") {
+        if (action == "exportCustom") {
             auto const& size = value.at("size");
             std::array const axes{"x", "y", "z"};
             for (std::size_t index = 0; index < axes.size(); ++index) {
@@ -26,10 +26,19 @@ std::optional<structure::capture::Request> parseCaptureIntent(std::string_view p
                 if (!extent.is_number_unsigned()) return std::nullopt;
                 auto const length = extent.get<std::uint64_t>();
                 if (length == 0 || length > std::numeric_limits<int>::max()) return std::nullopt;
-                request.size[index] = static_cast<int>(length);
+                request.custom.size[index] = static_cast<int>(length);
             }
-            if (!emptyStructureVolume(request.size)) return std::nullopt;
-            request.action = Action::ExportEmpty;
+            if (!customStructureVolume(request.custom.size)) return std::nullopt;
+            auto const& layers = value.at("layers");
+            if (!layers.is_array() || layers.size() > static_cast<std::size_t>(request.custom.size[1])) return std::nullopt;
+            for (auto const& layer : layers) {
+                auto const& y = layer.at("y");
+                if (!y.is_number_unsigned() || y.get<std::uint64_t>() >= static_cast<unsigned>(request.custom.size[1]))
+                    return std::nullopt;
+                auto const& block = layer.at("block").get_ref<std::string const&>();
+                if (block.empty() || !request.custom.layers.try_emplace(y.get<int>(), block).second) return std::nullopt;
+            }
+            request.action = Action::ExportCustom;
             return request;
         }
         if (action == "apply") request.action = Action::Apply;

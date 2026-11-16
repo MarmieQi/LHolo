@@ -25,7 +25,6 @@ struct HudLine {
     std::optional<std::string> iconId;
     std::string quantity; // Right-aligned value: material count or header page indicator.
     std::shared_ptr<ItemStack const> iconItem;
-    std::string iconPrefix; // Optional localized text drawn before the icon.
 };
 struct HudPanel {
     int position{}; // 0 TL, 1 BL, 2 TR, 3 BR, 4 top center; matches persisted settings.
@@ -45,8 +44,6 @@ struct ProjectionHudData {
     int layer{}, maxLayer{};
     projection::BuildProgress progress;
     std::string aimedBlock;
-    std::string aimedBlockIconId;
-    std::shared_ptr<ItemStack const> aimedBlockIconItem;
     std::string placementMode;
 };
 struct WriteHudData {

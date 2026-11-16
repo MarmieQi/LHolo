@@ -15,7 +15,6 @@
 #include <vector>
 
 class Block;
-class CompoundTag;
 class Vec3;
 
 namespace lholo::structure {
@@ -60,7 +59,6 @@ struct MaterialProgressSnapshot {
 struct ProjectionQuery {
     Block const* block; // nullptr for non-placeable or hidden projection cells
     bool         missing;
-    std::shared_ptr<CompoundTag const> blockEntityNbt;
     bool         hasLiquid{};
 };
 

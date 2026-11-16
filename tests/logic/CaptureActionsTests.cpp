@@ -12,7 +12,7 @@ namespace lholo::structure::capture {
 namespace {
 Snapshot fake;
 int exports{};
-std::array<int, 3> exportedSize{};
+CustomStructure exportedCustom;
 std::filesystem::path exportedPath;
 std::thread::id exportThread;
 }
@@ -26,8 +26,8 @@ void clear() { fake.draft = {}; ++fake.revision; }
 void exportStructure(Draft const&, std::filesystem::path const& output) {
     ++exports; exportedPath = output; exportThread = std::this_thread::get_id();
 }
-bool exportEmptyMcstructure(std::array<int, 3> const& size, std::filesystem::path const& output) {
-    exportedSize = size;
+bool exportCustomMcstructure(CustomStructure const& draft, std::filesystem::path const& output) {
+    exportedCustom = draft;
     exportedPath = output;
     return true;
 }
@@ -74,7 +74,8 @@ int runCaptureActionsTests() {
     check(!parseCaptureIntent(invalid.dump()), "unknown action rejected");
     invalid = payload; invalid["id"] = 9007199254740992ULL;
     check(!parseCaptureIntent(invalid.dump()), "unsafe JS request id rejected");
-    check(!parseCaptureIntent("{") && !parseCaptureIntent(std::string(4097, ' ')), "malformed and oversized payloads rejected");
+    check(!parseCaptureIntent("{") && !parseCaptureIntent(std::string(lholo::oreui::kCaptureIntentMaxBytes + 1, ' ')),
+          "malformed and oversized payloads rejected");
     resetActions();
     fake = {}; fake.worldAvailable = true;
     check(submitAction(*request), "apply queued");
@@ -111,26 +112,39 @@ int runCaptureActionsTests() {
     processActions();
     check(exports == 2 && exportThread == logicThread && completedAction() == 8 && !actionPending(),
           "queued export runs once on the consumer thread, never on the producer thread");
-    nlohmann::json emptyPayload{{"id", 9}, {"revision", 0}, {"action", "exportEmpty"},
-        {"size", {{"x", 32}, {"y", 16}, {"z", 24}}}};
+    nlohmann::json emptyPayload{{"id", 9}, {"revision", 0}, {"action", "exportCustom"},
+        {"size", {{"x", 32}, {"y", 16}, {"z", 24}}}, {"layers", nlohmann::json::array()}};
     auto empty = parseCaptureIntent(emptyPayload.dump());
-    check(empty && empty->size == std::array<int, 3>{32, 16, 24}, "empty export reads dimensions without world draft");
+    check(empty && empty->custom.size == std::array<int, 3>{32, 16, 24} && empty->custom.layers.empty(),
+          "empty export reads dimensions without world draft");
+    auto filledPayload = emptyPayload;
+    filledPayload["layers"] = {{{"y", 1}, {"block", "minecraft:glass"}}, {{"y", 0}, {"block", "minecraft:stone"}}};
+    auto filled = parseCaptureIntent(filledPayload.dump());
+    check(filled && filled->custom.layers == std::map<int, std::string>{{0, "minecraft:stone"}, {1, "minecraft:glass"}},
+          "layer entries carry their original block IDs and zero-based heights");
+    filledPayload["layers"][0]["y"] = 0;
+    check(!parseCaptureIntent(filledPayload.dump()), "duplicate layer height rejected");
+    filledPayload["layers"][0]["y"] = 16;
+    check(!parseCaptureIntent(filledPayload.dump()), "layer outside dimensions rejected");
+    std::vector<int> indices(12);
+    fillCustomLayer(indices, {2, 3, 2}, 1, 3);
+    check(indices == std::vector<int>{0, 0, 3, 3, 0, 0, 0, 0, 3, 3, 0, 0}, "layer fills its X/Z plane in Bedrock's order");
     emptyPayload["size"]["x"] = 0;
     check(!parseCaptureIntent(emptyPayload.dump()), "zero extent rejected");
     emptyPayload["size"] = {{"x", 512}, {"y", 512}, {"z", 639}};
     check(parseCaptureIntent(emptyPayload.dump()).has_value(), "empty export accepts sizes above the former 512 MiB limit");
     emptyPayload["size"]["z"] = 640;
     check(!parseCaptureIntent(emptyPayload.dump()), "empty structure exceeding file size rejected");
-    if (empty) {
+    if (filled) {
         fake.worldAvailable = false;
         auto const draftBefore = fake.draft;
-        empty->output = request->output;
-        submitAction(*empty);
+        filled->output = request->output;
+        submitAction(*filled);
         resetWorldActions();
         processActions();
-        check(completedAction() == 9 && emptyExportSucceeded() && exportedSize == empty->size
-              && exportedPath == empty->output && fake.draft == draftBefore,
-              "empty export is independent of world state and preserves world draft");
+        check(completedAction() == 9 && customExportSucceeded() && exportedCustom.size == filled->custom.size
+              && exportedCustom.layers == filled->custom.layers && exportedPath == filled->output && fake.draft == draftBefore,
+              "custom export preserves layers independently of world state and the world draft");
     }
     std::printf("CaptureActionsTests: %d failures\n", failures);
     return failures;

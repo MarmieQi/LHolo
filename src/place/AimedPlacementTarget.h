@@ -2,11 +2,9 @@
 
 #include "mc/world/level/BlockPos.h"
 
-#include <memory>
 #include <optional>
 
 class Block;
-class CompoundTag;
 class LocalPlayer;
 class Vec3;
 
@@ -15,7 +13,6 @@ namespace lholo::place {
 struct AimedPlacementTarget {
     BlockPos cell;
     Block const* block;
-    std::shared_ptr<CompoundTag const> blockEntityNbt;
     bool hasLiquid{};
 };
 

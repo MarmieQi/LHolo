@@ -147,9 +147,24 @@
     LHOLO_TEXT_KEY("section.captureSource", SectionCaptureSource, "")                                    \
     LHOLO_TEXT_KEY("capture.tabWorld", CaptureTabWorld, "")                                              \
     LHOLO_TEXT_KEY("capture.tabCustom", CaptureTabCustom, "")                                            \
-    LHOLO_TEXT_KEY("capture.emptyDimensions", CaptureEmptyDimensions, "")                                \
-    LHOLO_TEXT_KEY("capture.emptyDimensionsFormat", CaptureEmptyDimensionsFormat, "")                    \
-    LHOLO_TEXT_KEY("capture.invalidEmptyDimensions", CaptureInvalidEmptyDimensions, "")                  \
+    LHOLO_TEXT_KEY("capture.layerFill", CaptureLayerFill, "") \
+    LHOLO_TEXT_KEY("capture.unfilledLayersAir", CaptureUnfilledLayersAir, "") \
+    LHOLO_TEXT_KEY("capture.layer", CaptureLayer, "") \
+    LHOLO_TEXT_KEY("capture.layerNumber", CaptureLayerNumber, "") \
+    LHOLO_TEXT_KEY("capture.block", CaptureBlock, "") \
+    LHOLO_TEXT_KEY("capture.searchBlock", CaptureSearchBlock, "") \
+    LHOLO_TEXT_KEY("capture.noBlocks", CaptureNoBlocks, "") \
+    LHOLO_TEXT_KEY("capture.addLayer", CaptureAddLayer, "") \
+    LHOLO_TEXT_KEY("capture.saveLayer", CaptureSaveLayer, "") \
+    LHOLO_TEXT_KEY("capture.editLayer", CaptureEditLayer, "") \
+    LHOLO_TEXT_KEY("capture.editLayerTitle", CaptureEditLayerTitle, "") \
+    LHOLO_TEXT_KEY("capture.removeLayer", CaptureRemoveLayer, "") \
+    LHOLO_TEXT_KEY("capture.invalidLayer", CaptureInvalidLayer, "") \
+    LHOLO_TEXT_KEY("capture.layerAlreadyConfigured", CaptureLayerAlreadyConfigured, "") \
+    LHOLO_TEXT_KEY("capture.tooManyLayers", CaptureTooManyLayers, "") \
+    LHOLO_TEXT_KEY("capture.customDimensions", CaptureCustomDimensions, "")                                \
+    LHOLO_TEXT_KEY("capture.customDimensionsFormat", CaptureCustomDimensionsFormat, "")                    \
+    LHOLO_TEXT_KEY("capture.invalidCustomDimensions", CaptureInvalidCustomDimensions, "")                  \
     LHOLO_TEXT_KEY("label.captureMode", LabelCaptureMode, "")                                            \
     LHOLO_TEXT_KEY("combo.captureModeClient", ComboCaptureModeClient, "")                                \
     LHOLO_TEXT_KEY("hint.captureClientOnly", HintCaptureClientOnly, "")                                  \
@@ -284,6 +299,7 @@
     LHOLO_TEXT_KEY("experimental.warningManualSafe", ExperimentalWarningManualSafe, "")                  \
     LHOLO_TEXT_KEY("button.consentEnable", ButtonConsentEnable, "")                                      \
     LHOLO_TEXT_KEY("button.cancel", ButtonCancel, "")                                                    \
+    LHOLO_TEXT_KEY("button.back", ButtonBack, "")                                                        \
     LHOLO_TEXT_KEY("button.close", ButtonClose, "")                                                      \
     LHOLO_TEXT_KEY("checkbox.manualPlace", CheckboxManualPlace, "")                                      \
     LHOLO_TEXT_KEY("checkbox.easyPlace", CheckboxEasyPlace, "")                                          \

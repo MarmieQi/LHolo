@@ -103,22 +103,8 @@ void markPlaced(BlockPos const& cell, std::uint64_t now) {
     placementState().recordRecentPlacement(packPlacementCell(cell.x, cell.y, cell.z), now, now + kCellLockMs);
 }
 
-void updateAimedProjectedBlock(Block const* block, std::shared_ptr<CompoundTag const> nbt = {}, Level* level = nullptr) {
-    // Only one target is retained, never a world-sized icon cache. Immutable
-    // blueprint NBT identity distinguishes differently colored/patterned actors.
-    static Block const* previousBlock{};
-    static std::shared_ptr<CompoundTag const> previousNbt;
-    static block::PlacementItem item;
-    if (block != previousBlock || nbt != previousNbt) {
-        item = block ? (nbt && level ? block::resolvePlacementItem(*block, *nbt, *level)
-                                    : block::resolvePlacementItem(*block)) : block::PlacementItem{};
-        previousBlock = block;
-        previousNbt = std::move(nbt);
-    }
-    placementState().setAimedProjectedBlock(block
-        ? AimedProjectedBlock{block->buildDescriptionName(), item.itemId.empty()
-            ? std::string{block->getTypeName()} : item.itemId, item.displayItem}
-        : AimedProjectedBlock{});
+void updateAimedProjectedBlock(Block const* block) {
+    placementState().setAimedProjectedBlock(block ? block->buildDescriptionName() : std::string{});
 }
 
 struct ItemFind {
@@ -717,10 +703,7 @@ void tickEasyPlaceImpl() {
 
     float const pickRange = player->getPickRange();
     auto target = findAimedPlacementTarget(*player, origin, dir, pickRange);
-    updateAimedProjectedBlock(
-        showProjectedBlockName && target ? target->block : nullptr,
-        showProjectedBlockName && target ? target->blockEntityNbt : nullptr, &player->getLevel()
-    );
+    updateAimedProjectedBlock(showProjectedBlockName && target ? target->block : nullptr);
     if (!placementActive) return;
     PlacementContext const placementContext = makePlacementContext(origin, dir, pickRange);
     if (tickNow < placementState().nextPlaceAt()) return;

@@ -54,22 +54,16 @@ int runNativeHudTests() {
     auto panel = makeProjectionHud(settings, data);
     check(panel.lines.size() == 9 && panel.lines[0].text == "File: name%中文.mcstructure", "all ordinary fields, literal filename");
     check(panel.lines[2].text == "Overall: 11 / 100" && panel.lines[3].text == "Progress: 3 / 20", "overall and visible progress remain distinct");
-    check(panel.lines[4].tone == TextTone::WrongState && panel.lines[5].tone == TextTone::WrongType
-        && panel.lines[6].tone == TextTone::Extra, "error semantics retain their colors");
-    check(panel.lines[7].text == "Projected block: Stone" && panel.lines[8].text == "Assist: Manual", "aimed block and assist mode");
+    check(panel.lines[4].text == "Projected block: Stone", "aimed block appears immediately above error statistics");
+    check(panel.lines[5].tone == TextTone::WrongState && panel.lines[6].tone == TextTone::WrongType
+        && panel.lines[7].tone == TextTone::Extra, "error semantics retain their colors");
+    check(panel.lines[8].text == "Assist: Manual", "assist mode remains at the bottom");
     check(std::none_of(panel.lines.begin(), panel.lines.end(), [](auto const& line) { return line.iconId.has_value(); }),
         "ordinary HUD has no icon column without a resolved target item");
-    auto aimedToken = std::make_shared<int>(7);
-    data.aimedBlockIconId = "minecraft:bed";
-    data.aimedBlockIconItem = std::shared_ptr<ItemStack const>(aimedToken, reinterpret_cast<ItemStack const*>(aimedToken.get()));
-    panel = makeProjectionHud(settings, data);
-    check(!panel.lines[7].iconId && !panel.lines[7].iconItem && panel.lines[7].iconPrefix.empty()
-        && panel.lines[7].text == "Projected block: Stone",
-        "aimed block icon is temporarily disabled even when native item data is available");
     data.aimedBlock.clear();
     panel = makeProjectionHud(settings, data);
-    check(std::none_of(panel.lines.begin(), panel.lines.end(), [](auto const& line) { return line.iconId.has_value(); }),
-        "absent target hides its icon even when old display data remains");
+    check(panel.lines.size() == 8 && panel.lines[4].tone == TextTone::WrongState,
+        "absent target hides its row above error statistics");
     data.aimedBlock = "Stone";
     settings.enabled = false;
     check(makeProjectionHud(settings, data).lines.empty(), "ordinary HUD disabled");

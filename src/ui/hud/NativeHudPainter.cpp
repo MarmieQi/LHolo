@@ -42,7 +42,7 @@ template <class Measure>
 float measurePanel(HudPanel const& panel, float lineHeight, Measure&& measure) {
     float textWidth{};
     for (auto const& line : panel.lines) {
-        auto width = static_cast<float>(measure(line.iconPrefix)) + static_cast<float>(measure(line.text))
+        auto width = static_cast<float>(measure(line.text))
             + (line.iconId ? hudIconColumn(lineHeight) : 0.0f);
         if (!line.quantity.empty())
             width += materialColumnGap(lineHeight) + static_cast<float>(measure(line.quantity));
@@ -82,22 +82,16 @@ PanelPlacement drawPanel(UIRenderContext& context, Font& font, RectangleArea con
         bool const hasQuantity = !line.quantity.empty();
         auto const quantityWidth = hasQuantity ? measure(line.quantity) : 0.0f;
         auto const columnGap = hasQuantity ? materialColumnGap(lineHeight) : 0.0f;
-        auto const prefixWidth = std::min(static_cast<float>(measure(line.iconPrefix)), std::max(0.0f, availableWidth - quantityWidth - columnGap));
-        auto const showIcon = line.iconId && availableWidth - prefixWidth > iconColumn
-            + quantityWidth + columnGap;
-        auto const textOffset = prefixWidth + (showIcon ? iconColumn : 0.0f);
+        auto const showIcon = line.iconId && availableWidth > iconColumn + quantityWidth + columnGap;
+        auto const textOffset = showIcon ? iconColumn : 0.0f;
         auto const nameWidth = hudNameWidth(availableWidth, textOffset,
             quantityWidth, columnGap);
         auto text = hasQuantity ? std::move(line.text)
             : fitLine(context, font, std::move(line.text), nameWidth, fontScale);
         auto const rowHeight = lineHeight + style.lineGap;
         auto const top = y + style.verticalPadding + static_cast<float>(index) * rowHeight;
-        if (showIcon) icons.push_back({*line.iconId, x + style.horizontalPadding + prefixWidth, top, lineHeight, line.iconItem});
         auto const contentX = x + style.horizontalPadding;
-        if (!line.iconPrefix.empty()) context.drawText(font,
-            {contentX, contentX + prefixWidth, top, top + lineHeight},
-            fitLine(context, font, std::move(line.iconPrefix), prefixWidth, fontScale),
-            color(line.tone), 1.0f, ::ui::TextAlignment::Left, textData, caret);
+        if (showIcon) icons.push_back({*line.iconId, contentX, top, lineHeight, line.iconItem});
         if (!text.empty()) context.drawText(font,
             {contentX + textOffset, contentX + textOffset + nameWidth, top, top + lineHeight},
             std::move(text), color(line.tone), 1.0f, ::ui::TextAlignment::Left, textData, caret);

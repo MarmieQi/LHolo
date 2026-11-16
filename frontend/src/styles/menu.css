@@ -72,6 +72,7 @@
 .lholo-section-title { font-size:1.2rem; font-weight:600; line-height:1.5; padding-bottom:0.65rem; border-bottom:0.06rem solid #303030; }
 .lholo-status { font-size:1rem; line-height:1.5; margin:1rem 0; }
 .lholo-muted { color:#909090; font-size:0.9rem; line-height:1.5; margin-top:0.4rem; }
+.lholo-settings-note { font-size:0.9rem; line-height:1.5; margin-top:0.4rem; }
 /* Gameface divs are column flex: keep label/punctuation in one text node. */
 .lholo-selected-file-context { display:flex; flex-direction:row; align-items:baseline; min-width:0; margin-top:0.4rem; margin-bottom:0.6rem; color:#909090; font-size:0.9rem; line-height:1.5; }
 .lholo-selected-file-label { flex-shrink:0; white-space:nowrap; margin-right:0.45rem; }
@@ -141,9 +142,36 @@
 .lholo-coordinate-row { flex-direction:row; align-items:center; flex-wrap:wrap; margin-top:0.3rem; }
 .lholo-coordinate-row > .lholo-input-shell { width:12rem; margin-right:0.6rem; margin-bottom:0.35rem; }
 .lholo-coordinate-row > .lholo-button { margin-bottom:0.35rem; }
-.lholo-size-fields { margin-top:0.65rem; }
+.lholo-size-fields { margin-top:0.65rem; flex-direction:row; flex-wrap:wrap; }
+.lholo-size-fields .lholo-coordinate-row { flex-shrink:0; flex-wrap:nowrap; }
+.lholo-size-fields .lholo-coordinate-row > .lholo-input-shell { width:5.6rem; }
 .lholo-size-fields .lholo-capture-point-title { min-width:1rem; }
-.lholo-size-fields input.lholo-text-input::placeholder { color:#909090; }
+.lholo-custom-section { width:100%; max-width:32rem; box-sizing:border-box; margin-top:1.25rem; }
+.lholo-custom-edit-row.lholo-transform-row { align-items:flex-start; margin-top:0.75rem; }
+.lholo-custom-edit-row.lholo-transform-row + .lholo-custom-edit-row { margin-top:0.45rem; }
+.lholo-custom-edit-row > .lholo-transform-label { width:4rem; margin-right:0.45rem; line-height:2.2rem; }
+.lholo-custom-layer-field { width:4.6rem; flex-shrink:0; }
+.lholo-custom-layer-field > .lholo-input-shell { box-sizing:border-box; width:100%; }
+.lholo-custom-search-field { flex:1 1 10rem; min-width:0; max-width:32rem; }
+.lholo-autocomplete { min-width:0; }
+.lholo-autocomplete-entry { flex-direction:row; align-items:center; }
+.lholo-autocomplete-field { position:relative; flex-shrink:1; min-width:6rem; max-width:100%; height:2.2rem; }
+.lholo-settings-note.lholo-autocomplete-hint { flex-shrink:0; margin:0 0 0 0.55rem; white-space:nowrap; }
+/* The in-flow text sets the width using the same font as the input. */
+.lholo-autocomplete-measure { box-sizing:border-box; height:0; overflow:hidden; visibility:hidden; white-space:pre; font-family:LHoloSans,sans-serif; font-size:1rem; padding:0 0.75rem; }
+.lholo-autocomplete-measure.has-icon { padding-left:2.35rem; }
+.lholo-input-shell.lholo-autocomplete-input { position:absolute; top:0; left:0; box-sizing:border-box; width:100%; }
+.lholo-input-leading-icon { width:2.35rem; height:100%; flex-shrink:0; align-items:center; justify-content:center; }
+.lholo-input-leading-icon > .lholo-material-icon { margin-right:0; }
+.lholo-input-shell .lholo-input-leading-icon + input.lholo-text-input { padding-left:0; }
+.lholo-select-options.lholo-autocomplete-options { position:relative; top:0; left:0; box-sizing:border-box; width:100%; }
+.lholo-autocomplete-option.lholo-button { box-sizing:border-box; width:100%; padding:0 0.45rem; }
+.lholo-autocomplete-option .lholo-autocomplete-option-text { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lholo-custom-layer-row { flex-wrap:wrap; min-height:3.1rem; padding:0.4rem 0; border-bottom:0.06rem solid #303030; font-size:1rem; line-height:1.5; }
+.lholo-custom-layer-index { font-size:0.9rem; margin-right:0.45rem; }
+.lholo-custom-layer-block { flex:1 1 8rem; min-width:0; flex-direction:row; align-items:center; overflow-wrap:break-word; margin-left:0.5rem; }
+.lholo-custom-layer-block > div:last-child { flex:1; min-width:0; }
+.lholo-custom-layer-row .lholo-button { margin-left:0.4rem; }
 .lholo-input-shell { width:5.6rem; height:2.2rem; min-height:0; flex-shrink:0; border-radius:0.25rem; background-color:#242424; }
 .lholo-input-shell input.lholo-text-input { width:100%; flex:1; border:none; border-radius:0.25rem; background-color:transparent; min-width:0; min-height:0; height:2.2rem; padding:0.25rem 0.55rem; font-family:LHoloSans,sans-serif; font-size:1rem; line-height:1.5; text-shadow:none; color:#ededed; }
 .lholo-capture-entities { margin-top:1rem; }

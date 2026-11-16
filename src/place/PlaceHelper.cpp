@@ -157,7 +157,7 @@ bool isManualMode() {
     return placementState().manualMode();
 }
 
-AimedProjectedBlock getAimedProjectedBlock() {
+std::string getAimedProjectedBlock() {
     return placementState().aimedProjectedBlock();
 }
 

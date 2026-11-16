@@ -5,6 +5,7 @@
 
 #include "oreui/MenuBindings.h"
 #include "oreui/CaptureBindings.h"
+#include "oreui/CaptureProtocol.h"
 #include "oreui/TransformBindings.h"
 #include "oreui/RenderSettingsBindings.h"
 #include "oreui/SettingsBindings.h"
@@ -34,9 +35,10 @@ namespace lholo::oreui {
 namespace {
 std::atomic_bool active{}, labelsPending{};
 std::atomic_bool materialsRequestPending{}, materialsStatePending{};
+std::atomic_bool customBlocksRequested{}, customBlocksPending{};
 bool registered{}, viewInstalled{}, intentInstalled{};
 auto& logger() { return LHolo::getInstance().getSelf().getLogger(); }
-enum class MenuQuery { Ready, Close, RequestMaterials, CancelHotkeyCapture, EditHudLayout };
+enum class MenuQuery { Ready, Close, RequestMaterials, RequestCustomBlocks, CancelHotkeyCapture, EditHudLayout };
 std::optional<i18n::Language> publishedLanguage;
 
 // Typed facet activation is the supported scalar-payload entry point. No
@@ -78,7 +80,7 @@ LL_TYPE_INSTANCE_HOOK(MenuIntentActivation, ll::memory::HookPriority::Normal,
             else if (name == "lholo.preview.intent")
                 $registerFacet(name, [] { return std::make_unique<IntentFacet>(receivePreviewIntent, "lholo.preview.intent"); });
             else if (name == "lholo.capture.intent")
-                $registerFacet(name, [] { return std::make_unique<IntentFacet>(receiveCaptureIntent); });
+                $registerFacet(name, [] { return std::make_unique<IntentFacet>(receiveCaptureIntent, "lholo.capture.intent", kCaptureIntentMaxBytes); });
             else if (name == "lholo.transform.intent")
                 $registerFacet(name, [] { return std::make_unique<IntentFacet>(receiveTransformIntent, "lholo.transform.intent"); });
             else if (name == "lholo.render.intent")
@@ -101,6 +103,7 @@ public:
         case MenuQuery::Close: requestMenuClose(); break;
         case MenuQuery::Ready: labelsPending = materialsStatePending = true; break;
         case MenuQuery::RequestMaterials: materialsRequestPending = materialsStatePending = true; break;
+        case MenuQuery::RequestCustomBlocks: customBlocksRequested = customBlocksPending = true; break;
         case MenuQuery::CancelHotkeyCapture: if (isMenuOnTop()) cancelSettingsHotkeyCapture(); break;
         case MenuQuery::EditHudLayout: if (isMenuOnTop()) app::requestHudLayoutEdit(); break;
         }
@@ -127,7 +130,8 @@ LL_TYPE_INSTANCE_HOOK(MenuViewUpdate, ll::memory::HookPriority::Normal,
         if (!menuView || !isMenuOnTop()) return;
         auto const ready = labelsPending.exchange(false);
         if (ready) $triggerEvent("lholo:menu-entry", menuEntryPage() == MenuEntryPage::Hud ? R"("hud")" : R"("tasks")");
-        if (ready || publishedLanguage != i18n::language()) {
+        bool const languageChanged = ready || publishedLanguage != i18n::language();
+        if (languageChanged) {
             publishedLanguage = i18n::language();
             $triggerEvent("lholo:menu-labels", buildMenuLabels());
         }
@@ -141,6 +145,8 @@ LL_TYPE_INSTANCE_HOOK(MenuViewUpdate, ll::memory::HookPriority::Normal,
         if (auto update = takeCaptureUpdate(ready)) {
             $triggerEvent("lholo:capture", *update);
         }
+        if (customBlocksPending.exchange(false) || (languageChanged && customBlocksRequested.load()))
+            $triggerEvent("lholo:capture-blocks", buildCustomBlockCatalog());
         if (auto update = takeProjectionUpdate(ready)) {
             $triggerEvent("lholo:projection", *update);
         }
@@ -170,6 +176,7 @@ bool installMenuBridge() {
                     QueryDefinition{"lholo.menu.ready", MenuQuery::Ready},
                     QueryDefinition{"lholo.menu.close", MenuQuery::Close},
                     QueryDefinition{"lholo.materials.request", MenuQuery::RequestMaterials},
+                    QueryDefinition{"lholo.capture.blocks", MenuQuery::RequestCustomBlocks},
                     QueryDefinition{"lholo.hud.edit-layout", MenuQuery::EditHudLayout},
                     QueryDefinition{"lholo.hotkeys.cancel", MenuQuery::CancelHotkeyCapture}
                 }) {
@@ -189,6 +196,7 @@ bool installMenuBridge() {
 void resetMenuBridge() {
     labelsPending = false;
     materialsRequestPending = materialsStatePending = false;
+    customBlocksRequested = customBlocksPending = false;
     resetMenuBindings();
     resetCaptureBindings();
     resetTransformBindings();

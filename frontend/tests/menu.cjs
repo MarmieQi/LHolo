@@ -40,7 +40,7 @@ const context = {
       ItemIcon: props => React.createElement('native-item-icon', props),
     },
     engine: {
-      on(name, fn) { assert(['lholo:menu-entry', 'lholo:menu-labels', 'lholo:projection', 'lholo:materials', 'lholo:capture', 'lholo:transform', 'lholo:render', 'lholo:settings', 'lholo:tasks', 'lholo:preview', 'lholo:write'].includes(name)); listeners.add({ name, fn }); },
+      on(name, fn) { assert(['lholo:menu-entry', 'lholo:menu-labels', 'lholo:projection', 'lholo:materials', 'lholo:capture', 'lholo:capture-blocks', 'lholo:transform', 'lholo:render', 'lholo:settings', 'lholo:tasks', 'lholo:preview', 'lholo:write'].includes(name)); listeners.add({ name, fn }); },
       off(name, fn) { for (const item of listeners) if (item.name === name && item.fn === fn) listeners.delete(item); },
       trigger(...args) { events.push(args); },
     },
@@ -59,7 +59,9 @@ const createNodeMock = element => {
   if (element.type !== 'input') return null;
   const label = element.props['data-narrate'];
   if (!inputMocks.has(label)) inputMocks.set(label, {
-    value: element.props.value, listeners: new Map(), focus() {}, blur() {},
+    value: element.props.value, listeners: new Map(), attributes: new Map(), focus() {}, blur() {},
+    setAttribute(name, value) { this.attributes.set(name, value); },
+    removeAttribute(name) { this.attributes.delete(name); },
     addEventListener(name, listener) { this.listeners.set(name, listener); },
     removeEventListener(name, listener) { if (this.listeners.get(name) === listener) this.listeners.delete(name); },
   });
@@ -419,7 +421,7 @@ click(labels['tasks.nav']);
 click(labels['page.createStructure']);
 const captureState = (changes = {}) => receive(JSON.stringify({
   draft: {first: null, second: null, includeEntities: false}, revision: 0, ack: 0,
-  worldAvailable: true, busy: false, status: labels['captureStatus.needTwoPoints'], customStatus: '', maxEmptyCells: 167771904, error: '', ...changes,
+  worldAvailable: true, busy: false, status: labels['captureStatus.needTwoPoints'], customStatus: '', maxCustomCells: 167771904, maxRequestBytes: 262144, error: '', ...changes,
 }), 'lholo:capture');
 assert.equal(buttonByLabel(labels['button.exportMcstructure']).props.disabled, true);
 captureState({worldAvailable: false});
@@ -450,7 +452,11 @@ const beforePartial = captureEvents().length;
 editCoordinate(1, '2 64');
 assert.equal(captureEvents().length, beforePartial, 'Incomplete point does not send invalid coordinates');
 click(labels['capture.tabCustom']);
-assert.equal(inputs().length, 3, 'Custom tab exposes three size fields');
+assert.equal(inputs().length, 3, 'Layer editor stays closed until adding or editing a layer');
+const fillSection = tree.root.findByProps({className: 'lholo-custom-section'});
+assert.equal(nodeText(fillSection.findByProps({className: 'lholo-hud-title'})), '填充');
+assert.equal(labels['capture.unfilledLayersAir'], '其余未设置的层以空气填充');
+assert(nodeText(fillSection).endsWith(labels['capture.unfilledLayersAir']), 'The air-fill note follows the layer list');
 editCoordinate(0, '32');
 editCoordinate(1, '0');
 editCoordinate(2, '16');
@@ -531,12 +537,77 @@ editCoordinate(2, '24');
 assert(JSON.stringify(tree.toJSON()).includes('尺寸：32 × 16 × 24'));
 assert(JSON.stringify(tree.toJSON()).includes('方块总数：12288'));
 click(labels['button.exportMcstructure']);
-assert.deepEqual(lastCapture(), {action: 'exportEmpty', size: {x: 32, y: 16, z: 24}, revision: 9, id: 9});
+assert.deepEqual(lastCapture(), {action: 'exportCustom', size: {x: 32, y: 16, z: 24}, layers: [], revision: 9, id: 9});
 captureState({revision: 9, ack: 9, worldAvailable: false, customStatus: labels['captureStatus.exported']});
 assert(JSON.stringify(tree.toJSON()).includes(labels['captureStatus.exported']));
+receive(JSON.stringify([
+  {id: 'minecraft:mossy_stone_bricks', name: '苔石砖'},
+  {id: 'minecraft:stone_bricks', name: '石砖'},
+]), 'lholo:capture-blocks');
+click(labels['capture.addLayer']);
+assert.equal(inputs().length, 2, 'The layer editor replaces the parent page');
+const searchEntry = tree.root.findByProps({className: 'lholo-autocomplete-entry'});
+assert.equal(nodeText(searchEntry.findByProps({className: 'lholo-settings-note lholo-autocomplete-hint'})), '(请输入方块名)');
+assert(!inputMocks.get(inputs()[1].props['data-narrate']).attributes.has('placeholder'));
+assert.equal(buttonByLabel(labels['button.exportMcstructure']), undefined);
+assert.equal(inputs()[0].props.value, '1', 'Adding starts at the first unconfigured layer');
+editCoordinate(0, '17');
+assert(tree.root.findAllByProps({className: 'lholo-settings-note'})
+  .some(note => nodeText(note) === '层号必须在结构高度范围内'));
+editCoordinate(0, '1');
+editCoordinate(1, '石砖');
+const blockOptions = () => tree.root.findByProps({className: 'lholo-select-options lholo-autocomplete-options'}).findAllByType('button');
+assert.equal(nodeText(blockOptions()[0]), '石砖(minecraft:stone_bricks)');
+assert.deepEqual(blockOptions()[0].findByProps({className: 'lholo-button-label lholo-autocomplete-option-text'}).children,
+  ['石砖(minecraft:stone_bricks)']);
+const pressSearchKey = (key, isComposing = false) => renderer.act(() => inputs()[1].props.onKeyDown({
+  key, nativeEvent: {isComposing}, preventDefault() {}, stopPropagation() {},
+}));
+pressSearchKey('Enter', true);
+assert.equal(blockOptions().length, 2, 'IME confirmation leaves choices open');
+pressSearchKey('ArrowDown');
+pressSearchKey('Enter');
+const blockField = tree.root.findByProps({className: 'lholo-autocomplete-field'});
+const blockInput = blockField.findByType('button');
+assert.equal(blockInput.findByType('native-item-icon').props.itemId, 'minecraft:mossy_stone_bricks');
+assert.equal(blockInput.findByType('input').props.value, '苔石砖');
+assert.deepEqual(blockField.findByProps({className: 'lholo-autocomplete-measure has-icon'}).children, ['苔石砖']);
+click(labels['capture.saveLayer']);
+const layerRows = () => tree.root.findAllByProps({className: 'lholo-file-row lholo-custom-layer-row'});
+assert.equal(layerRows().length, 1);
+assert.equal(inputs().length, 3, 'Saving closes the layer editor');
+click(labels['capture.addLayer']);
+assert.equal(inputs()[0].props.value, '2', 'Add layer advances to the next free layer');
+editCoordinate(1, 'stone_bricks');
+pressSearchKey('Enter');
+editCoordinate(0, '1');
+assert(buttonByLabel(labels['capture.saveLayer']).props.disabled, 'Adding cannot replace a saved layer');
+editCoordinate(0, '3');
+click(labels['capture.saveLayer']);
+assert.equal(layerRows().length, 2);
+renderer.act(() => layerRows()[1].findAllByType('button')[0].props.onClick());
+assert.equal(inputs()[0].props.value, '3');
+assert.equal(inputs()[1].props.value, '石砖');
+editCoordinate(0, '4');
+click(labels['button.back']);
+assert.equal(layerRows().length, 2);
+assert(nodeText(layerRows()[1]).includes('第 3 层'), 'Back leaves the saved layer intact');
+assert.equal(inputs()[0].props.value, '32', 'Back preserves the parent dimensions');
+renderer.act(() => layerRows()[1].findAllByType('button')[0].props.onClick());
+editCoordinate(0, '2');
+click(labels['capture.saveLayer']);
+editCoordinate(1, '1');
+assert.equal(buttonByLabel(labels['button.exportMcstructure']).props.disabled, true, 'Shrinking height keeps out-of-range layers but blocks export');
+editCoordinate(1, '16');
+click(labels['button.exportMcstructure']);
+assert.deepEqual(lastCapture(), {action: 'exportCustom', size: {x: 32, y: 16, z: 24},
+  layers: [{y: 0, block: 'minecraft:mossy_stone_bricks'}, {y: 1, block: 'minecraft:stone_bricks'}], revision: 9, id: 10});
+captureState({revision: 9, ack: 10, worldAvailable: false});
+click(labels['capture.removeLayer']);
+assert.equal(layerRows().length, 1);
 click(labels['tasks.nav']);
 assert(events.every(args => ['query:subscribe/lholo.menu.ready', 'query:subscribe/lholo.menu.close',
-  'query:subscribe/lholo.materials.request', 'facet:discard', 'facet:request'].includes(args[0])));
+  'query:subscribe/lholo.materials.request', 'query:subscribe/lholo.capture.blocks', 'facet:discard', 'facet:request'].includes(args[0])));
 // Transform migration is frontend only: exact old controls, no game commands.
 const beforeTransform = events.length;
 let transformState = {values: {rotation: 0, mirror: 0, x: 0, y: 0, z: 0}, context: 8, ack: 0, accepted: false};

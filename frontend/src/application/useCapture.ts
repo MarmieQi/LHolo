@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CaptureAction, CaptureBridge, CaptureDraft, CapturePoint, CaptureState } from '../platform/bridge';
+import type { CaptureAction, CaptureBridge, CaptureDraft, CapturePoint, CaptureState, CustomCaptureDraft } from '../platform/bridge';
 
 const pointText = (point: CapturePoint | null) => point ? `${point.x} ${point.y} ${point.z}` : '';
 
@@ -33,6 +33,7 @@ export function useCapture(bridge: CaptureBridge) {
   const [second, updateSecond] = useState('');
   const [includeEntities, updateIncludeEntities] = useState(false);
   const [pendingAction, setPendingAction] = useState<CaptureAction | null>(null);
+  const [customRequestTooLarge, setCustomRequestTooLarge] = useState(false);
   const lastRevision = useRef<number | null>(null);
   const nextId = useRef(0);
   const pending = useRef<{id: number; action: CaptureAction; draft: CaptureDraft} | null>(null);
@@ -77,12 +78,16 @@ export function useCapture(bridge: CaptureBridge) {
     second: secondPoint || state?.draft.second || null,
     includeEntities,
   };
-  const send = useCallback((action: CaptureAction, value: CaptureDraft, size?: CapturePoint) => {
-    if (!state || (action !== 'exportEmpty' && !state.worldAvailable) || state.busy || pending.current) return;
+  const send = useCallback((action: CaptureAction, value: CaptureDraft, custom?: CustomCaptureDraft) => {
+    if (!state || (action !== 'exportCustom' && !state.worldAvailable) || state.busy || pending.current) return;
     const id = ++nextId.current;
     pending.current = { id, action, draft: value };
     setPendingAction(action);
-    try { bridge.capture(action, value, state.revision, id, size); }
+    try {
+      const sent = bridge.capture(action, value, state.revision, id, state.maxRequestBytes, custom);
+      if (action === 'exportCustom') setCustomRequestTooLarge(!sent);
+      if (!sent) { pending.current = null; setPendingAction(null); }
+    }
     catch {
       failedVersion.current = editVersion.current;
       pending.current = null; setPendingAction(null);
@@ -96,12 +101,13 @@ export function useCapture(bridge: CaptureBridge) {
     if (action === 'export' && (!draft?.first || !draft.second)) return;
     if (state) send(action, action === 'clear' ? state.draft : (action === 'export' ? draft! : syncDraft));
   }, [draft, syncDraft, state, send]);
-  const exportEmpty = (size: CapturePoint) => send('exportEmpty', syncDraft, size);
+  const exportCustom = (custom: CustomCaptureDraft) => send('exportCustom', syncDraft, custom);
   const busy = !!state?.busy || pendingAction !== null;
   // Keep typing enabled during automatic synchronization; only explicit game
   // actions and save dialogs lock the editor. New edits coalesce after ack.
   const editingBusy = busy && pendingAction !== 'apply';
   return { state, first, second, setFirst, setSecond, includeEntities, setIncludeEntities,
-    valid, draft, busy, editingBusy, submit, finishPoint, exportEmpty };
+    valid, draft, busy, editingBusy, submit, finishPoint, exportCustom, customRequestTooLarge,
+    subscribeCustomBlocks: bridge.subscribeCustomBlocks, requestCustomBlocks: bridge.requestCustomBlocks };
 }
 export type CaptureControls = ReturnType<typeof useCapture>;
