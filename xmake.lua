@@ -150,7 +150,7 @@ target("LHolo")
     end
     add_rules("lholo.i18n.resources")
     add_rules("@levibuildscript/linkrule")
-    add_rules("@levibuildscript/modpacker", {modVersion = "26.60.2"})
+    add_rules("@levibuildscript/modpacker", {modVersion = "26.60.3"})
     add_rules("lholo.oreui.package")
     add_shflags("/DELAYLOAD:bedrock_runtime.dll", {force = true})
     add_cxflags(
