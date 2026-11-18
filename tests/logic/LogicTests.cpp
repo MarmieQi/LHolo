@@ -892,14 +892,14 @@ void testI18n() {
     auto const english = languageFromCode("en_US");
     LHOLO_CHECK(chinese != kInvalidLanguage);
     LHOLO_CHECK(english != kInvalidLanguage);
-    LHOLO_CHECK(defaultLanguage() == chinese);
+    LHOLO_CHECK(defaultLanguage() == english);
     LHOLO_CHECK(languageFromCode("missing_LOCALE") == kInvalidLanguage);
 
     LHOLO_CHECK(setLanguageByCode(kFollowGameLanguageCode));
-    updateGameLanguage("en_US");
-    LHOLO_CHECK(followsGameLanguage() && language() == english && languagePreferenceCode() == "auto");
+    updateGameLanguage("zh_CN");
+    LHOLO_CHECK(followsGameLanguage() && language() == chinese && languagePreferenceCode() == "auto");
     updateGameLanguage("missing_LOCALE");
-    LHOLO_CHECK(language() == chinese && languagePreferenceCode() == "auto");
+    LHOLO_CHECK(language() == english && languagePreferenceCode() == "auto");
     updateGameLanguage("en_US");
     LHOLO_CHECK(language() == english && languagePreferenceCode() == "auto");
     LHOLO_CHECK(setLanguageByCode("zh_CN"));
@@ -973,7 +973,7 @@ void testI18n() {
     }
 
     // Switching the active language by index or stable code changes lookups and
-    // is reversible. An unknown code falls back to Simplified Chinese.
+    // is reversible. An unknown code falls back to English.
     setLanguage(chinese);
     auto const chineseClose = std::string{tr(TextKey::MenuClose)};
     setLanguage(english);
@@ -981,11 +981,11 @@ void testI18n() {
     LHOLO_CHECK(chineseClose != englishClose);
     LHOLO_CHECK(std::string{tr(TextKey::MenuClose, chinese)} == chineseClose);
     LHOLO_CHECK(std::string{tr(TextKey::MenuClose, english)} == englishClose);
-    LHOLO_CHECK(setLanguageByCode("en_US"));
-    LHOLO_CHECK(language() == english);
-    LHOLO_CHECK(!setLanguageByCode("missing_LOCALE"));
+    LHOLO_CHECK(setLanguageByCode("zh_CN"));
     LHOLO_CHECK(language() == chinese);
-    LHOLO_CHECK(std::string{tr(TextKey::MenuClose)} == chineseClose);
+    LHOLO_CHECK(!setLanguageByCode("missing_LOCALE"));
+    LHOLO_CHECK(language() == english);
+    LHOLO_CHECK(std::string{tr(TextKey::MenuClose)} == englishClose);
 
     // Language names are shown in their own language, never translated.
     LHOLO_CHECK(std::string{languageName(english)} == available[english].displayName);

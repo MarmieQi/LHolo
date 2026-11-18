@@ -7,7 +7,7 @@
 // Language values are runtime indices only. They must never be persisted:
 // config.json stores the stable locale code (for example, "zh_CN") instead.
 //
-// Fallback chain: a missing or empty entry resolves through zh_CN (the default
+// Fallback chain: a missing or empty entry resolves through en_US (the default
 // UI language, and the last resort) before returning "".
 //
 // Layering: leaf module, same rules as TextKeys.h. Must stay free of Minecraft
@@ -30,7 +30,7 @@ namespace lholo::i18n {
 using Language = std::size_t;
 
 inline constexpr Language kInvalidLanguage = std::numeric_limits<Language>::max();
-inline constexpr std::string_view kDefaultLanguageCode = "zh_CN";
+inline constexpr std::string_view kDefaultLanguageCode = "en_US";
 
 struct LanguageInfo {
     std::string code;
@@ -65,7 +65,7 @@ std::string_view languageCode(Language language) noexcept;
 // every field reports the "nothing parsed" state.
 LanguageStats languageStats(Language language) noexcept;
 
-// Resolves `key` in `language`, falling back to zh_CN, then "".
+// Resolves `key` in `language`, falling back to en_US, then "".
 // Always returns a valid pointer (possibly to ""). noexcept: the hot path
 // used by every rendered frame.
 char const* lookupText(TextKey key, Language language) noexcept;

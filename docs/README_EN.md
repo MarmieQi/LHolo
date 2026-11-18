@@ -50,13 +50,17 @@ Example version: `v26.60.2`
 
 **HUD display**
 
-- The screen corners can show: the schematic file name, the layer currently displayed, build progress (placed / total), counts of each error type, the current assisted placement mode, and more.
-- The HUD can sit in any of the four screen corners, and every item can be toggled on or off individually.
+- The screen corners can show: the schematic file name, the layer currently displayed, build progress (placed / total), counts of each error type, the current assisted placement mode, and more
+- The HUD can sit in any of the four screen corners, and every item can be toggled on or off individually
 
 **Language**
 
 - 简体中文 (Simplified Chinese)
+- 繁體中文 (Traditional Chinese)
 - English
+- 日本語 (Japanese)
+- Português (Brasil)
+- Русский (Russian)
 
 ## Showcase
 
@@ -75,9 +79,3 @@ Example version: `v26.60.2`
 **Material list**
 
 ![image-20260918201318315](images/image-20260918201318315.png)
-
-**Language setting**
-
-How to find it: open the mod main menu -> Interface -> Language
-
-![image-20260918202312106](images/image-20260918202312106.png)
