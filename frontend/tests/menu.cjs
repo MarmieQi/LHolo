@@ -202,7 +202,7 @@ click(labels['writeWorld.commandCancel']);
 assert.deepEqual(JSON.parse(writeRequests().at(-1)[3].request), {id:7,worldRevision:4,action:'cancel'});
 emitWrite({ack:7,mode:'commands',targetName:'屋顶.litematic',command:{...commandJob,active:false,canResume:false,state:'writeWorld.commandCancelled'}});
 assert(nodeText(tree.root).includes(labels['writeWorld.commandCancelled']));
-assert.equal(nodeText(tree.root.findAllByType('button').find(node => node.props.className?.includes('lholo-select-trigger'))).replace('▼',''),
+assert.equal(nodeText(tree.root.findAllByType('button').find(node => node.props.className?.includes('lholo-select-trigger'))),
   labels['writeWorld.commandMode'], 'Cancellation after page re-entry preserves the adopted command mode');
 assert(skipPlacedControl().props.className.includes('is-checked') && skipAirControl().props.className.includes('is-checked'),
   'Cancelling retains the current page options instead of reverting to defaults');
@@ -548,7 +548,7 @@ receive(JSON.stringify([
 click(labels['capture.addLayer']);
 assert.equal(inputs().length, 2, 'The layer editor replaces the parent page');
 const searchEntry = tree.root.findByProps({className: 'lholo-autocomplete-entry'});
-assert.equal(nodeText(searchEntry.findByProps({className: 'lholo-settings-note lholo-autocomplete-hint'})), '(请输入方块名)');
+assert.equal(nodeText(searchEntry.findByProps({className: 'lholo-settings-note lholo-autocomplete-hint'})), labels['capture.searchBlock']);
 assert(!inputMocks.get(inputs()[1].props['data-narrate']).attributes.has('placeholder'));
 assert.equal(buttonByLabel(labels['button.exportMcstructure']), undefined);
 assert.equal(inputs()[0].props.value, '1', 'Adding starts at the first unconfigured layer');
@@ -643,11 +643,12 @@ assert.equal(dropdownListeners.size, 2, 'Open dropdown listens for outside click
 assert.deepEqual(tree.root.findByProps({className: 'lholo-select-options'}).findAllByType('button').map(nodeText), ['0°','90°','180°','270°']);
 click('90°');
 assert.equal(dropdownListeners.size, 0, 'Dropdown subscriptions clean up after choosing');
-assert.equal(nodeText(selectTrigger(0)), '90°▼');
+assert.equal(nodeText(selectTrigger(0)), '90°');
+assert.equal(selectTrigger(0).findAllByType('svg').length, 1);
 renderer.act(() => selectTrigger(1).props.onClick());
 assert.deepEqual(tree.root.findByProps({className: 'lholo-select-options'}).findAllByType('button').map(nodeText), [labels['combo.mirrorNone'],'X','Z']);
 click('Z');
-assert.equal(nodeText(selectTrigger(1)), 'Z▼');
+assert.equal(nodeText(selectTrigger(1)), 'Z');
 const step = (axisIndex, label) => renderer.act(() => tree.root.findAllByProps({className: 'lholo-stepper'})[axisIndex]
   .findAllByType('button').find(button => nodeText(button) === label).props.onClick());
 step(0, '+'); step(1, '-');
@@ -667,8 +668,8 @@ assert.equal(transformInputs()[1].props.value, '-2147483648', 'Negative int32 bo
 typeTransform(2, '-'); blurTransform(2);
 assert.equal(transformInputs()[2].props.value, '-57', 'Incomplete text restores last valid value on blur');
 click(labels['tasks.nav']); click(labels['page.transform']);
-assert.equal(nodeText(selectTrigger(0)), '90°▼', 'Transform draft survives page navigation');
-assert.equal(nodeText(selectTrigger(1)), 'Z▼');
+assert.equal(nodeText(selectTrigger(0)), '90°', 'Transform draft survives page navigation');
+assert.equal(nodeText(selectTrigger(1)), 'Z');
 assert.equal(transformInputs()[2].props.value, '-57');
 assert.equal(buttonByLabel(labels['oreui.applySelection']), undefined, 'No added Apply button');
 assert(events.length > beforeTransform, 'Transform edits send typed native intents');
@@ -992,7 +993,7 @@ settingsState.languages.push({code:'test_NEW',name:'Native extra language'});emi
 renderer.act(()=>selectTrigger(0).props.onClick());click('Native extra language');settleSettings();
 assert.equal(settingsState.values.language,'test_NEW');
 settingsState.values={...settingsState.values,language:'en_US'};emitSettings();
-assert.equal(nodeText(selectTrigger(0)),'English▼');
+assert.equal(nodeText(selectTrigger(0)),'English');
 // A changed translation event rerenders the open menu without remounting.
 const translated={...labels,'section.interfaceSettings':'Settings live'};receive(JSON.stringify(translated));
 assert(JSON.stringify(tree.toJSON()).includes('Settings live'));receive(JSON.stringify(labels));

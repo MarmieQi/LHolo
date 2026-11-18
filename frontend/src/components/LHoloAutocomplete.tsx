@@ -4,8 +4,8 @@ import { NativeInteractive } from '../platform/native';
 
 type Option = {id: string; name: string};
 
-export function LHoloAutocomplete({ label, value, options, onChange, onSelect, renderIcon, emptyLabel, disabled, leadingIcon }: {
-  label: string; value: string; options: readonly Option[]; emptyLabel: string; disabled?: boolean;
+export function LHoloAutocomplete({ label, headerLabel, value, options, onChange, onSelect, renderIcon, emptyLabel, disabled, leadingIcon }: {
+  label: string; headerLabel?: string; value: string; options: readonly Option[]; emptyLabel: string; disabled?: boolean;
   onChange(value: string): void; onSelect(option: Option): void; renderIcon?(option: Option): React.ReactNode;
   leadingIcon?: React.ReactNode;
 }) {
@@ -27,6 +27,10 @@ export function LHoloAutocomplete({ label, value, options, onChange, onSelect, r
   const choose = (option: Option) => { setOpen(false); onSelect(option); };
   return <div className="lholo-autocomplete" ref={root}>
     <div className="lholo-autocomplete-entry">
+      {headerLabel ? <div className="lholo-custom-block-header">
+        <div className="lholo-group-row-label">{headerLabel}</div>
+        <div className="lholo-settings-note lholo-autocomplete-hint">{label}</div>
+      </div> : null}
       <div className="lholo-autocomplete-field">
         <div aria-hidden="true" className={'lholo-autocomplete-measure' + (leadingIcon ? ' has-icon' : '')}>{value}</div>
         <LHoloTextField className="lholo-autocomplete-input" label={label}
@@ -49,7 +53,7 @@ export function LHoloAutocomplete({ label, value, options, onChange, onSelect, r
             return true;
           }} />
       </div>
-      <div className="lholo-settings-note lholo-autocomplete-hint">{`(${label})`}</div>
+      {!headerLabel ? <div className="lholo-settings-note lholo-autocomplete-hint">{`(${label})`}</div> : null}
     </div>
     {visible && <div className="lholo-select-options lholo-autocomplete-options">
       {options.length === 0 ? <div className="lholo-settings-note">{emptyLabel}</div> : options.map((option, position) => {

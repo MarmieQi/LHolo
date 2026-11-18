@@ -23,7 +23,7 @@ import type {TaskControls} from './application/useTasks';
 import type {StructurePreviewControls} from './application/useStructurePreview';
 import type { MenuLabels, ProjectionState } from './platform/bridge';
 import { NativeScrollView } from './platform/native';
-import { LHoloButton } from './components/LHoloControls';
+import { LHoloCloseButton } from './components/LHoloControls';
 import { SelectedFileContext } from './components/SelectedFileContext';
 
 export function LHoloMenu({
@@ -70,16 +70,22 @@ export function LHoloMenu({
     if (page === 'hotkeys' && next !== 'hotkeys') hotkeys.cancelCapture();
     setPage(next);
   };
+  const pageTitle = page === 'tasks' ? labels['tasks.nav'] : labels['page.' + page] ?? page;
   return <div className="lholo-backdrop">
     <div className="lholo-menu">
-      <div className="lholo-menu-header">
-        <div className="lholo-brand">LHolo</div>
-        <LHoloButton label={labels['menu.close']} onClick={onClose} />
-      </div>
-      <div className="lholo-menu-body">
+      <div className="lholo-sidebar">
+        <div className="lholo-sidebar-header">
+          <div className="lholo-brand">LHolo</div>
+        </div>
         <div className="lholo-navigation"><NativeScrollView>
           <MenuNavigation page={page} labels={labels} onSelect={selectPage} />
         </NativeScrollView></div>
+      </div>
+      <div className="lholo-main">
+        <div className="lholo-menu-header">
+          <div className="lholo-page-title">{pageTitle}</div>
+          <LHoloCloseButton label={labels['menu.close']} onClick={onClose} />
+        </div>
         <div className="lholo-content-viewport">
           {page === 'createStructure' ? <CreateStructurePage labels={labels} capture={capture} /> : <NativeScrollView>
             <div className="lholo-content" key={page}>

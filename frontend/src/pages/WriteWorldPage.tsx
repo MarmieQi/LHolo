@@ -2,7 +2,12 @@ import React, {useEffect, useState} from 'react';
 import type { MenuLabels } from '../platform/bridge';
 import type {TaskControls} from '../application/useTasks';
 import type {StructureWriteControls} from '../application/useStructureWrite';
-import {LHoloButton, LHoloCheckbox} from '../components/LHoloControls';
+import {
+  LHoloButton,
+  LHoloCheckbox,
+  LHoloSectionGroup,
+  LHoloSettingRow,
+} from '../components/LHoloControls';
 import {LHoloSelect} from '../components/LHoloSelect';
 import {SelectedFileContext} from '../components/SelectedFileContext';
 
@@ -49,29 +54,23 @@ export function WriteWorldPage({labels, tasks, writer}: {
   const showCommand = writer.state?.mode === 'commands' && (activeCommand
     || (ownReceipt && (!writer.state.result || writer.state.result === 'writeWorld.complete'))) && !!command?.total;
   return <div className="lholo-write-world-page">
-    <div className="lholo-section-title">{labels['page.writeWorld']}</div>
     <div className="lholo-write-file">
       <SelectedFileContext label={labels['tasks.currentSelection']} name={file?.name ?? labels['tasks.noSelection']} />
     </div>
-    <div className="lholo-write-mode-group">
-      <div className="lholo-transform-row lholo-setting-row">
-        <div className="lholo-transform-label">{labels['writeWorld.mode']}</div>
+    <LHoloSectionGroup>
+      <LHoloSettingRow label={labels['writeWorld.mode']}
+        hint={labels[commandMode ? 'writeWorld.commandScope' : 'writeWorld.localScope']}>
         <LHoloSelect label={labels['writeWorld.mode']} value={activeCommand ? 1 : mode} onChange={setMode}
           options={[labels['writeWorld.localMode'], labels['writeWorld.commandMode']]}
           disabled={writer.busy} />
-      </div>
-      <div className="lholo-muted lholo-write-scope">{labels[commandMode ? 'writeWorld.commandScope' : 'writeWorld.localScope']}</div>
-    </div>
-    <div className="lholo-write-options">
-      <div className="lholo-write-option">
-        <LHoloCheckbox label={labels['writeWorld.skipAir']} value={displayedSkipAir}
-          onChange={value => setAirChoices(previous => ({...previous, [writeMode]: value}))} disabled={writer.busy} />
-      </div>
-      {commandMode && <div className="lholo-write-option">
-        <LHoloCheckbox label={labels['writeWorld.skipPlaced']} value={displayedSkipPlaced}
+      </LHoloSettingRow>
+      <LHoloCheckbox row label={labels['writeWorld.skipAir']} value={displayedSkipAir}
+        onChange={value => setAirChoices(previous => ({...previous, [writeMode]: value}))} disabled={writer.busy} />
+      {commandMode && (
+        <LHoloCheckbox row label={labels['writeWorld.skipPlaced']} value={displayedSkipPlaced}
           onChange={setSkipPlaced} disabled={writer.busy} />
-      </div>}
-    </div>
+      )}
+    </LHoloSectionGroup>
     <div className="lholo-muted lholo-write-range">{description.split('\n').map((line, index) => <div key={index}>{line}</div>)}</div>
     <div className="lholo-action-row"><LHoloButton label={labels['page.writeWorld']}
       disabled={!canWrite} onClick={() => setResultRequest(writer.write(tasks.currentTaskId, file!.id, tasks.state!.revision, skipAir,

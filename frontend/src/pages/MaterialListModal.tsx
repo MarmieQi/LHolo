@@ -6,7 +6,7 @@ import {
 } from '../application/useMaterials';
 import type { MenuLabels } from '../platform/bridge';
 import { NativeScrollView } from '../platform/native';
-import { LHoloButton } from '../components/LHoloControls';
+import { LHoloCloseButton } from '../components/LHoloControls';
 import { LHoloItemIcon } from '../components/LHoloItemIcon';
 import { SelectedFileContext } from '../components/SelectedFileContext';
 
@@ -28,7 +28,7 @@ export function MaterialListModal({
     <div className="lholo-material-modal">
       <div className="lholo-material-modal-header">
         <div className="lholo-material-title">{labels['material.listTitle']}</div>
-        <LHoloButton label={labels['button.close']} onClick={closeModal} />
+        <LHoloCloseButton label={labels['button.close']} onClick={closeModal} />
       </div>
       {sourceName ? <SelectedFileContext label={labels['tasks.currentSelection']} name={sourceName} /> : null}
       {!hasLoadedStructure ? (

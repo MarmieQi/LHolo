@@ -3,7 +3,14 @@ import type { CaptureControls } from '../application/useCapture';
 import { useCustomStructure } from '../application/useCustomStructure';
 import { selectionMetrics } from '../application/selectionMetrics';
 import type { MenuLabels } from '../platform/bridge';
-import { LHoloButton, LHoloCheckbox, LHoloTextField } from '../components/LHoloControls';
+import {
+  LHoloButton,
+  LHoloCheckbox,
+  LHoloSectionGroup,
+  LHoloSettingRow,
+  LHoloTextField,
+} from '../components/LHoloControls';
+import { LHoloSelect } from '../components/LHoloSelect';
 import { LHoloTabs } from '../components/LHoloTabs';
 import { NativeScrollView } from '../platform/native';
 import { CustomStructurePanel } from './create/CustomStructurePanel';
@@ -20,7 +27,6 @@ export function CreateStructurePage({ labels, capture }: CreateStructureProps) {
   return <NativeScrollView key={custom.draft ? 'layer-editor' : 'create-structure'}>
     <div className="lholo-content">
       {custom.draft ? <CustomLayerEditorPage labels={labels} editor={custom} draft={custom.draft} busy={capture.busy} /> : <>
-        <div className="lholo-section-title">{labels['section.captureSource']}</div>
         <LHoloTabs<CreateTab> selected={tab} onSelect={setTab} tabs={[
           { id: 'world', label: labels['capture.tabWorld'] },
           { id: 'custom', label: labels['capture.tabCustom'] },
@@ -40,23 +46,38 @@ function WorldSelection({ labels, capture }: CreateStructureProps) {
   const editorDisabled = !state?.worldAvailable || editingBusy;
   const metrics = selectionMetrics(draft);
   return <>
-    <div className="lholo-section-title">{labels['section.captureSelection']}</div>
-    <div className="lholo-mode-row"><div>{labels['label.captureMode']}</div>
-      <div className="lholo-mode-value">{labels['combo.captureModeClient']}</div></div>
+    <LHoloSectionGroup title={labels['section.captureSelection']}>
+      <LHoloSettingRow label={labels['label.captureMode']}>
+        <LHoloSelect label={labels['label.captureMode']} value={0}
+          options={[labels['combo.captureModeClient']]} onChange={() => {}} />
+      </LHoloSettingRow>
+    </LHoloSectionGroup>
     <div className="lholo-muted">{labels['hint.captureClientOnly']}</div>
     <div className="lholo-status">{state?.status || labels['captureStatus.noWorld']}</div>
-    {([['first', first, setFirst, 'label.capturePoint1'], ['second', second, setSecond, 'label.capturePoint2']] as const)
-      .map(([slot, point, setPoint, label]) => <div className="lholo-coordinate-row" key={slot}>
-        <div className="lholo-capture-point-title">{labels[label]}</div>
-        <LHoloTextField label={labels[label] + ' XYZ'} placeholder="X Y Z"
-          value={point} onChange={setPoint} onBlur={() => finishPoint(slot)} disabled={editorDisabled} />
-        <LHoloButton label={labels['button.usePlayerPosition']}
-          disabled={disabled} onClick={() => submit(slot)} />
-      </div>)}
+    <LHoloSectionGroup>
+      {([['first', first, setFirst, 'label.capturePoint1'], ['second', second, setSecond, 'label.capturePoint2']] as const)
+        .map(([slot, point, setPoint, label]) => (
+          <LHoloSettingRow
+            key={slot}
+            label={
+              <div className="lholo-capture-point-left">
+                <div className="lholo-capture-point-title">{labels[label]}</div>
+                <LHoloTextField className="lholo-capture-coord-input" label={labels[label] + ' XYZ'} placeholder="X Y Z"
+                  value={point} onChange={setPoint} onBlur={() => finishPoint(slot)} disabled={editorDisabled} />
+              </div>
+            }
+          >
+            <LHoloButton label={labels['button.usePlayerPosition']}
+              disabled={disabled} onClick={() => submit(slot)} />
+          </LHoloSettingRow>
+        ))}
+    </LHoloSectionGroup>
     {!valid && <div className="lholo-notice">{labels['oreui.invalidCoordinates']}</div>}
     {metrics && <CaptureMetrics labels={labels} {...metrics} />}
-    <div className="lholo-capture-entities"><LHoloCheckbox label={labels['checkbox.includeEntities']}
-      value={includeEntities} onChange={setIncludeEntities} disabled={editorDisabled} /></div>
+    <LHoloSectionGroup className="lholo-capture-entities">
+      <LHoloCheckbox row label={labels['checkbox.includeEntities']}
+        value={includeEntities} onChange={setIncludeEntities} disabled={editorDisabled} />
+    </LHoloSectionGroup>
     <div className="lholo-action-row">
       <LHoloButton label={labels['button.clearSelection']} disabled={disabled} onClick={() => submit('clear')} />
       <LHoloButton label={labels['button.exportMcstructure']}

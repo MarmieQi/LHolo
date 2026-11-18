@@ -4,7 +4,14 @@ import type {
   ExperimentalSettingsControls,
 } from '../application/useExperimentalSettings';
 import type { MenuLabels } from '../platform/bridge';
-import { LHoloButton, LHoloCheckbox, LHoloTextField } from '../components/LHoloControls';
+import {
+  LHoloButton,
+  LHoloCheckbox,
+  LHoloSectionGroup,
+  LHoloSettingRow,
+  LHoloStepButton,
+  LHoloTextField,
+} from '../components/LHoloControls';
 import { LHoloTabs } from '../components/LHoloTabs';
 import { NativeScrollView } from '../platform/native';
 
@@ -19,7 +26,6 @@ export function ExperimentalPage(props: ExperimentalPageProps) {
   const localModesDisabled = !worldAvailable || !experimental.localRangeAvailable || !experimental.canCommand;
 
   return <>
-    <div className="lholo-section-title">{labels['section.assistedPlacement']}</div>
     <LHoloTabs<PlacementTab> selected={tab} onSelect={setTab} tabs={[
       { id: 'singleplayer', label: labels['placement.tabSingleplayer'] },
       { id: 'legacy', label: labels['placement.tabLegacy'] },
@@ -28,24 +34,26 @@ export function ExperimentalPage(props: ExperimentalPageProps) {
       {tab === 'singleplayer' ? <>
         <div className="lholo-settings-columns">
           <div className="lholo-settings-column">
-            <div className="lholo-settings-group-title">{labels['placement.groupModes']}</div>
-            <LHoloCheckbox label={labels['checkbox.manualPlace']} value={experimental.localManualEnabled}
-              disabled={localModesDisabled} onChange={experimental.toggleLocalManual} />
-            <LHoloCheckbox label={labels['checkbox.easyPlace']} value={experimental.localEasyEnabled}
-              disabled={localModesDisabled} onChange={experimental.toggleLocalEasy} />
-            <LHoloCheckbox label={labels['checkbox.rangePlace']} value={experimental.localRangeEnabled}
-              disabled={localModesDisabled} onChange={experimental.toggleLocalRange} />
-            <LHoloCheckbox label={labels['checkbox.localPlacementLiquidsDisabled']} value={experimental.localLiquidsDisabled}
-              disabled={!experimental.ready} onChange={experimental.setLocalLiquidsDisabled} />
+            <LHoloSectionGroup title={labels['placement.groupModes']}>
+              <LHoloCheckbox row label={labels['checkbox.manualPlace']} value={experimental.localManualEnabled}
+                disabled={localModesDisabled} onChange={experimental.toggleLocalManual} />
+              <LHoloCheckbox row label={labels['checkbox.easyPlace']} value={experimental.localEasyEnabled}
+                disabled={localModesDisabled} onChange={experimental.toggleLocalEasy} />
+              <LHoloCheckbox row label={labels['checkbox.rangePlace']} value={experimental.localRangeEnabled}
+                disabled={localModesDisabled} onChange={experimental.toggleLocalRange} />
+              <LHoloCheckbox row label={labels['checkbox.localPlacementLiquidsDisabled']} value={experimental.localLiquidsDisabled}
+                disabled={!experimental.ready} onChange={experimental.setLocalLiquidsDisabled} />
+            </LHoloSectionGroup>
           </div>
           <div className="lholo-settings-column">
-            <div className="lholo-settings-group-title">{labels['placement.groupRestock']}</div>
-            <LHoloCheckbox label={labels['checkbox.localShulkerRestock']} value={experimental.localShulkerRestock}
-              disabled={!experimental.ready} onChange={experimental.setLocalShulkerRestock} />
-            <LHoloCheckbox label={labels['checkbox.localCreativeRestock']} value={experimental.localCreativeRestock}
-              disabled={!experimental.ready} onChange={experimental.setLocalCreativeRestock} />
-            <LHoloCheckbox label={labels['checkbox.localCreativeRestockOverwrite']} value={experimental.localCreativeRestockOverwrite}
-              disabled={!experimental.ready} onChange={experimental.setLocalCreativeRestockOverwrite} />
+            <LHoloSectionGroup title={labels['placement.groupRestock']}>
+              <LHoloCheckbox row label={labels['checkbox.localShulkerRestock']} value={experimental.localShulkerRestock}
+                disabled={!experimental.ready} onChange={experimental.setLocalShulkerRestock} />
+              <LHoloCheckbox row label={labels['checkbox.localCreativeRestock']} value={experimental.localCreativeRestock}
+                disabled={!experimental.ready} onChange={experimental.setLocalCreativeRestock} />
+              <LHoloCheckbox row label={labels['checkbox.localCreativeRestockOverwrite']} value={experimental.localCreativeRestockOverwrite}
+                disabled={!experimental.ready} onChange={experimental.setLocalCreativeRestockOverwrite} />
+            </LHoloSectionGroup>
           </div>
         </div>
         <div className="lholo-placement-options">
@@ -72,21 +80,17 @@ function LegacyPlacement({ labels, experimental, worldAvailable }: ExperimentalP
       <LHoloButton label={infoButtonLabel} className="lholo-danger-button"
         onClick={experimental.openInfoModal} />
     </div>
-    <div className="lholo-render-check">
-      <LHoloCheckbox disabled={!worldAvailable || !experimental.canCommand} label={labels['checkbox.manualPlace']}
+    <LHoloSectionGroup>
+      <LHoloCheckbox row disabled={!worldAvailable || !experimental.canCommand} label={labels['checkbox.manualPlace']}
         value={experimental.activeMode === 'manual'}
         onChange={checked => experimental.toggleMode('manual', checked)} />
-    </div>
-    <div className="lholo-render-check">
-      <LHoloCheckbox disabled={!worldAvailable || !experimental.canCommand} label={labels['checkbox.easyPlace']}
+      <LHoloCheckbox row disabled={!worldAvailable || !experimental.canCommand} label={labels['checkbox.easyPlace']}
         value={experimental.activeMode === 'easy'}
         onChange={checked => experimental.toggleMode('easy', checked)} />
-    </div>
-    <div className="lholo-render-check">
-      <LHoloCheckbox disabled={!worldAvailable || !experimental.canCommand} label={labels['checkbox.rangePlace']}
+      <LHoloCheckbox row disabled={!worldAvailable || !experimental.canCommand} label={labels['checkbox.rangePlace']}
         value={experimental.activeMode === 'range'}
         onChange={checked => experimental.toggleMode('range', checked)} />
-    </div>
+    </LHoloSectionGroup>
 
     {experimental.activeMode ? (
       <div className="lholo-status">
@@ -107,37 +111,37 @@ function RangeSettings({ labels, experimental, local }: Pick<ExperimentalPagePro
   const radius = experimental.radius(local ? 'localPlacementRadius' : 'placementRadius');
   const cooldownLabel = labels['label.autoPlacementCooldown'];
 
-  return <>
-    <div className="lholo-experimental-row lholo-setting-row">
-      <div className="lholo-experimental-label">{radiusLabel}</div>
-      <div className="lholo-stepper">
-        <LHoloButton disabled={!experimental.ready} label="-" className="lholo-stepper-button"
-          onClick={() => radius.step(-1)} />
-        <div className="lholo-stepper-value"
-          style={{ width: Math.max(3.2, Math.min(8, radius.text.length * 0.7 + 1.2)) + 'rem' }}>
-          <LHoloTextField disabled={!experimental.ready} label={radiusLabel} value={radius.text} maxLength={4}
-            onChange={radius.edit} onBlur={radius.commit} />
+  return (
+    <LHoloSectionGroup>
+      <LHoloSettingRow label={radiusLabel}>
+        <div className="lholo-stepper">
+          <LHoloStepButton direction="dec" disabled={!experimental.ready}
+            onClick={() => radius.step(-1)} />
+          <div className="lholo-stepper-value"
+            style={{ width: Math.max(3.2, Math.min(8, radius.text.length * 0.7 + 1.2)) + 'rem' }}>
+            <LHoloTextField disabled={!experimental.ready} label={radiusLabel} value={radius.text} maxLength={4}
+              onChange={radius.edit} onBlur={radius.commit} />
+          </div>
+          <LHoloStepButton direction="inc" disabled={!experimental.ready}
+            onClick={() => radius.step(1)} />
         </div>
-        <LHoloButton disabled={!experimental.ready} label="+" className="lholo-stepper-button"
-          onClick={() => radius.step(1)} />
-      </div>
-    </div>
+      </LHoloSettingRow>
 
-    <div className="lholo-experimental-row lholo-setting-row">
-      <div className="lholo-experimental-label">{cooldownLabel}</div>
-      <div className="lholo-stepper">
-        <LHoloButton disabled={!experimental.ready} label="-" className="lholo-stepper-button"
-          onClick={() => experimental.stepAutoPlacementCooldown(-1)} />
+      <LHoloSettingRow label={cooldownLabel}>
+        <div className="lholo-stepper">
+          <LHoloStepButton direction="dec" disabled={!experimental.ready}
+            onClick={() => experimental.stepAutoPlacementCooldown(-1)} />
         <div className="lholo-stepper-value"
           style={{ width: Math.max(3.2, Math.min(8, experimental.autoPlacementCooldown.text.length * 0.7 + 1.2)) + 'rem' }}>
           <LHoloTextField disabled={!experimental.ready} label={cooldownLabel} value={experimental.autoPlacementCooldown.text} maxLength={4}
             onChange={experimental.editAutoPlacementCooldown} onBlur={experimental.commitAutoPlacementCooldown} />
         </div>
-        <LHoloButton disabled={!experimental.ready} label="+" className="lholo-stepper-button"
+        <LHoloStepButton direction="inc" disabled={!experimental.ready}
           onClick={() => experimental.stepAutoPlacementCooldown(1)} />
       </div>
-    </div>
-  </>;
+      </LHoloSettingRow>
+    </LHoloSectionGroup>
+  );
 }
 
 export function ExperimentalInfoModal({ labels, experimental }: {

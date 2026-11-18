@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
 import type { HudSettingsControls } from '../application/useHudSettings';
 import type { MenuLabels } from '../platform/bridge';
-import { LHoloButton, LHoloCheckbox, LHoloTextField } from '../components/LHoloControls';
+import {
+  LHoloButton,
+  LHoloCheckbox,
+  LHoloSectionGroup,
+  LHoloSettingRow,
+  LHoloStepButton,
+  LHoloTextField,
+} from '../components/LHoloControls';
 
 import { LHoloTabs } from '../components/LHoloTabs';
 
@@ -24,73 +31,64 @@ export function HudPage({ labels, hud, worldAvailable }: { labels: MenuLabels; h
     ['checkbox.hudExtraBlocks', hud.hudShowExtraBlocks, hud.setHudShowExtraBlocks],
   ] as const;
   const renderItems = (items: typeof infoItems | typeof progressItems | typeof errorItems) => items.map(([key, value, onChange]) => (
-    <div className="lholo-settings-option" key={key}>
-      <LHoloCheckbox label={labels[key]} value={value}
-        onChange={onChange} disabled={!hud.ready || !hud.hudEnabled} />
-    </div>
+    <LHoloCheckbox row key={key} label={labels[key]} value={value}
+      onChange={onChange} disabled={!hud.ready || !hud.hudEnabled} />
   ));
 
   return <>
-    <div className="lholo-hud-header">
-      <div className="lholo-hud-title">{labels['section.hud']}</div>
+    <div className="lholo-hud-toolbar">
+      <LHoloTabs<HudTab> selected={tab} onSelect={setTab} tabs={[
+        { id: 'projection', label: labels['hud.tabProjection'] },
+        { id: 'materials', label: labels['hud.tabMaterials'] },
+        { id: 'write', label: labels['hud.tabWrite'] },
+      ]} />
       <LHoloButton label={labels['hud.layout.edit']} onClick={hud.editLayout} disabled={!hud.ready || !worldAvailable} />
     </div>
-    <LHoloTabs<HudTab> selected={tab} onSelect={setTab} tabs={[
-      { id: 'projection', label: labels['hud.tabProjection'] },
-      { id: 'materials', label: labels['hud.tabMaterials'] },
-      { id: 'write', label: labels['hud.tabWrite'] },
-    ]} />
     {tab === 'projection' ? <div className="lholo-tab-content">
-      <div className="lholo-hud-master">
-        <LHoloCheckbox disabled={!hud.ready} label={labels['checkbox.hudEnabled']}
+      <LHoloSectionGroup>
+        <LHoloCheckbox row disabled={!hud.ready} label={labels['checkbox.hudEnabled']}
           value={hud.hudEnabled} onChange={hud.setHudEnabled} />
-      </div>
+      </LHoloSectionGroup>
       <div className="lholo-settings-columns">
         <div className="lholo-settings-column">
-          <div className="lholo-settings-group">
-            <div className="lholo-settings-group-title">{labels['hud.groupInfo']}</div>
+          <LHoloSectionGroup title={labels['hud.groupInfo']}>
             {renderItems(infoItems)}
-          </div>
-          <div className="lholo-settings-group">
-            <div className="lholo-settings-group-title">{labels['hud.groupProgress']}</div>
+          </LHoloSectionGroup>
+          <LHoloSectionGroup title={labels['hud.groupProgress']}>
             {renderItems(progressItems)}
-          </div>
+          </LHoloSectionGroup>
         </div>
         <div className="lholo-settings-column">
-          <div className="lholo-settings-group">
-            <div className="lholo-settings-group-title">{labels['hud.groupErrors']}</div>
+          <LHoloSectionGroup title={labels['hud.groupErrors']}>
             {renderItems(errorItems)}
-          </div>
+          </LHoloSectionGroup>
         </div>
       </div>
     </div> : tab === 'materials' ? <div className="lholo-tab-content">
-      <div className="lholo-hud-master">
-        <LHoloCheckbox disabled={!hud.ready} label={labels['checkbox.materialHudEnabled']}
+      <LHoloSectionGroup>
+        <LHoloCheckbox row disabled={!hud.ready} label={labels['checkbox.materialHudEnabled']}
           value={hud.materialHudEnabled} onChange={hud.setMaterialHudEnabled} />
-      </div>
-      <div className="lholo-settings-option">
-        <LHoloCheckbox disabled={!hud.ready || !hud.materialHudEnabled} label={labels['checkbox.materialHudStackConversion']}
+        <LHoloCheckbox row disabled={!hud.ready || !hud.materialHudEnabled} label={labels['checkbox.materialHudStackConversion']}
           value={hud.materialHudStackConversion} onChange={hud.setMaterialHudStackConversion} />
-      </div>
-      <div className="lholo-material-hud-row lholo-setting-row">
-        <div className="lholo-material-hud-label">{labels['label.materialHudMaxItems']}</div>
-        <div className="lholo-stepper">
-          <LHoloButton disabled={!hud.ready || !hud.materialHudEnabled} label="-" className="lholo-stepper-button"
-            onClick={() => hud.stepMaterialHudMaxItems(-1)} />
-          <div className="lholo-stepper-value" style={{ width: '3.2rem' }}>
-            <LHoloTextField disabled={!hud.ready || !hud.materialHudEnabled}
-              label={labels['label.materialHudMaxItems']} value={hud.materialHudMaxItemsText} maxLength={3}
-              onChange={hud.editMaterialHudMaxItems} onBlur={hud.commitMaterialHudMaxItems} />
+        <LHoloSettingRow label={labels['label.materialHudMaxItems']}>
+          <div className="lholo-stepper">
+            <LHoloStepButton direction="dec" disabled={!hud.ready || !hud.materialHudEnabled}
+              onClick={() => hud.stepMaterialHudMaxItems(-1)} />
+            <div className="lholo-stepper-value" style={{ width: '3.2rem' }}>
+              <LHoloTextField disabled={!hud.ready || !hud.materialHudEnabled}
+                label={labels['label.materialHudMaxItems']} value={hud.materialHudMaxItemsText} maxLength={3}
+                onChange={hud.editMaterialHudMaxItems} onBlur={hud.commitMaterialHudMaxItems} />
+            </div>
+            <LHoloStepButton direction="inc" disabled={!hud.ready || !hud.materialHudEnabled}
+              onClick={() => hud.stepMaterialHudMaxItems(1)} />
           </div>
-          <LHoloButton disabled={!hud.ready || !hud.materialHudEnabled} label="+" className="lholo-stepper-button"
-            onClick={() => hud.stepMaterialHudMaxItems(1)} />
-        </div>
-      </div>
+        </LHoloSettingRow>
+      </LHoloSectionGroup>
     </div> : <div className="lholo-tab-content">
-      <div className="lholo-hud-master">
-        <LHoloCheckbox disabled={!hud.ready} label={labels['checkbox.writeHudEnabled']}
+      <LHoloSectionGroup>
+        <LHoloCheckbox row disabled={!hud.ready} label={labels['checkbox.writeHudEnabled']}
           value={hud.writeHudEnabled} onChange={hud.setWriteHudEnabled} />
-      </div>
+      </LHoloSectionGroup>
     </div>}
   </>;
 }

@@ -52,6 +52,7 @@
     LHOLO_TEXT_KEY("tasks.hide", TasksHide, "")                                              \
     LHOLO_TEXT_KEY("tasks.selectedFile", TasksSelectedFile, "")                              \
     LHOLO_TEXT_KEY("tasks.currentSelection", TasksCurrentSelection, "")                      \
+    LHOLO_TEXT_KEY("tasks.currentBadge", TasksCurrentBadge, "")                              \
     LHOLO_TEXT_KEY("tasks.path", TasksPath, "")                                              \
     LHOLO_TEXT_KEY("tasks.emptyFiles", TasksEmptyFiles, "")                                  \
     LHOLO_TEXT_KEY("tasks.rename", TasksRename, "")                                          \

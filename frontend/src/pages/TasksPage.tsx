@@ -8,46 +8,48 @@ import type {StructurePreviewControls} from '../application/useStructurePreview'
 import type { MenuLabels } from '../platform/bridge';
 
 const eyeOpenSvg = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.25rem', height: '1.25rem' }}>
-    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.12rem', height: '1.12rem' }}>
+    <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" />
     <circle cx="12" cy="12" r="3" />
   </svg>
 );
 
 const eyeClosedSvg = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.25rem', height: '1.25rem' }}>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.12rem', height: '1.12rem' }}>
+    <path d="M10.73 5.58A9.8 9.8 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a14.5 14.5 0 0 1-2.22 3.05" />
+    <path d="M6.61 7.05A14.2 14.2 0 0 0 2.5 12s3.5 6.5 9.5 6.5a9.6 9.6 0 0 0 4.65-1.18" />
     <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
-    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
-    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
-    <line x1="2" y1="2" x2="22" y2="22" />
+    <line x1="3" y1="3" x2="21" y2="21" />
   </svg>
 );
 
 const arrowUpSvg = (
-  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.15rem', height: '1.15rem' }}>
-    <path d="M10 16V4M4 10l6-6 6 6" />
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.05rem', height: '1.05rem' }}>
+    <path d="M12 19V5" />
+    <path d="M6.5 10.5 12 5l5.5 5.5" />
   </svg>
 );
 
 const arrowDownSvg = (
-  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.15rem', height: '1.15rem' }}>
-    <path d="M10 4v12M4 10l6 6 6-6" />
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.05rem', height: '1.05rem' }}>
+    <path d="M12 5v14" />
+    <path d="M6.5 13.5 12 19l5.5-5.5" />
   </svg>
 );
 
 const trashSvg = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.05rem', height: '1.05rem' }}>
-    <path d="M3 6h18" />
-    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-    <line x1="10" y1="11" x2="10" y2="17" />
-    <line x1="14" y1="11" x2="14" y2="17" />
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.05rem', height: '1.05rem' }}>
+    <path d="M4 6.5h16" />
+    <path d="M9.5 6.5V4.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2" />
+    <path d="M6.5 6.5v12.5a1.5 1.5 0 0 0 1.5 1.5h8a1.5 1.5 0 0 0 1.5-1.5V6.5" />
+    <path d="M10 10.5v6" />
+    <path d="M14 10.5v6" />
   </svg>
 );
 
 const plusSvg = (
-  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{ width: '1.1rem', height: '1.1rem' }}>
-    <path d="M10 3v14M3 10h14" />
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.05rem', height: '1.05rem' }}>
+    <path d="M12 5v14M5 12h14" />
   </svg>
 );
 
@@ -114,42 +116,46 @@ export function TasksPage({ labels, tasksCtrl, preview, hasProjection, onMateria
   };
 
 
+  const taskStatus = tasksCtrl.state?.loading
+    ? labels['tasks.loading']
+    : currentTask?.id === tasksCtrl.state?.activeTaskId
+      ? labels['tasks.active']
+      : '';
+
   return (
     <div className="lholo-tasks-page">
-      {/* 标题栏 */}
-      <div className="lholo-section-title" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span>{labels['tasks.nav']}</span>
-        <div className="lholo-muted">{tasksCtrl.state?.loading ? labels['tasks.loading'] : currentTask?.id === tasksCtrl.state?.activeTaskId ? labels['tasks.active'] : ''}</div>
-      </div>
+      {taskStatus ? <div className="lholo-muted lholo-task-active-badge">{taskStatus}</div> : null}
 
-      <div className="lholo-task-control-row">
-        <LHoloSelect
-          label={labels['tasks.name']}
-          size="compact"
-          value={currentTaskIndex >= 0 ? currentTaskIndex : 0}
-          options={taskOptions}
-          disabled={disabled || !tasksCtrl.tasks.length}
-          onChange={idx => {
-            const target = tasksCtrl.tasks[idx];
-            if (target) tasksCtrl.selectTask(target.id);
-          }}
-        />
-        <LHoloButton label={labels['tasks.create']} disabled={disabled} onClick={handleStartCreate} />
-        <div className="lholo-task-control-secondary">
-          <LHoloButton label={labels['tasks.rename']} disabled={disabled || !currentTask} onClick={handleStartRename} />
-          <LHoloButton
-            label={labels['tasks.delete']}
-            disabled={disabled || !currentTask}
-            onClick={() => currentTask && setTaskModal({mode: 'deleteTask', taskId: currentTask.id, name: currentTask.name})}
+      <div className="lholo-tasks-header-card">
+        <div className="lholo-task-control-row">
+          <LHoloSelect
+            label={labels['tasks.name']}
+            size="compact"
+            value={currentTaskIndex >= 0 ? currentTaskIndex : 0}
+            options={taskOptions}
+            disabled={disabled || !tasksCtrl.tasks.length}
+            onChange={idx => {
+              const target = tasksCtrl.tasks[idx];
+              if (target) tasksCtrl.selectTask(target.id);
+            }}
           />
+          <LHoloButton label={labels['tasks.create']} disabled={disabled} onClick={handleStartCreate} />
+          <div className="lholo-task-control-secondary">
+            <LHoloButton label={labels['tasks.rename']} disabled={disabled || !currentTask} onClick={handleStartRename} />
+            <LHoloButton
+              label={labels['tasks.delete']}
+              disabled={disabled || !currentTask}
+              onClick={() => currentTask && setTaskModal({mode: 'deleteTask', taskId: currentTask.id, name: currentTask.name})}
+            />
+          </div>
         </div>
-      </div>
 
-      <div className="lholo-action-row">
-        <LHoloButton label={labels[showCloseAction ? 'tasks.close' : 'tasks.activate']}
-          disabled={showCloseAction ? !tasksCtrl.canClose : disabled || !currentTask || !tasksCtrl.state?.worldAvailable}
-          onClick={showCloseAction ? tasksCtrl.close : tasksCtrl.activate} />
-        <LHoloButton label={labels['material.listTitle']} disabled={disabled || !hasProjection || !selectedLayer || currentTask?.id !== tasksCtrl.state?.activeTaskId} onClick={onMaterials} />
+        <div className="lholo-action-row">
+          <LHoloButton label={labels[showCloseAction ? 'tasks.close' : 'tasks.activate']}
+            disabled={showCloseAction ? !tasksCtrl.canClose : disabled || !currentTask || !tasksCtrl.state?.worldAvailable}
+            onClick={showCloseAction ? tasksCtrl.close : tasksCtrl.activate} />
+          <LHoloButton label={labels['material.listTitle']} disabled={disabled || !hasProjection || !selectedLayer || currentTask?.id !== tasksCtrl.state?.activeTaskId} onClick={onMaterials} />
+        </div>
       </div>
       {tasksCtrl.state?.error ? <div className="lholo-muted lholo-task-error" role="alert">
         <span className="lholo-task-error-heading">{`${labels['tasks.error']}:${errorFile ? ' ' + errorFile.name : ''}`}</span>
@@ -176,6 +182,7 @@ export function TasksPage({ labels, tasksCtrl, preview, hasProjection, onMateria
               className={'lholo-tasks-layer-row' + (isSel ? ' is-selected' : '') + (layer.hidden ? ' is-hidden' : '')}
               key={layer.id}
             >
+              {isSel ? <div className="lholo-tasks-layer-indicator" /> : null}
               <LHoloButton
                 label={layer.hidden ? labels['tasks.show'] : labels['tasks.hide']}
                 icon={layer.hidden ? eyeClosedSvg : eyeOpenSvg}
@@ -187,6 +194,9 @@ export function TasksPage({ labels, tasksCtrl, preview, hasProjection, onMateria
               <NativeInteractive disabled={disabled} label={layer.name + (isSel ? ' ' + labels['tasks.selected'] : '') + (layer.hidden ? ' ' + labels['tasks.hidden'] : '')} className="lholo-tasks-layer-name"
                 onClick={() => tasksCtrl.setSelectedLayerId(layer.id)}>
                 <span className="lholo-tasks-layer-title">{layer.name}</span>
+                {isSel && labels['tasks.currentBadge'] ? (
+                  <span className="lholo-tasks-current-badge">{labels['tasks.currentBadge']}</span>
+                ) : null}
               </NativeInteractive>
               <div className="lholo-tasks-layer-actions">
                 <LHoloButton label={labels['preview.open']} className="lholo-tasks-preview-btn"
