@@ -138,7 +138,7 @@
   "capture.customDimensionsFormat": "每个尺寸都必须是正整数",
   "capture.invalidCustomDimensions": "结构体积超出导出上限",
   "label.captureMode": "模式",
-  "combo.captureModeClient": "客户端模式",
+  "combo.captureModeClient": "客户端",
   "hint.captureClientOnly": "客户端模式支持单人存档与服务器，但是只能保存当前已加载的世界范围，且容器内容和实体数据可能不完整",
   "section.captureSelection": "结构选区",
   "label.capturePoint1": "点 1",

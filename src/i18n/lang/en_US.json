@@ -138,7 +138,7 @@
   "capture.customDimensionsFormat": "Enter a positive integer for each dimension",
   "capture.invalidCustomDimensions": "The structure exceeds the export size limit",
   "label.captureMode": "Mode",
-  "combo.captureModeClient": "Client mode",
+  "combo.captureModeClient": "Client",
   "hint.captureClientOnly": "Client mode supports single-player worlds and servers, but can only save the currently loaded area. Container contents and entity data may be incomplete.",
   "section.captureSelection": "Selection",
   "label.capturePoint1": "Point 1",

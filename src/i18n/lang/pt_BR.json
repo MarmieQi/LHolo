@@ -138,7 +138,7 @@
   "capture.customDimensionsFormat": "Digite um número inteiro positivo para cada dimensão",
   "capture.invalidCustomDimensions": "A estrutura excede o limite de tamanho para exportação",
   "label.captureMode": "Modo",
-  "combo.captureModeClient": "Modo cliente",
+  "combo.captureModeClient": "Cliente",
   "hint.captureClientOnly": "O modo cliente funciona em mundos de um jogador e servidores, mas só salva a área atualmente carregada. Conteúdos de recipientes e dados de entidades podem ficar incompletos.",
   "section.captureSelection": "Seleção",
   "label.capturePoint1": "Ponto 1",

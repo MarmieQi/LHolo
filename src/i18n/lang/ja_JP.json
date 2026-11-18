@@ -138,7 +138,7 @@
   "capture.customDimensionsFormat": "各軸のサイズには正の整数を入力してください",
   "capture.invalidCustomDimensions": "ストラクチャーの体積がエクスポート上限を超えています",
   "label.captureMode": "モード",
-  "combo.captureModeClient": "クライアントモード",
+  "combo.captureModeClient": "クライアント",
   "hint.captureClientOnly": "クライアントモードはシングルプレイのワールドとサーバーに対応していますが、保存できるのは現在読み込まれている範囲のみです。コンテナの中身やエンティティのデータは完全に保存されない場合があります。",
   "section.captureSelection": "選択範囲",
   "label.capturePoint1": "地点 1",

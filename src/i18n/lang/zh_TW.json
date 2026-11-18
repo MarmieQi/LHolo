@@ -138,7 +138,7 @@
   "capture.customDimensionsFormat": "每個尺寸都必須是正整數",
   "capture.invalidCustomDimensions": "結構體積超出匯出上限",
   "label.captureMode": "模式",
-  "combo.captureModeClient": "用戶端模式",
+  "combo.captureModeClient": "用戶端",
   "hint.captureClientOnly": "用戶端模式支援單人存檔與伺服器，但只能儲存目前已載入的世界範圍，且容器內容和實體資料可能不完整",
   "section.captureSelection": "結構選取區",
   "label.capturePoint1": "點 1",

@@ -138,7 +138,7 @@
   "capture.customDimensionsFormat": "Введите положительное целое число для каждой оси",
   "capture.invalidCustomDimensions": "Объём структуры превышает предел экспорта",
   "label.captureMode": "Режим",
-  "combo.captureModeClient": "Клиентский режим",
+  "combo.captureModeClient": "Клиент",
   "hint.captureClientOnly": "Клиентский режим поддерживает одиночные миры и серверы, но сохраняет только загруженную область мира. Содержимое контейнеров и данные сущностей могут быть неполными.",
   "section.captureSelection": "Область структуры",
   "label.capturePoint1": "Точка 1",
