@@ -383,27 +383,38 @@ assert.equal(materialModal.findByProps({className:'lholo-selected-file-label'}).
 
 assert(nodeText(materialModal).includes(labels['material.loading']), 'Pending snapshot shows calculation hint');
 assert(!nodeText(materialModal).includes(labels['hint.noPlaceableMaterials']));
-receive(JSON.stringify({ready: true, items: []}), 'lholo:materials');
+receive(JSON.stringify({ready: true, progressReady: true, items: []}), 'lholo:materials');
 assert(nodeText(materialModal).includes(labels['hint.noPlaceableMaterials']), 'Completed empty snapshot shows empty hint');
 receive(JSON.stringify({
   ready: true,
+  progressReady: false,
   items: [
-    { displayName: '石头', typeName: 'minecraft:stone', iconId: 'minecraft:stone', iconData: {id: 7, bag: '{}'}, count: 128 },
-    { displayName: '橡木木板', typeName: 'minecraft:oak_planks', iconId: 'oak_planks', count: 96 },
-    { displayName: '玻璃', typeName: 'minecraft:glass', iconId: 'glass', count: 48 },
-    { displayName: '圆石楼梯', typeName: 'minecraft:stone_stairs', iconId: 'stone_stairs', count: 32 },
-    { displayName: '橡木原木', typeName: 'minecraft:oak_log', iconId: 'oak_log', count: 24 },
-    { displayName: '', nameKey: 'material.water', typeName: 'minecraft:water', iconId: 'minecraft:water', count: 16 },
-    { displayName: '灯笼', typeName: 'minecraft:lantern', iconId: 'lantern', count: 8 },
+    { displayName: '石头', typeName: 'minecraft:stone', iconId: 'minecraft:stone', iconData: {id: 7, bag: '{}'}, count: 128, missing: 0, available: 64 },
   ],
 }), 'lholo:materials');
-receive('{"ready":"bad","items":[]}', 'lholo:materials');
-receive('{"ready":true,"items":[{"displayName":"bad","typeName":"minecraft:stone","count":-1}]}', 'lholo:materials');
+assert(nodeText(materialModal).includes(labels['material.scanningProgress']), 'Scanning state shows progress hint');
+receive(JSON.stringify({
+  ready: true,
+  progressReady: true,
+  items: [
+    { displayName: '石头', typeName: 'minecraft:stone', iconId: 'minecraft:stone', iconData: {id: 7, bag: '{}'}, count: 128, missing: 80, available: 64 },
+    { displayName: '橡木木板', typeName: 'minecraft:oak_planks', iconId: 'oak_planks', count: 96, missing: 0, available: 12 },
+    { displayName: '玻璃', typeName: 'minecraft:glass', iconId: 'glass', count: 48, missing: 48, available: 64 },
+    { displayName: '圆石楼梯', typeName: 'minecraft:stone_stairs', iconId: 'stone_stairs', count: 32, missing: 10, available: 0 },
+    { displayName: '橡木原木', typeName: 'minecraft:oak_log', iconId: 'oak_log', count: 24, missing: 0, available: 0 },
+    { displayName: '', nameKey: 'material.water', typeName: 'minecraft:water', iconId: 'minecraft:water', count: 16, missing: 4, available: null },
+    { displayName: '灯笼', typeName: 'minecraft:lantern', iconId: 'lantern', count: 8, missing: 8, available: 8 },
+  ],
+}), 'lholo:materials');
+receive('{"ready":"bad","progressReady":true,"items":[]}', 'lholo:materials');
+receive('{"ready":true,"progressReady":true,"items":[{"displayName":"bad","typeName":"minecraft:stone","count":-1,"missing":0,"available":0}]}', 'lholo:materials');
 const materialModalText = nodeText(materialModal);
 assert(materialModalText.includes(labels['label.materialSummary'].replace('%llu', '352').replace('%zu', '7')));
+assert(materialModalText.includes(labels['material.summaryMissing'].replace('%llu', '150')));
 assert(materialModalText.includes(labels['column.item']));
-assert(materialModalText.includes(labels['column.identifier']));
 assert(materialModalText.includes(labels['column.total']));
+assert(materialModalText.includes(labels['column.missing']));
+assert(materialModalText.includes(labels['column.available']));
 assert(materialModalText.includes('minecraft:stone'));
 assert.equal(materialModal.findAllByType('native-item-icon').length, 7,
   'All materials including liquids use native icons');
@@ -411,6 +422,17 @@ assert.equal(materialModal.findAllByType('native-item-icon')[0].props.itemId, 'm
 assert.equal(materialModal.findAllByType('native-item-icon')[0].props.iconData.id, 7,
   'Material thumbnail data reaches the native adapter');
 assert(materialModalText.includes(labels['material.water']));
+const hideCompletedCheckbox = materialModal.findAllByType('button').find(node => nodeText(node) === labels['material.hideCompleted']);
+renderer.act(() => hideCompletedCheckbox.props.onClick());
+assert.equal(materialModal.findAllByProps({ className: 'lholo-material-table-row' }).length, 5,
+  'Hide completed filters out zero-missing rows');
+renderer.act(() => hideCompletedCheckbox.props.onClick());
+assert.equal(materialModal.findAllByType('native-item-icon').length, 7);
+const totalHeader = materialModal.findAllByType('button').find(node => nodeText(node) === labels['column.total']);
+renderer.act(() => totalHeader.props.onClick());
+assert.equal(totalHeader.findAllByProps({ className: 'lholo-material-sort-icon is-desc' }).length, 1, 'Clicking total header sorts descending');
+renderer.act(() => totalHeader.props.onClick());
+assert.equal(totalHeader.findAllByProps({ className: 'lholo-material-sort-icon is-asc' }).length, 1, 'Clicking active header toggles ascending');
 renderer.act(() => materialModal.findAllByType('button').find(node => nodeText(node) === labels['button.close']).props.onClick());
 assert.equal(tree.root.findAllByProps({ className: 'lholo-material-modal' }).length, 0, 'Close button dismisses material modal');
 

@@ -63,6 +63,21 @@ int runMaterialCountsTests() {
     check(total(raw.body) == 5, "two doors, cropped half and two independent blocks need five items");
     check(total(raw.liquid) == 2, "multi-block grouping preserves both fluid cells");
     check(raw.body.entries()[0].nbt == ordinary, "start NBT wins regardless of traversal order");
+    auto totalMissing = [](MaterialCounts const& value) {
+        std::uint64_t sum{};
+        for (auto const& entry : value.entries()) sum += entry.missing;
+        return sum;
+    };
+    // Door 0 (indices 0,1): only upper half missing -> 1 missing; Door 1 (indices 2,3): both placed -> 0 missing;
+    // cropped half (index 4): missing -> 1; chests (5,6): index 5 missing, index 6 placed -> 1.
+    auto withMissing = collectRawMaterials(
+        blocks, owners, all,
+        [](std::size_t i) { return i == 0 || i == 4 || i == 5; }
+    );
+    check(total(withMissing.body) == 5 && totalMissing(withMissing.body) == 3,
+        "combined pass counts total and missing independently across multi-block units");
+    check(total(withMissing.liquid) == 2 && totalMissing(withMissing.liquid) == 1,
+        "combined pass counts liquid missing cells independently");
     auto upperOnly = collectRawMaterials(blocks, owners, [](std::size_t i) { return i == 0; });
     check(total(upperOnly.body) == 1 && upperOnly.body.entries()[0].nbt == ordinary,
         "visible or missing upper half still needs one item with the start's identity");

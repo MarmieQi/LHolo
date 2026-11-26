@@ -337,6 +337,11 @@
     LHOLO_TEXT_KEY("column.item", ColumnItem, "")                                                        \
     LHOLO_TEXT_KEY("column.identifier", ColumnIdentifier, "")                                            \
     LHOLO_TEXT_KEY("column.total", ColumnTotal, "")                                                      \
+    LHOLO_TEXT_KEY("column.missing", ColumnMissing, "")                                                  \
+    LHOLO_TEXT_KEY("column.available", ColumnAvailable, "")                                              \
+    LHOLO_TEXT_KEY("material.hideCompleted", MaterialHideCompleted, "")                                  \
+    LHOLO_TEXT_KEY("material.summaryMissing", MaterialSummaryMissing, "")                                \
+    LHOLO_TEXT_KEY("material.scanningProgress", MaterialScanningProgress, "")                            \
                                                                                                          \
     /* Projection HUD */                                                                                 \
     LHOLO_TEXT_KEY("hud.fileName", HudFileName, "")                                                      \

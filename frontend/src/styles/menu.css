@@ -374,19 +374,28 @@
 .lholo-material-modal { padding:0 1.25rem 1.25rem; border-radius:0.38rem; border:0.06rem solid #2e2e30; background-color:#131313; overflow:hidden; }
 .lholo-material-modal-header { height:3.25rem; flex-direction:row; flex-shrink:0; align-items:center; justify-content:space-between; margin:0 -1.25rem; padding-left:1.5rem; padding-right:0; border-bottom:0.06rem solid #2e2e30; }
 .lholo-material-title { font-size:1.08rem; font-weight:600; line-height:1.4; color:#f5f5f5; }
-.lholo-material-summary { flex-shrink:0; font-size:0.95rem; line-height:1.5; color:#a0a0a0; margin:0.85rem 0; }
+.lholo-material-toolbar { flex-direction:row; flex-shrink:0; align-items:center; justify-content:space-between; margin:0.65rem 0; }
+.lholo-material-summary { flex:1; min-width:0; margin-right:0.85rem; font-size:0.92rem; line-height:1.5; color:#a0a0a0; }
 .lholo-material-empty { margin:1rem 0; }
 .lholo-material-table { flex:1; min-height:0; border:0.06rem solid #2c2c2c; border-radius:0.35rem; overflow:hidden; background-color:#181818; }
-.lholo-material-table-header { flex-direction:row; flex-shrink:0; align-items:center; min-height:2.35rem; padding:0.45rem 0.85rem; background-color:#222222; border-bottom:0.06rem solid #303030; color:#a0a0a0; font-size:0.9rem; line-height:1.5; }
+.lholo-material-table-header { flex-direction:row; flex-shrink:0; align-items:center; min-height:2.35rem; padding:0.4rem 0.85rem; background-color:#222222; border-bottom:0.06rem solid #303030; color:#a0a0a0; font-size:0.88rem; line-height:1.5; }
 .lholo-material-table-viewport { flex:1; min-height:0; overflow:hidden; }
 .lholo-material-table-viewport > div { min-height:0; }
 .lholo-material-table-body { flex-shrink:0; }
-.lholo-material-table-row { flex-direction:row; flex-shrink:0; align-items:center; min-height:2.65rem; padding:0.45rem 0.85rem; border-bottom:0.06rem solid #252525; font-size:1rem; line-height:1.5; }
+.lholo-material-table-row { flex-direction:row; flex-shrink:0; align-items:center; min-height:2.9rem; padding:0.42rem 0.85rem; border-bottom:0.06rem solid #252525; font-size:0.96rem; line-height:1.4; transition:background-color 120ms ease; }
+.lholo-material-table-row:hover { background-color:rgba(255,255,255,0.03); }
 .lholo-material-table-row:last-child { border-bottom:none; }
-.lholo-material-col-item { width:15rem; min-width:15rem; max-width:15rem; flex:0 0 15rem; padding-right:0.85rem; overflow-wrap:break-word; }
-.lholo-material-col-id { flex:1 1 0; min-width:0; padding-right:0.85rem; overflow-wrap:break-word; }
-.lholo-material-table-row .lholo-material-col-id { font-size:0.88rem; line-height:1.5; color:#858585; }
-.lholo-material-col-total { width:7rem; min-width:7rem; flex:0 0 7rem; text-align:right; align-items:flex-end; font-variant-numeric:tabular-nums; font-size:1.02rem; }
+.lholo-material-table-row.is-completed { opacity:0.55; }
+.lholo-material-col-item { flex:1 1 0; min-width:10rem; padding-right:0.85rem; overflow-wrap:break-word; }
+.lholo-material-col-num { width:6.5rem; min-width:5.5rem; flex:0 0 6.5rem; text-align:right; align-items:flex-end; font-variant-numeric:tabular-nums; font-size:0.98rem; color:#ededed; }
+.lholo-material-sort-header { flex-direction:row; justify-content:flex-end; align-items:center; cursor:pointer; color:#a0a0a0; border-radius:0.2rem; padding:0.12rem 0.25rem; margin-right:-0.25rem; }
+.lholo-material-sort-header.is-active { color:#f5f5f5; }
+.lholo-material-sort-icon { margin-left:0.25rem; flex-shrink:0; align-items:center; justify-content:center; }
+.lholo-material-sort-header.lholo-control-hovered { background-color:rgba(255,255,255,0.06); color:#f5f5f5; }
+.lholo-material-sort-header.lholo-control-focused { box-shadow:inset 0 0 0 0.06rem rgba(255,255,255,0.3); }
+.lholo-material-num-missing { color:#f0a35e; }
+.lholo-material-num-complete { color:#6cc67c; }
+.lholo-material-num-muted { color:#7d7d82; }
 
 /* Narrow previews retain the same controls, with deliberate label wrapping. */
 @media (max-width:800px) {
@@ -413,5 +422,7 @@
 
 .lholo-material-table-row .lholo-material-col-item { flex-direction:row; align-items:center; }
 .lholo-material-icon { width:1.6rem; height:1.6rem; min-width:1.6rem; min-height:1.6rem; flex-shrink:0; margin-right:0.55rem; align-items:center; justify-content:center; }
-.lholo-material-name { flex:1; min-width:0; overflow-wrap:break-word; }
+.lholo-material-item-text { flex:1; min-width:0; }
+.lholo-material-name { color:#f5f5f5; overflow-wrap:break-word; }
+.lholo-material-id { font-size:0.78rem; line-height:1.35; color:#7d7d82; overflow-wrap:break-word; }
 .lholo-material-icon-empty { width:0.45rem; height:0.45rem; border:0.06rem solid #505050; border-radius:0.1rem; }

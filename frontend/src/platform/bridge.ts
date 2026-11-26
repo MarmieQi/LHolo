@@ -17,9 +17,12 @@ export interface MaterialItem {
   iconId?: string;
   iconData?: ItemIconData;
   count: number;
+  missing: number;
+  available: number | null;
 }
 export interface MaterialsState {
   ready: boolean;
+  progressReady: boolean;
   items: readonly MaterialItem[];
 }
 export interface MaterialsBridge {
@@ -115,20 +118,30 @@ export function parseProjection(payload: string): ProjectionState {
 
 export function parseMaterials(payload: string): MaterialsState {
   const value: unknown = JSON.parse(payload);
-  if (!value || typeof value !== 'object' || !('ready' in value) || typeof value.ready !== 'boolean'
+  const nonNegativeInt = (n: unknown) => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
+  if (!value || typeof value !== 'object'
+    || !('ready' in value) || typeof value.ready !== 'boolean'
+    || !('progressReady' in value) || typeof value.progressReady !== 'boolean'
     || !('items' in value) || !Array.isArray(value.items)
-    || !value.items.every((item: unknown) => !!item && typeof item === 'object'
-      && typeof (item as Record<string, unknown>).displayName === 'string'
-      && typeof (item as Record<string, unknown>).typeName === 'string'
-      && ((item as Record<string, unknown>).nameKey === undefined || typeof (item as Record<string, unknown>).nameKey === 'string')
-      && ((item as Record<string, unknown>).iconId === undefined || typeof (item as Record<string, unknown>).iconId === 'string')
-      && validIconData((item as Record<string, unknown>).iconData)
-      && typeof (item as Record<string, unknown>).count === 'number'
-      && Number.isSafeInteger((item as Record<string, unknown>).count)
-      && ((item as Record<string, unknown>).count as number) >= 0)) {
+    || !value.items.every((item: unknown) => {
+      if (!item || typeof item !== 'object') return false;
+      const entry = item as Record<string, unknown>;
+      return typeof entry.displayName === 'string'
+        && typeof entry.typeName === 'string'
+        && (entry.nameKey === undefined || typeof entry.nameKey === 'string')
+        && (entry.iconId === undefined || typeof entry.iconId === 'string')
+        && validIconData(entry.iconData)
+        && nonNegativeInt(entry.count)
+        && nonNegativeInt(entry.missing)
+        && (entry.available === null || nonNegativeInt(entry.available));
+    })) {
     throw new Error('Invalid LHolo materials state');
   }
-  return { ready: value.ready, items: value.items as MaterialItem[] };
+  return {
+    ready: value.ready,
+    progressReady: value.progressReady,
+    items: value.items as MaterialItem[],
+  };
 }
 
 function validIconData(value: unknown): boolean {

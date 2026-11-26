@@ -67,6 +67,8 @@ std::optional<std::string> takeMaterialsUpdate(IClientInstance const& client, bo
             {"typeName", req.typeName},
             {"iconId", std::string{iconId}},
             {"count", req.count},
+            {"missing", req.missing},
+            {"available", req.itemId.empty() ? nlohmann::json(nullptr) : nlohmann::json(req.available)},
         });
         if (req.itemPrototype) {
             auto icon = materialIconData(*req.itemPrototype, client);
@@ -79,7 +81,11 @@ std::optional<std::string> takeMaterialsUpdate(IClientInstance const& client, bo
             items.back()["iconData"] = {{"id", icon->id}, {"bag", std::move(icon->bag)}};
         }
     }
-    auto state = nlohmann::json{{"ready", snapshot->ready}, {"items", std::move(items)}}.dump();
+    auto state = nlohmann::json{
+        {"ready", snapshot->ready},
+        {"progressReady", snapshot->progressReady},
+        {"items", std::move(items)},
+    }.dump();
     publishedMaterialsRevision = snapshot->revision;
     return state;
 }

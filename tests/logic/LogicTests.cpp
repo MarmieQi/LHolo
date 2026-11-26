@@ -581,17 +581,22 @@ void testStructureUiState() {
     LHOLO_CHECK(!state.consumeMaterialListRequest());
     state.replaceMaterialRequirements({
         {.displayName = "Stone", .typeName = "minecraft:stone",
-         .itemId = "minecraft:stone", .count = 12}
-    });
-    LHOLO_CHECK(state.materialListSnapshotIfChanged(std::nullopt)->ready);
-    // Reopening a completed list must not queue another full structure scan.
+         .itemId = "minecraft:stone", .count = 12, .missing = 5, .available = 3}
+    }, true);
+    auto const readySnapshot = state.materialListSnapshotIfChanged(std::nullopt);
+    LHOLO_CHECK(readySnapshot->ready);
+    LHOLO_CHECK(readySnapshot->progressReady);
+    // Reopening the list refreshes live missing and inventory counts while keeping ready true.
     state.requestMaterialList();
-    LHOLO_CHECK(!state.consumeMaterialListRequest());
-    auto const materials = state.materialListSnapshotIfChanged(std::nullopt)->requirements;
+    LHOLO_CHECK(state.consumeMaterialListRequest());
+    LHOLO_CHECK(state.materialListSnapshotIfChanged(std::nullopt)->ready);
+    auto const materials = readySnapshot->requirements;
     LHOLO_CHECK(materials.size() == 1);
     LHOLO_CHECK(materials[0].typeName == "minecraft:stone");
     LHOLO_CHECK(materials[0].itemId == "minecraft:stone");
     LHOLO_CHECK(materials[0].count == 12);
+    LHOLO_CHECK(materials[0].missing == 5);
+    LHOLO_CHECK(materials[0].available == 3);
 
     auto hudMaterials = state.materialHudSnapshot();
     LHOLO_CHECK(!hudMaterials.ready);

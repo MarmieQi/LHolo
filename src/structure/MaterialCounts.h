@@ -25,6 +25,7 @@ struct MaterialSourceCount {
     Block const* block{};
     std::shared_ptr<CompoundTag const> nbt;
     std::uint64_t count{};
+    std::uint64_t missing{};
 };
 
 class MaterialCounts {
@@ -45,12 +46,19 @@ class MaterialCounts {
 public:
     void reserve(std::size_t count) { indices.reserve(count); }
 
-    void add(Block const* block, std::shared_ptr<CompoundTag const> nbt = {}) {
-        if (!block) return;
+    void add(
+        Block const* block,
+        std::shared_ptr<CompoundTag const> nbt = {},
+        bool addTotal = true,
+        bool addMissing = false
+    ) {
+        if (!block || (!addTotal && !addMissing)) return;
         auto const [it, inserted] = indices.try_emplace(Key{block, nbt.get()}, sources.size());
-        if (inserted) sources.push_back({block, std::move(nbt), 0});
-        auto& count = sources[it->second].count;
-        if (count != std::numeric_limits<std::uint64_t>::max()) ++count;
+        if (inserted) sources.push_back({block, std::move(nbt), 0, 0});
+        auto& entry = sources[it->second];
+        auto const maximum = std::numeric_limits<std::uint64_t>::max();
+        if (addTotal && entry.count != maximum) ++entry.count;
+        if (addMissing && entry.missing != maximum) ++entry.missing;
     }
 
     auto const& entries() const { return sources; }
@@ -61,29 +69,43 @@ struct RawMaterialCounts {
     MaterialCounts liquid;
 };
 
+template <class Blocks, class IsIncluded, class IsMissing>
+RawMaterialCounts collectRawMaterials(
+    Blocks const& blocks,
+    MaterialUnitOwners const& owners,
+    IsIncluded included,
+    IsMissing isMissing
+) {
+    RawMaterialCounts counts;
+    counts.body.reserve(std::min<std::size_t>(blocks.size(), 4096));
+    counts.liquid.reserve(std::min<std::size_t>(blocks.size(), 64));
+    std::unordered_set<std::size_t> countedTotal;
+    std::unordered_set<std::size_t> countedMissing;
+    bool const hasGroups = !owners.empty();
+    for (std::size_t i = 0; i < blocks.size(); ++i) {
+        if (!included(i)) continue;
+        bool const cellMissing = isMissing(i);
+        auto const owner = hasGroups ? owners.representative(i) : std::nullopt;
+        bool const addTotal = !owner || countedTotal.insert(*owner).second;
+        bool const addMissing = cellMissing && (!owner || countedMissing.insert(*owner).second);
+        if (addTotal || addMissing) {
+            auto const& source = blocks[owner.value_or(i)];
+            counts.body.add(source.block, source.blockEntityNbt, addTotal, addMissing);
+        }
+        // Preserve liquid state counts per cell, independent of the body unit.
+        // The game-thread resolver filters these through the native source test.
+        counts.liquid.add(blocks[i].liquid, {}, true, cellMissing);
+    }
+    return counts;
+}
+
 template <class Blocks, class IsIncluded>
 RawMaterialCounts collectRawMaterials(
     Blocks const& blocks,
     MaterialUnitOwners const& owners,
     IsIncluded included
 ) {
-    RawMaterialCounts counts;
-    counts.body.reserve(std::min<std::size_t>(blocks.size(), 4096));
-    counts.liquid.reserve(std::min<std::size_t>(blocks.size(), 64));
-    std::unordered_set<std::size_t> countedGroups;
-    bool const hasGroups = !owners.empty();
-    for (std::size_t i = 0; i < blocks.size(); ++i) {
-        if (!included(i)) continue;
-        auto const owner = hasGroups ? owners.representative(i) : std::nullopt;
-        if (!owner || countedGroups.insert(*owner).second) {
-            auto const& source = blocks[owner.value_or(i)];
-            counts.body.add(source.block, source.blockEntityNbt);
-        }
-        // Preserve liquid state counts per cell, independent of the body unit.
-        // The game-thread resolver filters these through the native source test.
-        counts.liquid.add(blocks[i].liquid);
-    }
-    return counts;
+    return collectRawMaterials(blocks, owners, included, [](std::size_t) { return false; });
 }
 
 } // namespace lholo::structure::detail

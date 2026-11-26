@@ -437,9 +437,8 @@ void StructureUiState::clearLoadingHint() {
 }
 
 void StructureUiState::requestMaterialList() {
-    // A loaded structure has an immutable material bill. Reopening the popup
-    // must reuse that snapshot instead of rescanning a potentially huge file.
-    if (mMaterialListReady.load(std::memory_order_acquire)) return;
+    // Reopening the modal refreshes live missing and inventory counts while
+    // keeping mMaterialListReady set so the existing table stays visible.
     mMaterialListRequested.store(true, std::memory_order_release);
 }
 
@@ -453,12 +452,16 @@ std::optional<MaterialListSnapshot> StructureUiState::materialListSnapshotIfChan
     std::lock_guard lock(mMaterialMutex);
     if (revision && *revision == mMaterialListRevision) return std::nullopt;
     return MaterialListSnapshot{mMaterialListRevision,
-        mMaterialListReady.load(std::memory_order_acquire), mMaterialRequirements};
+        mMaterialListReady.load(std::memory_order_acquire), mMaterialListProgressReady, mMaterialRequirements};
 }
 
-void StructureUiState::replaceMaterialRequirements(std::vector<MaterialRequirement> materials) {
+void StructureUiState::replaceMaterialRequirements(
+    std::vector<MaterialRequirement> materials,
+    bool progressReady
+) {
     std::lock_guard lock(mMaterialMutex);
     mMaterialRequirements = std::move(materials);
+    mMaterialListProgressReady = progressReady;
     mMaterialListReady.store(true, std::memory_order_release);
     ++mMaterialListRevision;
 }
@@ -494,6 +497,7 @@ void StructureUiState::clearMaterials() {
     mMaterialListRequested.store(false, std::memory_order_release);
     std::lock_guard lock(mMaterialMutex);
     mMaterialListReady.store(false, std::memory_order_release);
+    mMaterialListProgressReady = false;
     ++mMaterialListRevision;
     mMaterialRequirements.clear();
     mMaterialHudRequirements.clear();

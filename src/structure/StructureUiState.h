@@ -36,6 +36,8 @@ struct MaterialRequirement {
     // countable inventory form (for example projected water/lava cells).
     std::string   itemId;
     std::uint64_t count{};
+    std::uint64_t missing{};
+    int           available{};
     // Max stack size of the item this block resolves to (64 normally, 16 for
     // signs etc., 1 for filled buckets). Used for the JE-style "N (a x S + b)"
     // count display. Computed on the tick thread; 64 when unknown.
@@ -49,6 +51,7 @@ struct MaterialRequirement {
 struct MaterialListSnapshot {
     std::uint64_t revision{};
     bool ready{};
+    bool progressReady{};
     std::vector<MaterialRequirement> requirements;
 };
 
@@ -187,7 +190,7 @@ public:
     [[nodiscard]] std::optional<MaterialListSnapshot> materialListSnapshotIfChanged(
         std::optional<std::uint64_t> revision
     ) const;
-    void replaceMaterialRequirements(std::vector<MaterialRequirement> materials);
+    void replaceMaterialRequirements(std::vector<MaterialRequirement> materials, bool progressReady = false);
     // The material-list popup and the current-layer HUD deliberately own
     // separate snapshots: the popup covers the whole structure, while the HUD
     // follows projection correction and layer visibility.
@@ -264,6 +267,7 @@ private:
     mutable std::mutex                mMaterialMutex;
     std::atomic_bool                  mMaterialListRequested{false};
     std::atomic_bool                  mMaterialListReady{false};
+    bool                              mMaterialListProgressReady{}; // protected by mMaterialMutex
     std::uint64_t                     mMaterialListRevision{}; // protected by mMaterialMutex
     std::vector<MaterialRequirement>  mMaterialRequirements;
     std::vector<MaterialRequirement>  mMaterialHudRequirements;

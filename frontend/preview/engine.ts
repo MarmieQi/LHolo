@@ -11,17 +11,17 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
   let transform: TransformState = {values:{rotation:0,mirror:0,x:0,y:0,z:0},context:0,ack:0,accepted:false};
   let render: RenderState = {values:{bounds:true,axis:0,mode:0,layer:0,fill:15,outline:100,correctionSeeThrough:false,missingSeeThrough:false},maximum:[0,0,0],context:0,ack:0,accepted:false};
   const previewMaterials: readonly MaterialItem[] = [
-    { displayName: '砂岩', typeName: 'minecraft:sandstone', iconId: 'sandstone', count: 141542 },
-    { displayName: '白色混凝土', typeName: 'minecraft:white_concrete', iconId: 'white_concrete', count: 131839 },
-    { displayName: '橡树叶', typeName: 'minecraft:oak_leaves', iconId: 'oak_leaves', count: 50624 },
-    { displayName: '青色玻璃', typeName: 'minecraft:cyan_stained_glass', iconId: 'cyan_stained_glass', count: 19196 },
-    { displayName: '草方块', typeName: 'minecraft:grass_block', iconId: 'grass_block', count: 13938 },
-    { displayName: '石砖', typeName: 'minecraft:stone_bricks', iconId: 'stone_bricks', count: 12809 },
-    { displayName: '青色玻璃板', typeName: 'minecraft:cyan_stained_glass_pane', iconId: 'cyan_stained_glass_pane', count: 10738 },
-    { displayName: '', nameKey: 'material.water', typeName: 'minecraft:water', iconId: 'minecraft:water', count: 16 },
+    { displayName: '砂岩', typeName: 'minecraft:sandstone', iconId: 'sandstone', count: 141542, missing: 48200, available: 128 },
+    { displayName: '白色混凝土', typeName: 'minecraft:white_concrete', iconId: 'white_concrete', count: 131839, missing: 131839, available: 64 },
+    { displayName: '橡树叶', typeName: 'minecraft:oak_leaves', iconId: 'oak_leaves', count: 50624, missing: 0, available: 32 },
+    { displayName: '青色玻璃', typeName: 'minecraft:cyan_stained_glass', iconId: 'cyan_stained_glass', count: 19196, missing: 120, available: 256 },
+    { displayName: '草方块', typeName: 'minecraft:grass_block', iconId: 'grass_block', count: 13938, missing: 340, available: 0 },
+    { displayName: '石砖', typeName: 'minecraft:stone_bricks', iconId: 'stone_bricks', count: 12809, missing: 0, available: 0 },
+    { displayName: '青色玻璃板', typeName: 'minecraft:cyan_stained_glass_pane', iconId: 'cyan_stained_glass_pane', count: 10738, missing: 85, available: 64 },
+    { displayName: '', nameKey: 'material.water', typeName: 'minecraft:water', iconId: 'minecraft:water', count: 16, missing: 4, available: null },
   ];
 
-  let materials: MaterialsState = {ready:false,items:[]};
+  let materials: MaterialsState = {ready:false,progressReady:false,items:[]};
   let projection: ProjectionState = {worldAvailable:true,loading:false,hasProjection:false};
   let capture: CaptureState = {
     draft:{first:null,second:null,includeEntities:false},revision:0,ack:0,
@@ -125,7 +125,7 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
           queueMicrotask(() => {emit('lholo:menu-labels',labels);publish();});break;
         case 'lholo.menu.close': notice('这是浏览器开发预览。关闭此标签页即可退出。');break;
         case 'lholo.materials.request':
-          materials=projection.hasProjection?{ready:true,items:previewMaterials}:{ready:false,items:[]};publish();break;
+          materials=projection.hasProjection?{ready:true,progressReady:true,items:previewMaterials}:{ready:false,progressReady:false,items:[]};publish();break;
         case 'lholo.capture.blocks':
           emit('lholo:capture-blocks', [
             {id:'minecraft:stone_bricks', name:'石砖'},
@@ -147,11 +147,11 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
     capture={...capture,busy:false,worldAvailable:name!=='no-world',revision:capture.revision+1,error:''};
     if(name==='loaded') {
       projection={...projection,hasProjection:true};render={...render,maximum:[11,15,4]};
-      materials={ready:true,items:previewMaterials};
+      materials={ready:true,progressReady:true,items:previewMaterials};
     } else if(name==='selection') {
       capture={...capture,status:labels['captureStatus.selectionReady'],draft:{first:{x:-79,y:-60,z:43},second:{x:-80,y:-60,z:29},includeEntities:false}};
     } else if(name==='no-world'||name==='reset') {
-      projection={...projection,hasProjection:false};materials={ready:false,items:[]};
+      projection={...projection,hasProjection:false};materials={ready:false,progressReady:false,items:[]};
       render={...render,maximum:[0,0,0],values:{...render.values,axis:0,mode:0,layer:0}};
       capture={...capture,status:labels[name==='no-world'?'captureStatus.noWorld':'captureStatus.needTwoPoints'],draft:{first:null,second:null,includeEntities:false}};
     }
