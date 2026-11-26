@@ -54,6 +54,10 @@ std::optional<MaterialProgressKey> getMaterialProgressKey();
 std::optional<MaterialProgressSnapshot> captureMaterialProgress(
     MaterialProgressKey const& expected
 );
+std::optional<MaterialProgressDelta> takeMaterialProgressDelta(
+    MaterialProgressKey const& expected,
+    bool requireSameLayer = true
+);
 bool isLayerVisible(
     int layer,
     structure::LayerDisplayMode layerDisplayMode,

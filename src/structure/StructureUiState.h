@@ -47,11 +47,14 @@ struct MaterialRequirement {
     std::shared_ptr<ItemStack const> itemPrototype;
 };
 
+enum class MaterialListScope { All, RenderRange };
+
 // One coherent, versioned snapshot for material-list consumers.
 struct MaterialListSnapshot {
     std::uint64_t revision{};
     bool ready{};
     bool progressReady{};
+    MaterialListScope scope{MaterialListScope::All};
     std::vector<MaterialRequirement> requirements;
 };
 
@@ -67,6 +70,7 @@ struct MaterialHudSnapshot {
     std::vector<MaterialRequirement> requirements;
     std::vector<int>                 available;
     bool                             ready{};
+    std::uint64_t                    revision{};
 };
 
 struct HudStateSnapshot {
@@ -185,12 +189,20 @@ public:
     void finishLoadingHint(std::uint64_t token);
     void clearLoadingHint();
 
-    void requestMaterialList();
+    void requestMaterialList(MaterialListScope scope = MaterialListScope::All);
+    void setMaterialListOpen(bool open);
+    [[nodiscard]] bool materialListOpen() const;
     [[nodiscard]] bool consumeMaterialListRequest();
+    [[nodiscard]] MaterialListScope requestedMaterialListScope() const;
     [[nodiscard]] std::optional<MaterialListSnapshot> materialListSnapshotIfChanged(
         std::optional<std::uint64_t> revision
     ) const;
-    void replaceMaterialRequirements(std::vector<MaterialRequirement> materials, bool progressReady = false);
+    void replaceMaterialRequirements(
+        std::vector<MaterialRequirement> materials,
+        bool progressReady = false,
+        MaterialListScope scope = MaterialListScope::All
+    );
+    bool updateMaterialListAvailability(std::vector<int> const& counts);
     // The material-list popup and the current-layer HUD deliberately own
     // separate snapshots: the popup covers the whole structure, while the HUD
     // follows projection correction and layer visibility.
@@ -198,7 +210,8 @@ public:
         std::vector<MaterialRequirement> materials,
         std::vector<int>                 available
     );
-    void setMaterialHudAvailability(std::vector<int> counts);
+    bool setMaterialHudAvailability(std::vector<int> counts);
+    [[nodiscard]] std::uint64_t materialHudRevision() const;
     [[nodiscard]] MaterialHudSnapshot materialHudSnapshot() const;
     void clearMaterialHud();
     void clearMaterials();
@@ -266,13 +279,17 @@ private:
 
     mutable std::mutex                mMaterialMutex;
     std::atomic_bool                  mMaterialListRequested{false};
+    std::atomic_bool                  mMaterialListOpen{false};
+    std::atomic<MaterialListScope>    mMaterialListRequestedScope{MaterialListScope::All};
     std::atomic_bool                  mMaterialListReady{false};
     bool                              mMaterialListProgressReady{}; // protected by mMaterialMutex
+    MaterialListScope                 mMaterialListScope{MaterialListScope::All}; // protected by mMaterialMutex
     std::uint64_t                     mMaterialListRevision{}; // protected by mMaterialMutex
     std::vector<MaterialRequirement>  mMaterialRequirements;
     std::vector<MaterialRequirement>  mMaterialHudRequirements;
     std::vector<int>                  mMaterialHudAvailability;
     bool                              mMaterialHudReady{};
+    std::atomic_uint64_t              mMaterialHudRevision{0};
 };
 
 } // namespace lholo::structure::detail

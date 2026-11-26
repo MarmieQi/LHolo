@@ -215,6 +215,7 @@ ProjectionInvalidationResult reconcileProjectionInvalidation(
         state.structureBoundsMesh.reset();
         std::fill(state.progressCorrect.begin(), state.progressCorrect.end(), 0);
         ++state.progressRevision;
+        state.invalidateProgressDeltas();
         std::fill(state.progressErrorKind.begin(), state.progressErrorKind.end(), 0);
         state.progressCorrectCount = 0;
         state.progressVisibleCorrectCount = 0;

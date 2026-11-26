@@ -9,6 +9,7 @@ import type { MenuLabels } from '../platform/bridge';
 import { NativeInteractive, NativeScrollView } from '../platform/native';
 import { LHoloCheckbox, LHoloCloseButton } from '../components/LHoloControls';
 import { LHoloItemIcon } from '../components/LHoloItemIcon';
+import { LHoloSelect } from '../components/LHoloSelect';
 import { SelectedFileContext } from '../components/SelectedFileContext';
 
 const sortDescSvg = (
@@ -72,6 +73,8 @@ export function MaterialListModal({
     displayedMaterials,
     ready,
     progressReady,
+    scope,
+    setScope,
     sortColumn,
     sortDesc,
     toggleSort,
@@ -93,18 +96,26 @@ export function MaterialListModal({
         <div className="lholo-muted lholo-material-empty">{labels['material.loading']}</div>
       ) : (
         <>
-          <div className="lholo-material-toolbar">
-            <div className="lholo-material-summary">
-              {formatMaterialSummary(materials, progressReady, labels)}
-            </div>
-            {materials.length > 0 ? (
-              <LHoloCheckbox
-                label={labels['material.hideCompleted']}
-                value={hideCompleted}
-                disabled={!progressReady}
-                onChange={setHideCompleted}
+          <div className="lholo-material-filter-card">
+            <div className="lholo-material-filter-left">
+              <div className="lholo-material-filter-label">{labels['material.scope']}</div>
+              <LHoloSelect
+                label={labels['material.scope']}
+                size="compact"
+                value={scope === 'render' ? 1 : 0}
+                options={[labels['material.scopeAll'], labels['material.scopeRenderRange']]}
+                onChange={index => setScope(index === 1 ? 'render' : 'all')}
               />
-            ) : null}
+            </div>
+            <LHoloCheckbox
+              label={labels['material.hideCompleted']}
+              value={hideCompleted}
+              disabled={!progressReady || materials.length === 0}
+              onChange={setHideCompleted}
+            />
+          </div>
+          <div className="lholo-material-summary">
+            {formatMaterialSummary(materials, progressReady, labels)}
           </div>
           {materials.length === 0 ? (
             <div className="lholo-muted lholo-material-empty">
@@ -143,23 +154,21 @@ export function MaterialListModal({
                 <NativeScrollView>
                   <div className="lholo-material-table-body">
                     {displayedMaterials.map((item, index) => {
-                      const completed = progressReady && item.missing === 0;
-                      const enough = progressReady && item.missing > 0 && item.available !== null && item.available >= item.missing;
+                      const enough = progressReady && item.available !== null && item.available >= item.missing;
                       const missingClass = !progressReady
                         ? 'lholo-material-num-muted'
-                        : item.missing > 0
-                          ? 'lholo-material-num-missing'
-                          : 'lholo-material-num-complete';
-                      const availableClass = item.available === null || item.available === 0
+                        : item.missing === 0
+                          ? 'lholo-material-num-ok'
+                          : enough
+                            ? 'lholo-material-num-partial'
+                            : 'lholo-material-num-missing';
+                      const availableClass = item.available === null || !progressReady
                         ? 'lholo-material-num-muted'
-                        : enough
-                          ? 'lholo-material-num-complete'
-                          : '';
+                        : item.missing === 0 || enough
+                          ? 'lholo-material-num-ok'
+                          : 'lholo-material-num-missing';
                       return (
-                        <div
-                          key={item.typeName + ':' + index}
-                          className={'lholo-material-table-row' + (completed ? ' is-completed' : '')}
-                        >
+                        <div key={item.typeName + ':' + index} className="lholo-material-table-row">
                           <div className="lholo-material-col-item">
                             <LHoloItemIcon iconId={item.iconId} iconData={item.iconData} />
                             <div className="lholo-material-item-text">

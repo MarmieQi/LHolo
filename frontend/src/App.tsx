@@ -13,12 +13,12 @@ import { useProjectionState } from './application/useProjectionState';
 import { useTasks } from './application/useTasks';
 import { useStructurePreview } from './application/useStructurePreview';
 import { useStructureWrite } from './application/useStructureWrite';
-import { menuBridge, type MenuLabels } from './platform/bridge';
+import { menuBridge, type MenuEntry, type MenuLabels } from './platform/bridge';
 import { FrameCompletion, GameShell } from './platform/native';
 import { LHoloButton } from './components/LHoloControls';
 
 function MenuPage() {
-  const [entryPage, setEntryPage] = useState<'tasks' | 'hud'>('tasks');
+  const [entryPage, setEntryPage] = useState<MenuEntry>('tasks');
   const [labels, setLabels] = useState<MenuLabels | null>(null);
   const projection = useProjectionState(menuBridge);
   const capture = useCapture(menuBridge);

@@ -1,5 +1,6 @@
 import React from 'react';
 import type { CaptureControls } from '../../application/useCapture';
+import type { StructurePreviewControls } from '../../application/useStructurePreview';
 import { formatLayerRange, sizeAxes, type CustomStructureControls } from '../../application/useCustomStructure';
 import {
   LHoloButton,
@@ -9,8 +10,8 @@ import {
 import { LHoloItemIcon } from '../../components/LHoloItemIcon';
 import type { MenuLabels } from '../../platform/bridge';
 
-export function CustomStructurePanel({ labels, capture, editor }: {
-  labels: MenuLabels; capture: CaptureControls; editor: CustomStructureControls;
+export function CustomStructurePanel({ labels, capture, preview, editor }: {
+  labels: MenuLabels; capture: CaptureControls; preview: StructurePreviewControls; editor: CustomStructureControls;
 }) {
   const { x, y, z } = editor.dimensions;
   let dimensionIndex = 0;
@@ -51,10 +52,14 @@ export function CustomStructurePanel({ labels, capture, editor }: {
       <div className="lholo-muted">{labels['capture.unfilledLayersAir']}</div>
     </div>
     <div className="lholo-action-row">
+      <LHoloButton label={labels['preview.open']}
+        disabled={!capture.state?.worldAvailable || capture.busy || !preview.canRequest || !editor.validSize || editor.invalidLayers}
+        onClick={editor.previewStructure} />
       <LHoloButton label={labels['button.exportMcstructure']}
         disabled={!capture.state || capture.busy || !editor.validSize || editor.invalidLayers} onClick={editor.exportStructure} />
     </div>
     {capture.customRequestTooLarge && <div className="lholo-settings-note">{labels['capture.tooManyLayers']}</div>}
+    {preview.error && <div className="lholo-settings-note">{preview.error}</div>}
     {capture.state?.customStatus && <div className="lholo-status">{capture.state.customStatus}</div>}
     {capture.editingBusy && <div className="lholo-settings-note">{labels['oreui.captureBusy']}</div>}
     {capture.state?.error && <div className="lholo-settings-note">{capture.state.error}</div>}

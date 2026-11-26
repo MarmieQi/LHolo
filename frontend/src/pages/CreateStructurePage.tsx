@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { CaptureControls } from '../application/useCapture';
+import type { StructurePreviewControls } from '../application/useStructurePreview';
 import { useCustomStructure } from '../application/useCustomStructure';
 import { selectionMetrics } from '../application/selectionMetrics';
 import type { MenuLabels } from '../platform/bridge';
@@ -17,11 +18,17 @@ import { CustomStructurePanel } from './create/CustomStructurePanel';
 import { CustomLayerEditorPage } from './create/CustomLayerEditorPage';
 
 type CreateTab = 'world' | 'custom';
-type CreateStructureProps = { labels: MenuLabels; capture: CaptureControls };
+type CreateStructureProps = {
+  labels: MenuLabels;
+  capture: CaptureControls;
+  preview: StructurePreviewControls;
+  initialTab?: CreateTab;
+};
 
-export function CreateStructurePage({ labels, capture }: CreateStructureProps) {
-  const [tab, setTab] = useState<CreateTab>('world');
-  const custom = useCustomStructure(capture, tab === 'custom');
+export function CreateStructurePage({ labels, capture, preview, initialTab = 'world' }: CreateStructureProps) {
+  const [tab, setTab] = useState<CreateTab>(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
+  const custom = useCustomStructure(capture, preview, tab === 'custom');
   // A new scroll view starts each level at its own header. The hook above
   // retains the dimensions and saved layers while either level is visible.
   return <NativeScrollView key={custom.draft ? 'layer-editor' : 'create-structure'}>
@@ -32,15 +39,15 @@ export function CreateStructurePage({ labels, capture }: CreateStructureProps) {
           { id: 'custom', label: labels['capture.tabCustom'] },
         ]} />
         <div className="lholo-tab-content">
-          {tab === 'world' ? <WorldSelection labels={labels} capture={capture} />
-            : <CustomStructurePanel labels={labels} capture={capture} editor={custom} />}
+          {tab === 'world' ? <WorldSelection labels={labels} capture={capture} preview={preview} />
+            : <CustomStructurePanel labels={labels} capture={capture} preview={preview} editor={custom} />}
         </div>
       </>}
     </div>
   </NativeScrollView>;
 }
 
-function WorldSelection({ labels, capture }: CreateStructureProps) {
+function WorldSelection({ labels, capture, preview }: CreateStructureProps) {
   const { state, first, second, setFirst, setSecond, includeEntities, setIncludeEntities, valid, draft, busy, editingBusy, submit, finishPoint } = capture;
   const disabled = !state?.worldAvailable || busy;
   const editorDisabled = !state?.worldAvailable || editingBusy;
@@ -80,10 +87,14 @@ function WorldSelection({ labels, capture }: CreateStructureProps) {
     </LHoloSectionGroup>
     <div className="lholo-action-row">
       <LHoloButton label={labels['button.clearSelection']} disabled={disabled} onClick={() => submit('clear')} />
+      <LHoloButton label={labels['preview.open']}
+        disabled={disabled || !preview.canRequest || !valid || !draft?.first || !draft.second}
+        onClick={() => state && draft && preview.openCaptureWorld(draft, state.revision)} />
       <LHoloButton label={labels['button.exportMcstructure']}
         disabled={disabled || !valid || !draft?.first || !draft.second} onClick={() => submit('export')} />
     </div>
     {editingBusy && <div className="lholo-notice">{labels['oreui.captureBusy']}</div>}
+    {preview.error && <div className="lholo-notice">{preview.error}</div>}
     {state?.error && <div className="lholo-notice">{state.error}</div>}
   </>;
 }

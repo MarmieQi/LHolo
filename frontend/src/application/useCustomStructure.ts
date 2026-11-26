@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CustomBlock, CustomLayerFill } from '../platform/bridge';
 import type { CaptureControls } from './useCapture';
+import type { StructurePreviewControls } from './useStructurePreview';
 
 export const sizeAxes = ['x', 'y', 'z'] as const;
 
@@ -23,13 +24,23 @@ export function formatLayerRange({y, endY}: CustomLayerFill) {
   return y === endY ? String(y + 1) : `${y + 1}-${endY + 1}`;
 }
 
-export function useCustomStructure(capture: CaptureControls, active: boolean) {
+export function useCustomStructure(
+  capture: CaptureControls,
+  preview: StructurePreviewControls,
+  active: boolean
+) {
   const { subscribeCustomBlocks, requestCustomBlocks } = capture;
+  const { subscribeCustomDraft } = preview;
   const [catalog, setCatalog] = useState<readonly CustomBlock[] | null>(null);
   const [size, setSize] = useState({x: '', y: '', z: ''});
   const [layers, setLayers] = useState<readonly CustomLayerFill[]>([]);
   const [draft, setDraft] = useState<LayerDraft | null>(null);
   useEffect(() => subscribeCustomBlocks(setCatalog), [subscribeCustomBlocks]);
+  useEffect(() => subscribeCustomDraft(restored => {
+    setSize({x: String(restored.size.x), y: String(restored.size.y), z: String(restored.size.z)});
+    setLayers(restored.layers);
+    setDraft(null);
+  }), [subscribeCustomDraft]);
   useEffect(() => { if (active && catalog === null) requestCustomBlocks(); }, [active, catalog, requestCustomBlocks]);
 
   const names = useMemo(() => new Map(catalog?.map(block => [block.id, block.name])), [catalog]);
@@ -85,6 +96,7 @@ export function useCustomStructure(capture: CaptureControls, active: boolean) {
     validLayer: !!range, layerTaken, invalidLayers, names, layers, draft, results,
     canAddLayer: validSize && nextLayer < y, canSaveLayer: !!fill, addLayer, editLayer, updateDraft, saveLayer, removeLayer,
     cancelEdit: () => setDraft(null),
+    previewStructure: () => preview.openCaptureCustom({size: {x, y, z}, layers}),
     exportStructure: () => capture.exportCustom({size: {x, y, z}, layers}) };
 }
 

@@ -147,11 +147,14 @@ lholo.transform.intent 接收 {id, context, field, expected, value}；lholo:tran
 | --- | --- | --- |
 | JS → C++ | lholo.menu.ready | 请求文案、任务、只读投影上下文、选区、变换及设置快照 |
 | JS → C++ | lholo.menu.close | 请求关闭菜单 |
-| JS → C++ | lholo.materials.request | 请求当前选中文件在有效合成结果中的材料清单 |
+| JS → C++ | lholo.materials.request | 请求当前选中文件的全部材料清单并标记弹窗打开 |
+| JS → C++ | lholo.materials.request-render | 请求当前选中文件在当前渲染范围内的材料清单并标记弹窗打开 |
+| JS → C++ | lholo.materials.close | 通知原生材料清单弹窗已关闭，停止打开期间的实时增量与背包刷新 |
 | JS → C++ | lholo.tasks.intent（facet） | id / revision / action / taskId / fileId / value / delta |
 | C++ → JS | lholo:tasks | 原生任务目录、选择/激活 ID、revision/ack、加载/选择器状态与错误 |
 | C++ → JS | lholo:projection | worldAvailable / loading / hasProjection |
-| C++ → JS | lholo:materials | ready:boolean / items:[{displayName, nameKey, typeName, iconId, count}] |
+| C++ → JS | lholo:materials | ready / progressReady / scope:"all"\|"render" / items:[{displayName, nameKey, typeName, iconId, count, missing, available}] |
+| C++ → JS | lholo:preview-custom-draft | 从自定义结构预览返回创建页时恢复尺寸与分层草稿 |
 | JS → C++ | facet:discard / facet:request | lholo.capture.intent，同名固定 id；payload.request 为 JSON 字符串：id / revision / action / draft |
 | C++ → JS | lholo:capture | draft / revision / ack / worldAvailable / busy / status / error |
 | JS → C++ | lholo.transform.intent（facet） | id / context / field / expected / value |

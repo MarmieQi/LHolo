@@ -40,7 +40,7 @@ const context = {
       ItemIcon: props => React.createElement('native-item-icon', props),
     },
     engine: {
-      on(name, fn) { assert(['lholo:menu-entry', 'lholo:menu-labels', 'lholo:projection', 'lholo:materials', 'lholo:capture', 'lholo:capture-blocks', 'lholo:transform', 'lholo:render', 'lholo:settings', 'lholo:tasks', 'lholo:preview', 'lholo:write'].includes(name)); listeners.add({ name, fn }); },
+      on(name, fn) { assert(['lholo:menu-entry', 'lholo:menu-labels', 'lholo:projection', 'lholo:materials', 'lholo:capture', 'lholo:capture-blocks', 'lholo:transform', 'lholo:render', 'lholo:settings', 'lholo:tasks', 'lholo:preview', 'lholo:preview-custom-draft', 'lholo:write'].includes(name)); listeners.add({ name, fn }); },
       off(name, fn) { for (const item of listeners) if (item.name === name && item.fn === fn) listeners.delete(item); },
       trigger(...args) { events.push(args); },
     },
@@ -383,11 +383,12 @@ assert.equal(materialModal.findByProps({className:'lholo-selected-file-label'}).
 
 assert(nodeText(materialModal).includes(labels['material.loading']), 'Pending snapshot shows calculation hint');
 assert(!nodeText(materialModal).includes(labels['hint.noPlaceableMaterials']));
-receive(JSON.stringify({ready: true, progressReady: true, items: []}), 'lholo:materials');
+receive(JSON.stringify({ready: true, progressReady: true, scope: 'all', items: []}), 'lholo:materials');
 assert(nodeText(materialModal).includes(labels['hint.noPlaceableMaterials']), 'Completed empty snapshot shows empty hint');
 receive(JSON.stringify({
   ready: true,
   progressReady: false,
+  scope: 'all',
   items: [
     { displayName: '石头', typeName: 'minecraft:stone', iconId: 'minecraft:stone', iconData: {id: 7, bag: '{}'}, count: 128, missing: 0, available: 64 },
   ],
@@ -396,6 +397,7 @@ assert(nodeText(materialModal).includes(labels['material.scanningProgress']), 'S
 receive(JSON.stringify({
   ready: true,
   progressReady: true,
+  scope: 'all',
   items: [
     { displayName: '石头', typeName: 'minecraft:stone', iconId: 'minecraft:stone', iconData: {id: 7, bag: '{}'}, count: 128, missing: 80, available: 64 },
     { displayName: '橡木木板', typeName: 'minecraft:oak_planks', iconId: 'oak_planks', count: 96, missing: 0, available: 12 },
@@ -406,8 +408,13 @@ receive(JSON.stringify({
     { displayName: '灯笼', typeName: 'minecraft:lantern', iconId: 'lantern', count: 8, missing: 8, available: 8 },
   ],
 }), 'lholo:materials');
-receive('{"ready":"bad","progressReady":true,"items":[]}', 'lholo:materials');
-receive('{"ready":true,"progressReady":true,"items":[{"displayName":"bad","typeName":"minecraft:stone","count":-1,"missing":0,"available":0}]}', 'lholo:materials');
+receive('{"ready":"bad","progressReady":true,"scope":"all","items":[]}', 'lholo:materials');
+receive('{"ready":true,"progressReady":true,"scope":"all","items":[{"displayName":"bad","typeName":"minecraft:stone","count":-1,"missing":0,"available":0}]}', 'lholo:materials');
+const scopeTrigger = materialModal.findAllByType('button').find(node => nodeText(node) === labels['material.scopeAll']);
+renderer.act(() => scopeTrigger.props.onClick());
+const renderScopeOption = materialModal.findAllByType('button').find(node => nodeText(node) === labels['material.scopeRenderRange']);
+renderer.act(() => renderScopeOption.props.onClick());
+assert.equal(events.at(-1)[0], 'query:subscribe/lholo.materials.request-render', 'Selecting render range requests render-range materials');
 const materialModalText = nodeText(materialModal);
 assert(materialModalText.includes(labels['label.materialSummary'].replace('%llu', '352').replace('%zu', '7')));
 assert(materialModalText.includes(labels['material.summaryMissing'].replace('%llu', '150')));
@@ -429,10 +436,12 @@ assert.equal(materialModal.findAllByProps({ className: 'lholo-material-table-row
 renderer.act(() => hideCompletedCheckbox.props.onClick());
 assert.equal(materialModal.findAllByType('native-item-icon').length, 7);
 const totalHeader = materialModal.findAllByType('button').find(node => nodeText(node) === labels['column.total']);
-renderer.act(() => totalHeader.props.onClick());
-assert.equal(totalHeader.findAllByProps({ className: 'lholo-material-sort-icon is-desc' }).length, 1, 'Clicking total header sorts descending');
+assert.equal(totalHeader.findAllByProps({ className: 'lholo-material-sort-icon is-desc' }).length, 1, 'Default sort is total descending');
 renderer.act(() => totalHeader.props.onClick());
 assert.equal(totalHeader.findAllByProps({ className: 'lholo-material-sort-icon is-asc' }).length, 1, 'Clicking active header toggles ascending');
+const missingHeader = materialModal.findAllByType('button').find(node => nodeText(node) === labels['column.missing']);
+renderer.act(() => missingHeader.props.onClick());
+assert.equal(missingHeader.findAllByProps({ className: 'lholo-material-sort-icon is-desc' }).length, 1, 'Clicking missing header sorts descending');
 renderer.act(() => materialModal.findAllByType('button').find(node => nodeText(node) === labels['button.close']).props.onClick());
 assert.equal(tree.root.findAllByProps({ className: 'lholo-material-modal' }).length, 0, 'Close button dismisses material modal');
 
@@ -639,7 +648,7 @@ click(labels['capture.removeLayer']);
 assert.equal(layerRows().length, 1);
 click(labels['tasks.nav']);
 assert(events.every(args => ['query:subscribe/lholo.menu.ready', 'query:subscribe/lholo.menu.close',
-  'query:subscribe/lholo.materials.request', 'query:subscribe/lholo.capture.blocks', 'facet:discard', 'facet:request'].includes(args[0])));
+  'query:subscribe/lholo.materials.request', 'query:subscribe/lholo.materials.request-render', 'query:subscribe/lholo.materials.close', 'query:subscribe/lholo.capture.blocks', 'facet:discard', 'facet:request'].includes(args[0])));
 // Transform migration is frontend only: exact old controls, no game commands.
 const beforeTransform = events.length;
 let transformState = {values: {rotation: 0, mirror: 0, x: 0, y: 0, z: 0}, context: 8, ack: 0, accepted: false};

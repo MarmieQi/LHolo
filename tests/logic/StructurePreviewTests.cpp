@@ -57,6 +57,29 @@ int runStructurePreviewTests() {
     check(!parsePreviewIntent(invalid.dump()), "oversized identity rejected");
     check(!parsePreviewIntent("[]") && !parsePreviewIntent("{") && !parsePreviewIntent(std::string(4097, 'x')),
         "invalid or oversized JSON rejected");
+    auto worldPreview = nlohmann::json{
+        {"id", 2}, {"source", "captureWorld"}, {"revision", 3},
+        {"draft", {{"first", {{"x", 1}, {"y", 64}, {"z", 2}}}, {"second", {{"x", 4}, {"y", 66}, {"z", 5}}}, {"includeEntities", false}}},
+    };
+    parsed = parsePreviewIntent(worldPreview.dump());
+    check(parsed && parsed->source == lholo::app::PreviewSourceKind::CaptureWorld
+        && parsed->captureDraft.first && parsed->captureDraft.second
+        && parsed->captureDraft.first->x == 1 && parsed->captureDraft.second->y == 66,
+        "world capture preview intent accepted");
+    auto invalidWorld = worldPreview; invalidWorld["draft"]["second"] = nullptr;
+    check(!parsePreviewIntent(invalidWorld.dump()), "world preview requires both corners");
+    auto customPreview = nlohmann::json{
+        {"id", 3}, {"source", "captureCustom"},
+        {"size", {{"x", 8}, {"y", 4}, {"z", 8}}},
+        {"layers", nlohmann::json::array({{{"y", 0}, {"endY", 1}, {"block", "minecraft:stone"}}})},
+    };
+    parsed = parsePreviewIntent(customPreview.dump());
+    check(parsed && parsed->source == lholo::app::PreviewSourceKind::CaptureCustom
+        && parsed->customStructure.size == std::array{8, 4, 8}
+        && parsed->customStructure.layers.size() == 1,
+        "custom structure preview intent accepted");
+    auto invalidCustom = customPreview; invalidCustom["layers"][0]["endY"] = 4;
+    check(!parsePreviewIntent(invalidCustom.dump()), "out-of-range custom preview layer rejected");
 
     using lholo::ui::preview::PreviewViewState;
     // Match native fitting: an off-origin canvas and a rotated model whose

@@ -39,7 +39,7 @@
 .lholo-tasks-layer-row:hover { background-color:rgba(255,255,255,0.03); }
 .lholo-tasks-layer-row.is-selected { background-color:#2b2b2e; }
 .lholo-tasks-layer-row.is-selected:hover { background-color:#303034; }
-.lholo-tasks-layer-indicator { position:absolute; left:0.18rem; top:0.75rem; bottom:0.75rem; width:0.19rem; border-radius:0.1rem; background-color:#0078d4; pointer-events:none; }
+.lholo-tasks-layer-indicator { position:absolute; left:0.21rem; top:50%; width:0.16rem; height:1rem; border-radius:0.08rem; background-color:#0078d4; transform:translateY(-50%); pointer-events:none; }
 .lholo-tasks-layer-num { width:1.5rem; margin:0 0.55rem 0 0.25rem; flex-shrink:0; align-items:center; font-size:0.82rem; color:#ffffff; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .lholo-tasks-eye-btn { width:1.85rem; height:1.85rem; padding:0; flex-shrink:0; background-color:transparent !important; border:none !important; border-radius:0.25rem; justify-content:center; align-items:center; }
 .lholo-tasks-eye-btn.lholo-control-hovered { background-color:rgba(255,255,255,0.08) !important; }
@@ -49,7 +49,6 @@
 .lholo-tasks-eye-btn .lholo-button-icon { width:1.12rem; height:1.12rem; display:flex; align-items:center; justify-content:center; }
 .lholo-tasks-eye-btn .lholo-button-icon svg { width:100%; height:100%; }
 .lholo-tasks-eye-btn.is-visible .lholo-button-icon { color:#ededed; }
-.lholo-tasks-layer-row.is-selected .lholo-tasks-eye-btn.is-visible .lholo-button-icon { color:#ffffff; }
 .lholo-tasks-eye-btn.is-hidden .lholo-button-icon { color:#a0a0a0; }
 .lholo-tasks-layer-name { flex:1 1 0; min-width:0; flex-direction:row; align-items:center; height:100%; cursor:pointer; }
 .lholo-tasks-layer-title { display:block; flex:0 1 auto; min-width:0; font-size:0.94rem; color:#ededed; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -65,8 +64,6 @@
 .lholo-tasks-arrow-btn.lholo-control-focused { border:0.08rem solid #ededed; }
 .lholo-tasks-arrow-btn .lholo-button-label { display:none; }
 .lholo-tasks-arrow-btn .lholo-button-icon { width:1.05rem; height:1.05rem; color:#ededed; display:flex; align-items:center; justify-content:center; }
-.lholo-tasks-layer-row.is-selected .lholo-tasks-arrow-btn .lholo-button-icon { color:#ffffff; }
-.lholo-tasks-layer-row.is-hidden .lholo-tasks-arrow-btn .lholo-button-icon { color:#a0a0a0; }
 .lholo-tasks-arrow-btn.lholo-control-hovered .lholo-button-icon { color:#ffffff; }
 .lholo-tasks-arrow-btn .lholo-button-icon svg { width:100%; height:100%; }
 .lholo-tasks-arrow-btn.lholo-control-disabled .lholo-button-icon { color:#555555; }
@@ -83,7 +80,7 @@
 /* 选中文件检查器 */
 .lholo-tasks-file-box { margin-top:0.45rem; border-radius:0.35rem; border:0.06rem solid #252525; background-color:#151515; padding:0.6rem 0.75rem; }
 .lholo-tasks-file-box .lholo-file-row { margin-bottom:0; }
-.lholo-navigation { flex:1; width:100%; min-height:0; overflow:hidden; padding:0.35rem 0.65rem 0.75rem; box-sizing:border-box; }
+.lholo-navigation { flex:1; width:100%; min-height:0; overflow:hidden; padding:0.25rem 0.75rem 0.75rem; box-sizing:border-box; }
 .lholo-content-viewport { flex:1; min-width:0; min-height:0; overflow:hidden; }
 .lholo-navigation > div, .lholo-content-viewport > div { min-height:0; }
 .lholo-content { box-sizing:border-box; width:100%; flex-shrink:0; padding:1.1rem 1.5rem 1.5rem; }
@@ -144,13 +141,12 @@
 .lholo-material-hud-label { flex:1; min-width:0; margin-right:0.8rem; font-size:1rem; line-height:1.5; overflow-wrap:break-word; }
 .lholo-material-hud-row.lholo-setting-row > .lholo-stepper { min-width:0; }
 /* Keep one indicator mounted so interrupted transitions continue in place.
-   Only its accent restarts the stretch; 2.9rem matches MenuNavigation's stride. */
+   Synced with Android MenuView nav list (40dp item, 4dp gap -> 2.75rem stride, 8dp radius, 12dp text inset, 2.5dp x 16dp blue strip at 3.36dp inset). */
 .lholo-navigation-list { position:relative; flex-shrink:0; }
-.lholo-navigation-indicator, .lholo-navigation-item { height:2.6rem; }
-.lholo-navigation-indicator { position:absolute; top:0; left:0; width:0.2rem; z-index:1; pointer-events:none; transition:transform 320ms cubic-bezier(0.4,0,0.2,1); }
-.lholo-navigation-accent { position:absolute; top:50%; left:0.15rem; width:0.2rem; height:1.1rem; border-radius:0.1rem; background-color:#0078d4; transform:translateY(-50%); animation:lholo-navigation-accent-stretch 320ms ease-in-out; }
-@keyframes lholo-navigation-accent-stretch { 0%,100% { transform:translateY(-50%) scaleY(1); } 40% { transform:translateY(-50%) scaleY(1.8); } }
-.lholo-navigation-item { width:100%; padding:0 0.85rem; justify-content:flex-start; background-color:transparent; margin-bottom:0.3rem; border-radius:0.25rem; color:#949499; transition:background-color 150ms ease,color 180ms ease,transform 150ms ease; }
+.lholo-navigation-indicator, .lholo-navigation-item { height:2.5rem; }
+.lholo-navigation-indicator { position:absolute; top:0; left:0; width:0.4rem; z-index:1; pointer-events:none; transition:transform 220ms cubic-bezier(0.16,1,0.3,1); }
+.lholo-navigation-accent { position:absolute; top:50%; left:0.21rem; width:0.16rem; height:1rem; border-radius:0.08rem; background-color:#0078d4; transform:translateY(-50%); }
+.lholo-navigation-item { width:100%; padding:0 0.75rem; justify-content:flex-start; background-color:transparent; margin-bottom:0.25rem; border-radius:0.5rem; color:#949499; transition:background-color 150ms ease,color 180ms ease,transform 150ms ease; }
 .lholo-navigation-item .lholo-button-label { font-size:1rem; line-height:1.4; }
 .lholo-button-icon svg { width:100%; height:100%; }
 .lholo-navigation-item.lholo-control-hovered { background-color:rgba(255,255,255,0.045); color:#f5f5f5; }
@@ -163,7 +159,6 @@
 .lholo-content { animation:lholo-page-enter 170ms ease-out; }
 @media (prefers-reduced-motion:reduce) {
   .lholo-navigation-indicator, .lholo-navigation-item, .lholo-tab, .lholo-tab-indicator { transition:none; }
-  .lholo-navigation-accent { animation:none; }
   .lholo-content { animation:none; }
 }
 .lholo-loading { position:absolute; top:1rem; left:1rem; flex-direction:row; align-items:center; color:white; }
@@ -374,28 +369,31 @@
 .lholo-material-modal { padding:0 1.25rem 1.25rem; border-radius:0.38rem; border:0.06rem solid #2e2e30; background-color:#131313; overflow:hidden; }
 .lholo-material-modal-header { height:3.25rem; flex-direction:row; flex-shrink:0; align-items:center; justify-content:space-between; margin:0 -1.25rem; padding-left:1.5rem; padding-right:0; border-bottom:0.06rem solid #2e2e30; }
 .lholo-material-title { font-size:1.08rem; font-weight:600; line-height:1.4; color:#f5f5f5; }
-.lholo-material-toolbar { flex-direction:row; flex-shrink:0; align-items:center; justify-content:space-between; margin:0.65rem 0; }
-.lholo-material-summary { flex:1; min-width:0; margin-right:0.85rem; font-size:0.92rem; line-height:1.5; color:#a0a0a0; }
+.lholo-material-filter-card { position:relative; z-index:2; flex-direction:row; flex-shrink:0; align-items:center; justify-content:space-between; flex-wrap:wrap; padding:0.48rem 0.8rem; margin:0.15rem 0 0.65rem; border-radius:0.35rem; border:0.06rem solid #252525; background-color:#151515; }
+.lholo-material-filter-left { flex-direction:row; align-items:center; }
+.lholo-material-filter-label { font-size:0.9rem; color:#ededed; margin-right:0.65rem; white-space:nowrap; }
+.lholo-material-filter-left > .lholo-select { min-width:8.5rem; }
+.lholo-material-summary { flex-shrink:0; font-size:0.88rem; line-height:1.5; color:#a0a0a0; margin:0 0 0.5rem; padding-left:0.12rem; }
 .lholo-material-empty { margin:1rem 0; }
-.lholo-material-table { flex:1; min-height:0; border:0.06rem solid #2c2c2c; border-radius:0.35rem; overflow:hidden; background-color:#181818; }
-.lholo-material-table-header { flex-direction:row; flex-shrink:0; align-items:center; min-height:2.35rem; padding:0.4rem 0.85rem; background-color:#222222; border-bottom:0.06rem solid #303030; color:#a0a0a0; font-size:0.88rem; line-height:1.5; }
-.lholo-material-table-viewport { flex:1; min-height:0; overflow:hidden; }
-.lholo-material-table-viewport > div { min-height:0; }
-.lholo-material-table-body { flex-shrink:0; }
-.lholo-material-table-row { flex-direction:row; flex-shrink:0; align-items:center; min-height:2.9rem; padding:0.42rem 0.85rem; border-bottom:0.06rem solid #252525; font-size:0.96rem; line-height:1.4; transition:background-color 120ms ease; }
+.lholo-material-table { box-sizing:border-box; width:100%; flex:1; min-height:0; border:0.06rem solid #2c2c2c; border-radius:0.35rem; overflow:hidden; background-color:#181818; }
+.lholo-material-table-header { box-sizing:border-box; width:100%; flex-direction:row; flex-shrink:0; align-items:center; min-height:2.35rem; padding:0.4rem 0.85rem; background-color:#222222; border-bottom:0.06rem solid #303030; color:#a0a0a0; font-size:0.88rem; line-height:1.5; }
+.lholo-material-table-viewport { width:100%; flex:1; min-height:0; overflow:hidden; }
+.lholo-material-table-viewport > div { width:100%; min-height:0; }
+.lholo-material-table-body { box-sizing:border-box; width:100%; flex-shrink:0; }
+.lholo-material-table-row { box-sizing:border-box; width:100%; flex-direction:row; flex-shrink:0; align-items:center; min-height:2.9rem; padding:0.42rem 0.85rem; border-bottom:0.06rem solid #252525; font-size:0.96rem; line-height:1.4; transition:background-color 120ms ease; }
 .lholo-material-table-row:hover { background-color:rgba(255,255,255,0.03); }
 .lholo-material-table-row:last-child { border-bottom:none; }
-.lholo-material-table-row.is-completed { opacity:0.55; }
-.lholo-material-col-item { flex:1 1 0; min-width:10rem; padding-right:0.85rem; overflow-wrap:break-word; }
+.lholo-material-col-item { flex:1 1 0; min-width:0; padding-right:0.85rem; overflow-wrap:break-word; }
 .lholo-material-col-num { width:6.5rem; min-width:5.5rem; flex:0 0 6.5rem; text-align:right; align-items:flex-end; font-variant-numeric:tabular-nums; font-size:0.98rem; color:#ededed; }
 .lholo-material-sort-header { flex-direction:row; justify-content:flex-end; align-items:center; cursor:pointer; color:#a0a0a0; border-radius:0.2rem; padding:0.12rem 0.25rem; margin-right:-0.25rem; }
 .lholo-material-sort-header.is-active { color:#f5f5f5; }
 .lholo-material-sort-icon { margin-left:0.25rem; flex-shrink:0; align-items:center; justify-content:center; }
 .lholo-material-sort-header.lholo-control-hovered { background-color:rgba(255,255,255,0.06); color:#f5f5f5; }
 .lholo-material-sort-header.lholo-control-focused { box-shadow:inset 0 0 0 0.06rem rgba(255,255,255,0.3); }
-.lholo-material-num-missing { color:#f0a35e; }
-.lholo-material-num-complete { color:#6cc67c; }
-.lholo-material-num-muted { color:#7d7d82; }
+.lholo-material-num-missing { color:#eb7a7a; }
+.lholo-material-num-partial { color:#e8a86b; }
+.lholo-material-num-ok { color:#72c483; }
+.lholo-material-num-muted { color:#85858a; }
 
 /* Narrow previews retain the same controls, with deliberate label wrapping. */
 @media (max-width:800px) {

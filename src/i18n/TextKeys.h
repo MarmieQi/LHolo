@@ -340,6 +340,9 @@
     LHOLO_TEXT_KEY("column.missing", ColumnMissing, "")                                                  \
     LHOLO_TEXT_KEY("column.available", ColumnAvailable, "")                                              \
     LHOLO_TEXT_KEY("material.hideCompleted", MaterialHideCompleted, "")                                  \
+    LHOLO_TEXT_KEY("material.scope", MaterialScope, "")                                                  \
+    LHOLO_TEXT_KEY("material.scopeAll", MaterialScopeAll, "")                                            \
+    LHOLO_TEXT_KEY("material.scopeRenderRange", MaterialScopeRenderRange, "")                            \
     LHOLO_TEXT_KEY("material.summaryMissing", MaterialSummaryMissing, "")                                \
     LHOLO_TEXT_KEY("material.scanningProgress", MaterialScanningProgress, "")                            \
                                                                                                          \

@@ -29,6 +29,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <unordered_map>
 #include <optional>
@@ -136,6 +137,31 @@ struct ProjectionState {
     // can use this to rebuild derived data (such as material HUD rows) only
     // when necessary instead of rescanning the structure every frame.
     std::uint64_t                   progressRevision{};
+    // Bounded multi-consumer incremental flip history. Consumers keep their
+    // own deltaSeq cursor; falling behind progressDeltaMinSeq triggers a
+    // full baseline capture without interfering with other consumers.
+    static constexpr std::size_t    kMaxProgressDeltas = 4096;
+    struct RecordedProgressFlip {
+        std::uint64_t seq{};
+        std::size_t   index{};
+        bool          correct{};
+    };
+    std::deque<RecordedProgressFlip> progressDeltas;
+    std::uint64_t                    progressDeltaSeq{};
+    std::uint64_t                    progressDeltaMinSeq{};
+
+    void recordProgressDelta(std::size_t index, bool nowCorrect) {
+        auto const nextSeq = ++progressDeltaSeq;
+        if (progressDeltas.size() >= kMaxProgressDeltas) {
+            progressDeltaMinSeq = progressDeltas.front().seq;
+            progressDeltas.pop_front();
+        }
+        progressDeltas.push_back({nextSeq, index, nowCorrect});
+    }
+    void invalidateProgressDeltas() {
+        progressDeltas.clear();
+        progressDeltaMinSeq = ++progressDeltaSeq;
+    }
     // 0 = no placement error, 1 = wrong block type, 2 = wrong state/direction.
     // Updating one byte and two counters keeps the HUD O(1) per frame.
     std::vector<uchar>              progressErrorKind;

@@ -125,6 +125,7 @@ std::optional<MaterialProgressKey> getMaterialProgressKey() {
                 state.structureGeneration,
                 state.activationGeneration,
                 state.progressRevision,
+                state.progressDeltaSeq,
                 *state.cachedLayerDisplayMode,
                 state.cachedDisplayLayer,
                 *state.cachedLayerAxis,
@@ -146,6 +147,7 @@ std::optional<MaterialProgressSnapshot> captureMaterialProgress(
                                  state.structureGeneration == expected.structureGeneration &&
                                  state.activationGeneration == expected.activationGeneration &&
                                  state.progressRevision == expected.progressRevision &&
+                                 state.progressDeltaSeq == expected.deltaSeq &&
                                  state.cachedLayerDisplayMode == expected.layerDisplayMode &&
                                  state.cachedDisplayLayer == expected.displayLayer &&
                                  state.cachedLayerAxis == expected.layerAxis;
@@ -153,6 +155,50 @@ std::optional<MaterialProgressSnapshot> captureMaterialProgress(
             auto task = state.worldLookup->task();
             return MaterialProgressSnapshot{expected, state.structure, state.progressCorrect,
                                             task ? task->placements : nullptr, state.worldLookup->fileIndex()};
+        }
+    );
+}
+
+std::optional<MaterialProgressDelta> takeMaterialProgressDelta(
+    MaterialProgressKey const& expected,
+    bool requireSameLayer
+) {
+    return detail::ProjectionSession::getInstance().withLockedState(
+        [&expected, requireSameLayer](detail::ProjectionState& root, overlay::BoundsWireframe&)
+            -> std::optional<MaterialProgressDelta> {
+            auto* selected = detail::selectedFileProjection(root);
+            if (!root.enabled || !selected) return std::nullopt;
+            auto& state = *selected;
+            bool const sameLayer = !requireSameLayer
+                || (state.cachedLayerDisplayMode == expected.layerDisplayMode
+                    && state.cachedDisplayLayer == expected.displayLayer
+                    && state.cachedLayerAxis == expected.layerAxis);
+            bool const sameContext = state.enabled && state.structure
+                && state.initialCorrectionScan.complete()
+                && state.taskSectionRefresh.empty()
+                && state.structureGeneration == expected.structureGeneration
+                && state.activationGeneration == expected.activationGeneration
+                && sameLayer;
+            if (!sameContext || expected.deltaSeq < state.progressDeltaMinSeq
+                || expected.deltaSeq > state.progressDeltaSeq) {
+                return std::nullopt;
+            }
+            MaterialProgressKey const currentKey{
+                state.structureGeneration,
+                state.activationGeneration,
+                state.progressRevision,
+                state.progressDeltaSeq,
+                *state.cachedLayerDisplayMode,
+                state.cachedDisplayLayer,
+                *state.cachedLayerAxis,
+            };
+            std::vector<MaterialProgressFlip> flips;
+            for (auto const& entry : state.progressDeltas) {
+                if (entry.seq > expected.deltaSeq) {
+                    flips.push_back({entry.index, entry.correct});
+                }
+            }
+            return MaterialProgressDelta{currentKey, std::move(flips)};
         }
     );
 }

@@ -436,14 +436,27 @@ void StructureUiState::clearLoadingHint() {
     mLoadingHintToken.store(0, std::memory_order_release);
 }
 
-void StructureUiState::requestMaterialList() {
-    // Reopening the modal refreshes live missing and inventory counts while
-    // keeping mMaterialListReady set so the existing table stays visible.
+void StructureUiState::requestMaterialList(MaterialListScope scope) {
+    // Reopening the modal or switching scope refreshes live missing and
+    // inventory counts while keeping mMaterialListReady set so the existing table stays visible.
+    mMaterialListRequestedScope.store(scope, std::memory_order_release);
     mMaterialListRequested.store(true, std::memory_order_release);
+}
+
+void StructureUiState::setMaterialListOpen(bool open) {
+    mMaterialListOpen.store(open, std::memory_order_release);
+}
+
+bool StructureUiState::materialListOpen() const {
+    return mMaterialListOpen.load(std::memory_order_acquire);
 }
 
 bool StructureUiState::consumeMaterialListRequest() {
     return mMaterialListRequested.exchange(false, std::memory_order_acq_rel);
+}
+
+MaterialListScope StructureUiState::requestedMaterialListScope() const {
+    return mMaterialListRequestedScope.load(std::memory_order_acquire);
 }
 
 std::optional<MaterialListSnapshot> StructureUiState::materialListSnapshotIfChanged(
@@ -452,18 +465,37 @@ std::optional<MaterialListSnapshot> StructureUiState::materialListSnapshotIfChan
     std::lock_guard lock(mMaterialMutex);
     if (revision && *revision == mMaterialListRevision) return std::nullopt;
     return MaterialListSnapshot{mMaterialListRevision,
-        mMaterialListReady.load(std::memory_order_acquire), mMaterialListProgressReady, mMaterialRequirements};
+        mMaterialListReady.load(std::memory_order_acquire), mMaterialListProgressReady,
+        mMaterialListScope, mMaterialRequirements};
 }
 
 void StructureUiState::replaceMaterialRequirements(
     std::vector<MaterialRequirement> materials,
-    bool progressReady
+    bool progressReady,
+    MaterialListScope scope
 ) {
     std::lock_guard lock(mMaterialMutex);
     mMaterialRequirements = std::move(materials);
     mMaterialListProgressReady = progressReady;
+    mMaterialListScope = scope;
     mMaterialListReady.store(true, std::memory_order_release);
     ++mMaterialListRevision;
+}
+
+bool StructureUiState::updateMaterialListAvailability(std::vector<int> const& counts) {
+    std::lock_guard lock(mMaterialMutex);
+    if (!mMaterialListReady.load(std::memory_order_acquire) || counts.size() != mMaterialRequirements.size()) {
+        return false;
+    }
+    bool changed{};
+    for (std::size_t index = 0; index < counts.size(); ++index) {
+        if (mMaterialRequirements[index].available != counts[index]) {
+            mMaterialRequirements[index].available = counts[index];
+            changed = true;
+        }
+    }
+    if (changed) ++mMaterialListRevision;
+    return changed;
 }
 
 void StructureUiState::replaceMaterialHudSnapshot(
@@ -474,16 +506,29 @@ void StructureUiState::replaceMaterialHudSnapshot(
     mMaterialHudRequirements = std::move(materials);
     mMaterialHudAvailability = std::move(available);
     mMaterialHudReady = true;
+    mMaterialHudRevision.fetch_add(1, std::memory_order_release);
 }
 
-void StructureUiState::setMaterialHudAvailability(std::vector<int> counts) {
+bool StructureUiState::setMaterialHudAvailability(std::vector<int> counts) {
     std::lock_guard lock(mMaterialMutex);
+    if (mMaterialHudAvailability == counts) return false;
     mMaterialHudAvailability = std::move(counts);
+    mMaterialHudRevision.fetch_add(1, std::memory_order_release);
+    return true;
+}
+
+std::uint64_t StructureUiState::materialHudRevision() const {
+    return mMaterialHudRevision.load(std::memory_order_acquire);
 }
 
 MaterialHudSnapshot StructureUiState::materialHudSnapshot() const {
     std::lock_guard lock(mMaterialMutex);
-    return {mMaterialHudRequirements, mMaterialHudAvailability, mMaterialHudReady};
+    return {
+        mMaterialHudRequirements,
+        mMaterialHudAvailability,
+        mMaterialHudReady,
+        mMaterialHudRevision.load(std::memory_order_acquire),
+    };
 }
 
 void StructureUiState::clearMaterialHud() {
@@ -491,18 +536,22 @@ void StructureUiState::clearMaterialHud() {
     mMaterialHudRequirements.clear();
     mMaterialHudAvailability.clear();
     mMaterialHudReady = false;
+    mMaterialHudRevision.fetch_add(1, std::memory_order_release);
 }
 
 void StructureUiState::clearMaterials() {
     mMaterialListRequested.store(false, std::memory_order_release);
+    mMaterialListRequestedScope.store(MaterialListScope::All, std::memory_order_release);
     std::lock_guard lock(mMaterialMutex);
     mMaterialListReady.store(false, std::memory_order_release);
     mMaterialListProgressReady = false;
+    mMaterialListScope = MaterialListScope::All;
     ++mMaterialListRevision;
     mMaterialRequirements.clear();
     mMaterialHudRequirements.clear();
     mMaterialHudAvailability.clear();
     mMaterialHudReady = false;
+    mMaterialHudRevision.fetch_add(1, std::memory_order_release);
 }
 
 void StructureUiState::resetWorldSession() {
@@ -516,6 +565,7 @@ void StructureUiState::resetWorldSession() {
     resetHotkeyState();
     setActionHint(i18n::Message{}, 0);
     clearLoadingHint();
+    mMaterialListOpen.store(false, std::memory_order_release);
     clearMaterials();
 }
 

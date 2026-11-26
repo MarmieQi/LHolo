@@ -9,7 +9,7 @@ class LocalPlayer;
 
 namespace lholo::structure::detail {
 
-void requestMaterialListRefresh();
+void requestMaterialListRefresh(bool renderRange = false);
 void invalidateMaterialList();
 void tickMaterialTracker(LocalPlayer& player);
 void shutdownMaterialTracker();

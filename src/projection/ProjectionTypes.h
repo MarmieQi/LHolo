@@ -40,6 +40,7 @@ struct MaterialProgressKey {
     std::uint64_t structureGeneration{};
     std::uint64_t activationGeneration{};
     std::uint64_t progressRevision{};
+    std::uint64_t deltaSeq{};
     structure::LayerDisplayMode layerDisplayMode{structure::LayerDisplayMode::All};
     int           displayLayer{};
     structure::LayerAxis        layerAxis{structure::LayerAxis::Y};
@@ -53,6 +54,16 @@ struct MaterialProgressSnapshot {
     std::vector<unsigned char>                  progressCorrect;
     std::shared_ptr<structure::TaskProjectionView const> taskView;
     std::size_t taskFile{};
+};
+
+struct MaterialProgressFlip {
+    std::size_t index{};
+    bool        correct{};
+};
+
+struct MaterialProgressDelta {
+    MaterialProgressKey               key;
+    std::vector<MaterialProgressFlip> flips;
 };
 
 // Easy-place support: one locked lookup of the projected virtual world.

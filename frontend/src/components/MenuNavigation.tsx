@@ -11,8 +11,8 @@ export function MenuNavigation({ page, labels, onSelect }: {
 }) {
   return <div className="lholo-navigation-list">
     <div className="lholo-navigation-indicator" aria-hidden="true"
-      style={{ transform: 'translateY(' + menuPages.indexOf(page) * 2.9 + 'rem)' }}>
-      <div key={page} className="lholo-navigation-accent" />
+      style={{ transform: 'translateY(' + menuPages.indexOf(page) * 2.75 + 'rem)' }}>
+      <div className="lholo-navigation-accent" />
     </div>
     {menuPages.map(item => <LHoloButton key={item}
     label={item === 'tasks' ? labels['tasks.nav'] : labels['page.' + item] ?? item}

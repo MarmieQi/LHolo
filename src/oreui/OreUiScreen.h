@@ -8,7 +8,7 @@ bool installMenuScreen();
 void uninstallMenuScreen();
 // Called by the primary ClientInstance update; never retain a View or Scene.
 void processMenuScreen();
-enum class MenuEntryPage { Tasks, Hud };
+enum class MenuEntryPage { Tasks, Hud, CreateWorld, CreateCustom };
 void requestMenuOpen(MenuEntryPage page = MenuEntryPage::Tasks);
 MenuEntryPage menuEntryPage();
 void requestMenuClose();

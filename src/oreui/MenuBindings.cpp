@@ -33,7 +33,8 @@ std::string buildMenuLabels() {
     return labels.dump();
 }
 
-void requestMaterialList() { structure::requestMaterialList(); }
+void requestMaterialList(bool renderRange) { structure::requestMaterialList(renderRange); }
+void setMaterialListOpen(bool open) { structure::setMaterialListOpen(open); }
 
 std::optional<std::string> takeProjectionUpdate(bool force) {
     std::lock_guard lock(bindingsMutex);
@@ -84,6 +85,7 @@ std::optional<std::string> takeMaterialsUpdate(IClientInstance const& client, bo
     auto state = nlohmann::json{
         {"ready", snapshot->ready},
         {"progressReady", snapshot->progressReady},
+        {"scope", snapshot->scope == structure::detail::MaterialListScope::RenderRange ? "render" : "all"},
         {"items", std::move(items)},
     }.dump();
     publishedMaterialsRevision = snapshot->revision;
@@ -95,5 +97,6 @@ void resetMenuBindings() {
     std::lock_guard lock(bindingsMutex);
     publishedProjection.clear();
     publishedMaterialsRevision.reset();
+    structure::setMaterialListOpen(false);
 }
 }

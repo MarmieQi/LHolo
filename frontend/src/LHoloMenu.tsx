@@ -21,7 +21,7 @@ import type { CaptureControls } from './application/useCapture';
 import { TasksPage } from './pages/TasksPage';
 import type {TaskControls} from './application/useTasks';
 import type {StructurePreviewControls} from './application/useStructurePreview';
-import type { MenuLabels, ProjectionState } from './platform/bridge';
+import type { MenuEntry, MenuLabels, ProjectionState } from './platform/bridge';
 import { NativeScrollView } from './platform/native';
 import { LHoloCloseButton } from './components/LHoloControls';
 import { SelectedFileContext } from './components/SelectedFileContext';
@@ -43,7 +43,7 @@ export function LHoloMenu({
   writer,
   onClose,
 }: {
-  entryPage: 'tasks' | 'hud';
+  entryPage: MenuEntry;
   labels: MenuLabels;
   projection: ProjectionState;
   capture: CaptureControls;
@@ -59,11 +59,13 @@ export function LHoloMenu({
   writer: StructureWriteControls;
   onClose(): void;
 }) {
-  const [page, setPage] = useState<MenuPage>(entryPage);
+  const entryToPage = (entry: MenuEntry): MenuPage =>
+    entry === 'createWorld' || entry === 'createCustom' ? 'createStructure' : entry;
+  const [page, setPage] = useState<MenuPage>(entryToPage(entryPage));
   const activeTask = tasks.tasks.find(t => t.id === tasks.state?.activeTaskId);
   const activeFile = activeTask?.layers.find(f => f.id === activeTask.selectedFileId);
   const taskBusy = !!tasks.state?.loading;
-  useEffect(() => setPage(entryPage), [entryPage]);
+  useEffect(() => setPage(entryToPage(entryPage)), [entryPage]);
   const selectPage = (next: MenuPage) => {
     materialsState.closeModal();
     experimental.closeModal();
@@ -87,7 +89,14 @@ export function LHoloMenu({
           <LHoloCloseButton label={labels['menu.close']} onClick={onClose} />
         </div>
         <div className="lholo-content-viewport">
-          {page === 'createStructure' ? <CreateStructurePage labels={labels} capture={capture} /> : <NativeScrollView>
+          {page === 'createStructure' ? (
+            <CreateStructurePage
+              labels={labels}
+              capture={capture}
+              preview={preview}
+              initialTab={entryPage === 'createCustom' ? 'custom' : 'world'}
+            />
+          ) : <NativeScrollView>
             <div className="lholo-content" key={page}>
               {(page === 'transform' || page === 'render') && activeTask ? (
                 <SelectedFileContext label={labels['tasks.currentSelection']}

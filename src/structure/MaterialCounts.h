@@ -61,6 +61,21 @@ public:
         if (addMissing && entry.missing != maximum) ++entry.missing;
     }
 
+    void addCount(
+        Block const* block,
+        std::shared_ptr<CompoundTag const> nbt,
+        std::uint64_t totalDelta,
+        std::uint64_t missingDelta = 0
+    ) {
+        if (!block || (totalDelta == 0 && missingDelta == 0)) return;
+        auto const [it, inserted] = indices.try_emplace(Key{block, nbt.get()}, sources.size());
+        if (inserted) sources.push_back({block, std::move(nbt), 0, 0});
+        auto& entry = sources[it->second];
+        auto const maximum = std::numeric_limits<std::uint64_t>::max();
+        entry.count = totalDelta > maximum - entry.count ? maximum : entry.count + totalDelta;
+        entry.missing = missingDelta > maximum - entry.missing ? maximum : entry.missing + missingDelta;
+    }
+
     auto const& entries() const { return sources; }
 };
 

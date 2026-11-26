@@ -108,7 +108,8 @@ void setMaterialHudEnabled(bool enabled);
 // (same encoding as the projection HUD position). Default 3.
 int  materialHudPosition();
 void setMaterialHudPosition(int position);
-void requestMaterialList();
+void requestMaterialList(bool renderRange = false);
+void setMaterialListOpen(bool open);
 void loadSettings();
 void saveSettings();
 std::shared_ptr<LoadedStructure const> getLoaded();

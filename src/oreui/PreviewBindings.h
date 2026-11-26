@@ -5,5 +5,6 @@
 namespace lholo::oreui {
 bool queuePreviewIntent(std::string_view);
 std::optional<std::string> takePreviewUpdate(bool force);
+std::optional<std::string> takePreviewCustomDraft();
 void resetPreviewBindings();
 }

@@ -100,8 +100,12 @@ bool queueViewRelativeMove(input::HotkeyId move) {
 
 } // namespace
 
-void requestMaterialList() {
-    detail::requestMaterialListRefresh();
+void requestMaterialList(bool renderRange) {
+    detail::requestMaterialListRefresh(renderRange);
+}
+
+void setMaterialListOpen(bool open) {
+    uiState().setMaterialListOpen(open);
 }
 
 bool shouldShowProjectedBlockName() {

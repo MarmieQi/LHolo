@@ -34,11 +34,11 @@
 namespace lholo::oreui {
 namespace {
 std::atomic_bool active{}, labelsPending{};
-std::atomic_bool materialsRequestPending{}, materialsStatePending{};
+std::atomic_bool materialsRequestPending{}, materialsRequestRenderRange{}, materialsStatePending{};
 std::atomic_bool customBlocksRequested{}, customBlocksPending{};
 bool registered{}, viewInstalled{}, intentInstalled{};
 auto& logger() { return LHolo::getInstance().getSelf().getLogger(); }
-enum class MenuQuery { Ready, Close, RequestMaterials, RequestCustomBlocks, CancelHotkeyCapture, EditHudLayout };
+enum class MenuQuery { Ready, Close, RequestMaterials, RequestMaterialsRenderRange, CloseMaterials, RequestCustomBlocks, CancelHotkeyCapture, EditHudLayout };
 std::optional<i18n::Language> publishedLanguage;
 
 // Typed facet activation is the supported scalar-payload entry point. No
@@ -78,7 +78,7 @@ LL_TYPE_INSTANCE_HOOK(MenuIntentActivation, ll::memory::HookPriority::Normal,
             if (name == "lholo.write.intent")
                 $registerFacet(name, [] { return std::make_unique<IntentFacet>(receiveStructureWriteIntent, "lholo.write.intent"); });
             else if (name == "lholo.preview.intent")
-                $registerFacet(name, [] { return std::make_unique<IntentFacet>(receivePreviewIntent, "lholo.preview.intent"); });
+                $registerFacet(name, [] { return std::make_unique<IntentFacet>(receivePreviewIntent, "lholo.preview.intent", kCaptureIntentMaxBytes); });
             else if (name == "lholo.capture.intent")
                 $registerFacet(name, [] { return std::make_unique<IntentFacet>(receiveCaptureIntent, "lholo.capture.intent", kCaptureIntentMaxBytes); });
             else if (name == "lholo.transform.intent")
@@ -102,7 +102,19 @@ public:
         switch (mQuery) {
         case MenuQuery::Close: requestMenuClose(); break;
         case MenuQuery::Ready: labelsPending = materialsStatePending = true; break;
-        case MenuQuery::RequestMaterials: materialsRequestPending = materialsStatePending = true; break;
+        case MenuQuery::RequestMaterials:
+            materialsRequestRenderRange = false;
+            materialsRequestPending = materialsStatePending = true;
+            setMaterialListOpen(true);
+            break;
+        case MenuQuery::RequestMaterialsRenderRange:
+            materialsRequestRenderRange = true;
+            materialsRequestPending = materialsStatePending = true;
+            setMaterialListOpen(true);
+            break;
+        case MenuQuery::CloseMaterials:
+            setMaterialListOpen(false);
+            break;
         case MenuQuery::RequestCustomBlocks: customBlocksRequested = customBlocksPending = true; break;
         case MenuQuery::CancelHotkeyCapture: if (isMenuOnTop()) cancelSettingsHotkeyCapture(); break;
         case MenuQuery::EditHudLayout: if (isMenuOnTop()) app::requestHudLayoutEdit(); break;
@@ -129,13 +141,23 @@ LL_TYPE_INSTANCE_HOOK(MenuViewUpdate, ll::memory::HookPriority::Normal,
         auto const menuView = mUrl.get().find("lholo-menu.html") != std::string::npos;
         if (!menuView || !isMenuOnTop()) return;
         auto const ready = labelsPending.exchange(false);
-        if (ready) $triggerEvent("lholo:menu-entry", menuEntryPage() == MenuEntryPage::Hud ? R"("hud")" : R"("tasks")");
+        if (ready) {
+            char const* entryJson = R"("tasks")";
+            switch (menuEntryPage()) {
+            case MenuEntryPage::Hud: entryJson = R"("hud")"; break;
+            case MenuEntryPage::CreateWorld: entryJson = R"("createWorld")"; break;
+            case MenuEntryPage::CreateCustom: entryJson = R"("createCustom")"; break;
+            case MenuEntryPage::Tasks: break;
+            }
+            $triggerEvent("lholo:menu-entry", entryJson);
+            if (auto draft = takePreviewCustomDraft()) $triggerEvent("lholo:preview-custom-draft", *draft);
+        }
         bool const languageChanged = ready || publishedLanguage != i18n::language();
         if (languageChanged) {
             publishedLanguage = i18n::language();
             $triggerEvent("lholo:menu-labels", buildMenuLabels());
         }
-        if (materialsRequestPending.exchange(false)) requestMaterialList();
+        if (materialsRequestPending.exchange(false)) requestMaterialList(materialsRequestRenderRange.load());
         if (auto update = takeTransformUpdate(ready)) $triggerEvent("lholo:transform", *update);
         if (auto update = takeRenderSettingsUpdate(ready)) $triggerEvent("lholo:render", *update);
         if (auto update = takeSettingsUpdate(ready)) $triggerEvent("lholo:settings", *update);
@@ -176,6 +198,8 @@ bool installMenuBridge() {
                     QueryDefinition{"lholo.menu.ready", MenuQuery::Ready},
                     QueryDefinition{"lholo.menu.close", MenuQuery::Close},
                     QueryDefinition{"lholo.materials.request", MenuQuery::RequestMaterials},
+                    QueryDefinition{"lholo.materials.request-render", MenuQuery::RequestMaterialsRenderRange},
+                    QueryDefinition{"lholo.materials.close", MenuQuery::CloseMaterials},
                     QueryDefinition{"lholo.capture.blocks", MenuQuery::RequestCustomBlocks},
                     QueryDefinition{"lholo.hud.edit-layout", MenuQuery::EditHudLayout},
                     QueryDefinition{"lholo.hotkeys.cancel", MenuQuery::CancelHotkeyCapture}

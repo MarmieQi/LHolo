@@ -10,13 +10,33 @@
 #include "oreui/OreUiScreen.h"
 #include <algorithm>
 #include <chrono>
+#include "i18n/Translator.h"
 #include "app/StructureWriteActions.h"
 #include "structure/write/StructureWriteText.h"
 
 namespace lholo::ui::hud {
+namespace {
+struct MaterialHudCacheKey {
+    std::uint64_t revision{};
+    std::uint64_t generation{};
+    int selectedSource{-1};
+    int position{-1};
+    bool convertStacks{};
+    int maxItems{};
+    int axis{};
+    int mode{};
+    int layer{};
+    i18n::Language language{};
+    bool editing{};
+    bool operator==(MaterialHudCacheKey const&) const = default;
+};
+} // namespace
+
 HudContent readHudContent() {
     // Owned exclusively by the HUD render path; input only supplies intent.
     static MaterialHudPaging paging;
+    static std::optional<MaterialHudCacheKey> cachedMaterialKey;
+    static HudPanel cachedMaterialPanel;
     auto const pageDelta = input::consumeMaterialHudPageRequest();
     HudContent result;
     bool const editing = hudLayoutEditorActive();
@@ -25,7 +45,7 @@ HudContent readHudContent() {
     auto settings = state.hud();
     if (editing) settings.enabled = true;
     auto const materialEnabled = editing || state.materialHudEnabled();
-    if (!materialEnabled) paging = {};
+    if (!materialEnabled) { paging = {}; cachedMaterialKey.reset(); }
     if (editing || state.writeHudEnabled()) {
         auto const write = app::structureWriteStatus();
         auto const command = write.mode == structure::write::WriteMode::ServerCommands;
@@ -40,6 +60,7 @@ HudContent readHudContent() {
     auto const session = structure::detail::StructureSession::getInstance().snapshot();
     if (!session.hasVisibleSelection() || projection::isDimensionSuspended()) {
         paging = {};
+        cachedMaterialKey.reset();
         if (editing) {
             auto example = makeHudEditorContent(settings.position, state.materialHudPosition());
             result.projection = std::move(example.projection); result.materials = std::move(example.materials);
@@ -67,13 +88,36 @@ HudContent readHudContent() {
         result.projection = makeProjectionHud(settings, data);
     }
     if (materialEnabled) {
-        auto const materials = state.materialHudSnapshot();
-        auto const changed = paging.setContext({session.loaded->generation,
-            session.selectedSource, state.materialHudMaxItems(),
-            static_cast<int>(session.transform.layerAxis), static_cast<int>(session.transform.layerDisplayMode), session.transform.displayLayer});
-        result.materials = editing && !materials.ready
-            ? makeHudEditorContent(settings.position, state.materialHudPosition()).materials
-            : makeMaterialHud(materials, state.materialHudPosition(), state.materialHudStackConversion(), state.materialHudMaxItems(), &paging, editing || changed ? 0 : pageDelta);
+        auto const position = state.materialHudPosition();
+        auto const convertStacks = state.materialHudStackConversion();
+        auto const maxItems = state.materialHudMaxItems();
+        MaterialHudCacheKey const key{
+            state.materialHudRevision(),
+            session.loaded->generation,
+            session.selectedSource,
+            position,
+            convertStacks,
+            maxItems,
+            static_cast<int>(session.transform.layerAxis),
+            static_cast<int>(session.transform.layerDisplayMode),
+            session.transform.displayLayer,
+            i18n::language(),
+            editing,
+        };
+        if (pageDelta != 0 || cachedMaterialKey != key) {
+            auto const materials = state.materialHudSnapshot();
+            auto const changed = paging.setContext({session.loaded->generation,
+                session.selectedSource, maxItems,
+                key.axis, key.mode, key.layer});
+            cachedMaterialPanel = editing && !materials.ready
+                ? makeHudEditorContent(settings.position, position).materials
+                : makeMaterialHud(materials, position, convertStacks, maxItems, &paging, editing || changed ? 0 : pageDelta);
+            cachedMaterialKey = key;
+            cachedMaterialKey->revision = materials.revision;
+        }
+        result.materials = cachedMaterialPanel;
+    } else {
+        cachedMaterialKey.reset();
     }
     if (editing && result.projection.lines.empty())
         result.projection = makeHudEditorContent(settings.position, state.materialHudPosition()).projection;

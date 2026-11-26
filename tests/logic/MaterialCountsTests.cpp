@@ -1,7 +1,10 @@
 #include "structure/MaterialCounts.h"
+#include "structure/MaterialDeltaState.h"
 #include "structure/MaterialUnits.h"
 #include <cstdio>
+#include <map>
 #include <memory>
+#include <random>
 
 int runMaterialCountsTests() {
     int failures{};
@@ -98,6 +101,78 @@ int runMaterialCountsTests() {
         };
         check(total(collectRawMaterials(blocks, buildMaterialUnits(blocks, bedParts), all).body) == 1,
             "bed halves count once in every horizontal direction");
+    }
+
+    // Randomized oracle test: incremental MaterialDeltaState must match full
+    // collectRawMaterials after every single flip across multi-block units,
+    // waterlogged cells, and filtered-out layers.
+    {
+        std::vector<LoadedStructure::RenderBlock> oracleBlocks{
+            {0, 1, 0, ptr(1), ptr(4), ominous},
+            {0, 0, 0, ptr(0), ptr(4), ordinary},
+            {2, 0, 0, ptr(0)}, {2, 1, 0, ptr(1)},
+            {4, 1, 0, ptr(1)},
+            {6, 0, 0, ptr(3), ptr(4)}, {7, 0, 0, ptr(3)},
+            {8, 0, 0, nullptr, ptr(4)},
+            {9, 2, 0, ptr(3)}, // excluded by filter
+        };
+        auto const oracleOwners = buildMaterialUnits(oracleBlocks, parts);
+        auto const filter = [](std::size_t i) { return i != 8; };
+        std::vector<unsigned char> correct(oracleBlocks.size(), 0);
+        correct[2] = 1;
+        correct[6] = 1;
+
+        MaterialDeltaState delta;
+        delta.build(oracleBlocks, oracleOwners, correct, filter);
+
+        auto toMap = [](MaterialCounts const& counts) {
+            std::map<std::pair<Block const*, CompoundTag const*>, std::uint64_t> out;
+            for (auto const& e : counts.entries()) {
+                if (e.count > 0) out[{e.block, e.nbt.get()}] += e.count;
+            }
+            return out;
+        };
+        auto toFullMap = [](MaterialCounts const& counts) {
+            std::map<std::pair<Block const*, CompoundTag const*>, std::pair<std::uint64_t, std::uint64_t>> out;
+            for (auto const& e : counts.entries()) {
+                if (e.count > 0) {
+                    auto& slot = out[{e.block, e.nbt.get()}];
+                    slot.first += e.count;
+                    slot.second += e.missing;
+                }
+            }
+            return out;
+        };
+        auto assertMatchesOracle = [&](char const* label) {
+            auto const expected = collectRawMaterials(oracleBlocks, oracleOwners, [&](std::size_t i) {
+                return filter(i) && correct[i] == 0;
+            });
+            auto const actual = delta.exportCounts();
+            check(toMap(actual.body) == toMap(expected.body) && toMap(actual.liquid) == toMap(expected.liquid), label);
+
+            auto const expectedFull = collectRawMaterials(
+                oracleBlocks, oracleOwners, filter,
+                [&](std::size_t i) { return correct[i] == 0; }
+            );
+            auto const actualFull = delta.exportFullCounts();
+            check(
+                toFullMap(actualFull.body) == toFullMap(expectedFull.body)
+                    && toFullMap(actualFull.liquid) == toFullMap(expectedFull.liquid),
+                label
+            );
+        };
+        assertMatchesOracle("delta baseline matches full scan");
+
+        std::mt19937 rng{42};
+        std::uniform_int_distribution<std::size_t> pickIndex(0, oracleBlocks.size() - 1);
+        std::uniform_int_distribution<int> pickState(0, 1);
+        for (int step = 0; step < 500; ++step) {
+            auto const idx = pickIndex(rng);
+            bool const next = pickState(rng) != 0;
+            correct[idx] = next ? 1 : 0;
+            delta.applyFlip(idx, next);
+            assertMatchesOracle("incremental flip matches full scan");
+        }
     }
     std::printf("MaterialCountsTests: %d failures\n", failures);
     return failures;

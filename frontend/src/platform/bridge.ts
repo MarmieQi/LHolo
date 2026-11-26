@@ -20,14 +20,17 @@ export interface MaterialItem {
   missing: number;
   available: number | null;
 }
+export type MaterialScope = 'all' | 'render';
 export interface MaterialsState {
   ready: boolean;
   progressReady: boolean;
+  scope: MaterialScope;
   items: readonly MaterialItem[];
 }
 export interface MaterialsBridge {
   subscribeMaterials(listener: (state: MaterialsState) => void): () => void;
-  requestMaterials(): void;
+  requestMaterials(scope?: MaterialScope): void;
+  closeMaterials(): void;
 }
 export interface CapturePoint { x: number; y: number; z: number }
 export interface CustomBlock { id: string; name: string }
@@ -77,9 +80,10 @@ export interface RenderBridge {
   subscribeRender(listener: (state: RenderState) => void): () => void;
   renderSettings(edit: RenderEdit): void;
 }
+export type MenuEntry = 'tasks' | 'hud' | 'createWorld' | 'createCustom';
 export interface MenuBridge extends ProjectionBridge, MaterialsBridge, CaptureBridge, TransformBridge, RenderBridge, SettingsBridge {
   editHudLayout(): void;
-  subscribeEntry(listener: (page: 'tasks' | 'hud') => void): () => void;
+  subscribeEntry(listener: (page: MenuEntry) => void): () => void;
   subscribe(listener: (labels: MenuLabels) => void): () => void;
   close(): void;
 }
@@ -122,6 +126,7 @@ export function parseMaterials(payload: string): MaterialsState {
   if (!value || typeof value !== 'object'
     || !('ready' in value) || typeof value.ready !== 'boolean'
     || !('progressReady' in value) || typeof value.progressReady !== 'boolean'
+    || !('scope' in value) || (value.scope !== 'all' && value.scope !== 'render')
     || !('items' in value) || !Array.isArray(value.items)
     || !value.items.every((item: unknown) => {
       if (!item || typeof item !== 'object') return false;
@@ -140,6 +145,7 @@ export function parseMaterials(payload: string): MaterialsState {
   return {
     ready: value.ready,
     progressReady: value.progressReady,
+    scope: value.scope,
     items: value.items as MaterialItem[],
   };
 }
@@ -254,7 +260,8 @@ export const menuBridge: MenuBridge = {
     window.engine.on('lholo:materials', receive);
     return () => window.engine.off('lholo:materials', receive);
   },
-  requestMaterials: () => send('lholo.materials.request'),
+  requestMaterials: (scope = 'all') => send(scope === 'render' ? 'lholo.materials.request-render' : 'lholo.materials.request'),
+  closeMaterials: () => send('lholo.materials.close'),
   subscribeCapture(listener) {
     const receive = (payload: string) => {
       try { listener(parseCapture(payload)); }
@@ -292,7 +299,7 @@ export const menuBridge: MenuBridge = {
   subscribeEntry(listener) {
     const receive = (payload: string) => {
       const page: unknown = JSON.parse(payload);
-      if (page === 'tasks' || page === 'hud') listener(page);
+      if (page === 'tasks' || page === 'hud' || page === 'createWorld' || page === 'createCustom') listener(page);
     };
     window.engine.on('lholo:menu-entry', receive);
     return () => window.engine.off('lholo:menu-entry', receive);

@@ -597,6 +597,12 @@ void testStructureUiState() {
     LHOLO_CHECK(materials[0].count == 12);
     LHOLO_CHECK(materials[0].missing == 5);
     LHOLO_CHECK(materials[0].available == 3);
+    auto const revBefore = readySnapshot->revision;
+    LHOLO_CHECK(!state.updateMaterialListAvailability({3}));
+    LHOLO_CHECK(!state.materialListSnapshotIfChanged(revBefore).has_value());
+    LHOLO_CHECK(state.updateMaterialListAvailability({7}));
+    auto const revAfter = state.materialListSnapshotIfChanged(revBefore);
+    LHOLO_CHECK(revAfter.has_value() && revAfter->requirements[0].available == 7);
 
     auto hudMaterials = state.materialHudSnapshot();
     LHOLO_CHECK(!hudMaterials.ready);
@@ -611,6 +617,12 @@ void testStructureUiState() {
     LHOLO_CHECK(hudMaterials.requirements[0].count == 5);
     LHOLO_CHECK(hudMaterials.available.size() == 1);
     LHOLO_CHECK(hudMaterials.available[0] == 2);
+    auto const hudRev = state.materialHudRevision();
+    LHOLO_CHECK(hudRev == hudMaterials.revision);
+    LHOLO_CHECK(!state.setMaterialHudAvailability({2}));
+    LHOLO_CHECK(state.materialHudRevision() == hudRev);
+    LHOLO_CHECK(state.setMaterialHudAvailability({4}));
+    LHOLO_CHECK(state.materialHudRevision() == hudRev + 1);
     // Updating the current-layer HUD must not replace the whole-structure list.
     LHOLO_CHECK(state.materialListSnapshotIfChanged(std::nullopt)->requirements[0].typeName == "minecraft:stone");
     state.clearMaterialHud();

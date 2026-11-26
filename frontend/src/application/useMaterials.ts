@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { MaterialItem, MaterialsBridge, MaterialsState, MenuLabels } from '../platform/bridge';
+import type { MaterialItem, MaterialScope, MaterialsBridge, MaterialsState, MenuLabels } from '../platform/bridge';
 
 export type MaterialSortColumn = 'total' | 'missing' | 'available';
 
-const initialState: MaterialsState = { ready: false, progressReady: false, items: [] };
+const initialState: MaterialsState = { ready: false, progressReady: false, scope: 'all', items: [] };
 
 export function formatMaterialDisplayName(item: MaterialItem, labels: MenuLabels): string {
   if (item.nameKey && labels[item.nameKey]) {
@@ -61,16 +61,28 @@ export function visibleMaterials(
 export function useMaterials(bridge: MaterialsBridge) {
   const [isOpen, setIsOpen] = useState(false);
   const [state, setState] = useState<MaterialsState>(initialState);
-  const [sortColumn, setSortColumn] = useState<MaterialSortColumn>('missing');
+  const [scope, setScopeState] = useState<MaterialScope>('all');
+  const [sortColumn, setSortColumn] = useState<MaterialSortColumn>('total');
   const [sortDesc, setSortDesc] = useState(true);
   const [hideCompleted, setHideCompleted] = useState(false);
-  useEffect(() => bridge.subscribeMaterials(setState), [bridge]);
+  useEffect(() => bridge.subscribeMaterials(next => {
+    setState(next);
+    setScopeState(next.scope);
+  }), [bridge]);
 
   const openModal = useCallback(() => {
     setIsOpen(true);
-    try { bridge.requestMaterials(); } catch {}
+    setScopeState('all');
+    try { bridge.requestMaterials('all'); } catch {}
   }, [bridge]);
-  const closeModal = useCallback(() => setIsOpen(false), []);
+  const closeModal = useCallback(() => {
+    setIsOpen(false);
+    try { bridge.closeMaterials(); } catch {}
+  }, [bridge]);
+  const setScope = useCallback((next: MaterialScope) => {
+    setScopeState(next);
+    try { bridge.requestMaterials(next); } catch {}
+  }, [bridge]);
   const toggleSort = useCallback((column: MaterialSortColumn) => {
     if (sortColumn === column) {
       setSortDesc(current => !current);
@@ -89,6 +101,8 @@ export function useMaterials(bridge: MaterialsBridge) {
     isOpen,
     ready: state.ready,
     progressReady: state.progressReady,
+    scope,
+    setScope,
     openModal,
     closeModal,
     materials: state.items,

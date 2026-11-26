@@ -16,5 +16,17 @@ std::optional<std::string> takePreviewUpdate(bool force) {
     published = status;
     return nlohmann::json{{"ack",status.ack},{"accepted",status.accepted},{"error",status.error}}.dump();
 }
+std::optional<std::string> takePreviewCustomDraft() {
+    auto draft = app::consumePreviewCustomDraft();
+    if (!draft) return {};
+    auto layers = nlohmann::json::array();
+    for (auto const& layer : draft->layers) {
+        layers.push_back({{"y", layer.y}, {"endY", layer.endY}, {"block", layer.block}});
+    }
+    return nlohmann::json{
+        {"size", {{"x", draft->size[0]}, {"y", draft->size[1]}, {"z", draft->size[2]}}},
+        {"layers", std::move(layers)},
+    }.dump();
+}
 void resetPreviewBindings() { std::lock_guard lock(mutex); published.reset(); }
 }

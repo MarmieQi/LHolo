@@ -188,17 +188,24 @@ CorrectionProgressChanges updateCorrectionTracker(ProjectionState& state, BlockS
         auto const nowCorrect = nextState == CorrectionState::Correct;
         auto const previousState = state.correctionStates.get(index);
         auto const wasCorrect = previousState == CorrectionState::Correct;
+        auto const previousCorrect = state.progressCorrect[index] != 0;
         if (state.fileTransform) {
             if (visible && nextState != previousState) {
                 removeTaskCellProgress(state.fileProgress, previousState);
                 addTaskCellProgress(state.fileProgress, nextState);
                 ++state.progressRevision;
             }
-            state.progressCorrect[index] = nowCorrect ? 1 : 0;
+            if (nowCorrect != previousCorrect) {
+                state.progressCorrect[index] = nowCorrect ? 1 : 0;
+                state.recordProgressDelta(index, nowCorrect);
+            }
         }
         if (!state.fileTransform && nowCorrect != wasCorrect) {
             state.progressCorrect[index] = nowCorrect ? 1 : 0;
             ++state.progressRevision;
+            if (nowCorrect != previousCorrect) {
+                state.recordProgressDelta(index, nowCorrect);
+            }
             if (nowCorrect)
                 ++state.progressCorrectCount;
             else
