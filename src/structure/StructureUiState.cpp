@@ -466,17 +466,27 @@ std::optional<MaterialListSnapshot> StructureUiState::materialListSnapshotIfChan
     if (revision && *revision == mMaterialListRevision) return std::nullopt;
     return MaterialListSnapshot{mMaterialListRevision,
         mMaterialListReady.load(std::memory_order_acquire), mMaterialListProgressReady,
-        mMaterialListScope, mMaterialRequirements};
+        mMaterialListProgressScanning, mMaterialListScope, mMaterialRequirements};
+}
+
+void StructureUiState::markMaterialListLoading() {
+    std::lock_guard lock(mMaterialMutex);
+    mMaterialListReady.store(false, std::memory_order_release);
+    mMaterialListProgressReady = false;
+    mMaterialListProgressScanning = false;
+    ++mMaterialListRevision;
 }
 
 void StructureUiState::replaceMaterialRequirements(
     std::vector<MaterialRequirement> materials,
     bool progressReady,
-    MaterialListScope scope
+    MaterialListScope scope,
+    bool progressScanning
 ) {
     std::lock_guard lock(mMaterialMutex);
     mMaterialRequirements = std::move(materials);
     mMaterialListProgressReady = progressReady;
+    mMaterialListProgressScanning = !progressReady && progressScanning;
     mMaterialListScope = scope;
     mMaterialListReady.store(true, std::memory_order_release);
     ++mMaterialListRevision;
@@ -545,6 +555,7 @@ void StructureUiState::clearMaterials() {
     std::lock_guard lock(mMaterialMutex);
     mMaterialListReady.store(false, std::memory_order_release);
     mMaterialListProgressReady = false;
+    mMaterialListProgressScanning = false;
     mMaterialListScope = MaterialListScope::All;
     ++mMaterialListRevision;
     mMaterialRequirements.clear();

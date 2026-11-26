@@ -54,6 +54,7 @@ struct MaterialListSnapshot {
     std::uint64_t revision{};
     bool ready{};
     bool progressReady{};
+    bool progressScanning{};
     MaterialListScope scope{MaterialListScope::All};
     std::vector<MaterialRequirement> requirements;
 };
@@ -197,10 +198,12 @@ public:
     [[nodiscard]] std::optional<MaterialListSnapshot> materialListSnapshotIfChanged(
         std::optional<std::uint64_t> revision
     ) const;
+    void markMaterialListLoading();
     void replaceMaterialRequirements(
         std::vector<MaterialRequirement> materials,
         bool progressReady = false,
-        MaterialListScope scope = MaterialListScope::All
+        MaterialListScope scope = MaterialListScope::All,
+        bool progressScanning = false
     );
     bool updateMaterialListAvailability(std::vector<int> const& counts);
     // The material-list popup and the current-layer HUD deliberately own
@@ -283,6 +286,7 @@ private:
     std::atomic<MaterialListScope>    mMaterialListRequestedScope{MaterialListScope::All};
     std::atomic_bool                  mMaterialListReady{false};
     bool                              mMaterialListProgressReady{}; // protected by mMaterialMutex
+    bool                              mMaterialListProgressScanning{}; // protected by mMaterialMutex
     MaterialListScope                 mMaterialListScope{MaterialListScope::All}; // protected by mMaterialMutex
     std::uint64_t                     mMaterialListRevision{}; // protected by mMaterialMutex
     std::vector<MaterialRequirement>  mMaterialRequirements;

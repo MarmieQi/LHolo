@@ -38,22 +38,28 @@ std::atomic_uint64_t worldRevision{1};
 // and UI busy state are independent for projection and read-only preview.
 std::mutex nativeParserMutex;
 
+std::shared_ptr<LoadedStructure const> readStructureFileOnly(
+    std::string const& path,
+    std::string& error,
+    std::atomic_bool const& cancelled
+) {
+    std::lock_guard parseLock(nativeParserMutex);
+    if (cancelled.load()) return {};
+    std::shared_ptr<LoadedStructure const> loaded;
+    try { loaded = loadStructureFile(pathFromUtf8(path), error); }
+    catch (std::exception const& e) { error = e.what(); }
+    catch (...) { error = "Unknown structure read error"; }
+    return loaded;
+}
+
 struct FileLoader final : LevelListener {
     std::mutex mutex;
     std::future<void> task;
     Level* level{};
     bool stopped{true};
     std::shared_ptr<CompositionLoadResult> compositionResult;
-    StructureReadQueue reader{[](std::string const& path,std::string& error,std::atomic_bool const& cancelled)
-        -> std::shared_ptr<LoadedStructure const> {
-        std::lock_guard parseLock(nativeParserMutex);
-        if (cancelled.load()) return {};
-        std::shared_ptr<LoadedStructure const> loaded;
-        try { loaded=loadStructureFile(pathFromUtf8(path),error); }
-        catch (std::exception const& e) { error=e.what(); }
-        catch (...) { error="Unknown structure read error"; }
-        return loaded;
-    }};
+    StructureReadQueue reader{readStructureFileOnly};
+    StructureReadQueue materialReader{readStructureFileOnly};
     std::unordered_map<std::string, std::shared_ptr<LoadedStructure const>> cache;
 
     void onLevelDestruction(std::string const&) override {
@@ -66,8 +72,10 @@ struct FileLoader final : LevelListener {
         resetProjectionActions();
         StructureSession::getInstance().clearLoaded(i18n::Message{i18n::TextKey::StatusWorldExited});
         reader.cancelAll();
+        materialReader.cancelAll();
         if (task.valid()) task.wait();
         reader.drain();
+        materialReader.drain();
         compositionResult.reset(); cache.clear();
         // The dying Level removes its listeners; never remove through it later.
     }
@@ -163,12 +171,14 @@ void shutdownStructureFileLoader() {
     std::lock_guard lock(loader.mutex);
     loader.stopped = true;
     loader.reader.cancelAll();
+    loader.materialReader.cancelAll();
     StructureSession::getInstance().cancelPendingLoad();
     // Keep the task in the gate until it is joined: a concurrent destruction
     // callback must not mistake a moved-out future for a finished parser.
     // The parser never acquires loader.mutex.
     if (loader.task.valid()) loader.task.get();
     loader.reader.drain();
+    loader.materialReader.drain();
     loader.compositionResult.reset(); loader.cache.clear();
     if (loader.level) {
         loader.level->removeListener(loader);
@@ -216,6 +226,8 @@ bool startTaskComposition(std::string taskId, std::uint64_t revision, StructureL
         loader.level = &*level;
         loader.cache.clear();
     }
+    for (std::size_t i = 0; i < files.size(); ++i)
+        files[i].path = paths[i];
     if (!reloadFiles)
         for (std::size_t i = 0; i < files.size(); ++i)
             if (auto it = loader.cache.find(paths[i]); it != loader.cache.end())
@@ -314,7 +326,8 @@ std::shared_ptr<LoadedStructure const> cachedTaskFile(std::string const& path) {
     return it == loader.cache.end() ? nullptr : it->second;
 }
 
-bool startStructureRead(std::uint64_t id, std::string path) {
+namespace {
+bool startQueuedRead(StructureReadQueue& queue, std::uint64_t id, std::string path) {
     auto& loader = fileLoader();
     std::lock_guard lock(loader.mutex);
     if (loader.stopped || !id) return false;
@@ -325,7 +338,12 @@ bool startStructureRead(std::uint64_t id, std::string path) {
         level->addListener(loader);
         loader.level = &*level;
     }
-    return loader.reader.start(id,structureFileWorldRevision(),std::move(path));
+    return queue.start(id, structureFileWorldRevision(), std::move(path));
+}
+} // namespace
+
+bool startStructureRead(std::uint64_t id, std::string path) {
+    return startQueuedRead(fileLoader().reader, id, std::move(path));
 }
 
 void cancelStructureRead(std::uint64_t id) {
@@ -337,6 +355,22 @@ std::shared_ptr<StructureReadResult const> takeStructureReadResult() {
     auto& loader = fileLoader();
     std::lock_guard lock(loader.mutex);
     return loader.reader.take();
+}
+
+bool startMaterialStructureRead(std::uint64_t id, std::string path) {
+    return startQueuedRead(fileLoader().materialReader, id, std::move(path));
+}
+
+void cancelMaterialStructureRead(std::uint64_t id) {
+    auto& loader = fileLoader();
+    std::lock_guard lock(loader.mutex);
+    loader.materialReader.cancel(id);
+}
+
+std::shared_ptr<StructureReadResult const> takeMaterialStructureReadResult() {
+    auto& loader = fileLoader();
+    std::lock_guard lock(loader.mutex);
+    return loader.materialReader.take();
 }
 
 } // namespace lholo::structure::detail

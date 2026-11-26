@@ -252,7 +252,7 @@ LHolo/
   `VanillaStates::UpperBlockBit`，床使用 `HeadPieceBit`、原生方向状态与 `Direction::STEP_X/STEP_Z`。不以名称后缀、碰撞箱或
   `getSecondPart` 推断材料消耗，后者也用于需要两个箱子物品的双箱。
   `place`、格式加载、材料统计和投影纠错不得各自复制名称映射。
-- `structure/MaterialTracker` 只在本地玩家 tick 线程聚合材料需求和扫描背包；后台保留 Block/NBT 来源计数，游戏线程先合并相同源内容的计数，再解析原生物品、归组并按相同变体读取背包（含背包内潜影盒与收纳袋）。投影进度的单格翻转通过 `ProjectionState` 的有界只读增量历史（`deltaSeq`）多消费者分发，缺失材料 HUD 与打开中的材料清单各自持有 `MaterialDeltaState` 做 O(1) 实时增量刷新；材料清单支持“全部 / 渲染范围”统计范围切换，并在未发生世界翻转时按 400 ms 节流刷新背包可用数。HUD/菜单关闭且没有消费者时停止刷新，渲染线程只读取 `StructureUiState` 的版本化一致快照（`HudContentSource` 按材料 HUD revision 缓存面板）。
+- `structure/MaterialTracker` 只在本地玩家 tick 线程聚合材料需求和扫描背包；后台保留 Block/NBT 来源计数，游戏线程先合并相同源内容的计数，再解析原生物品、归组并按相同变体读取背包（含背包内潜影盒与收纳袋）。投影进度的单格翻转通过 `ProjectionState` 的有界只读增量历史（`deltaSeq`）多消费者分发，缺失材料 HUD 与打开中的材料清单各自持有 `MaterialDeltaState` 做 O(1) 实时增量刷新；材料清单支持“全部 / 渲染范围”统计范围切换，并在未发生世界翻转时按 400 ms 节流刷新背包可用数。对任务中隐藏或跨维度的未加载文件，材料清单通过 `StructureFileLoader` 独立的 `materialReader` 只读通道按需解析并缓存，展示总数与背包可用数而不等待世界纠错扫描。HUD/菜单关闭且没有消费者时停止刷新，渲染线程只读取 `StructureUiState` 的版本化一致快照（`HudContentSource` 按材料 HUD revision 缓存面板）。
 - `structure/StructureUiState` 持有 UI/菜单会话状态：GUI 可见性、热键配置与按下状态、HUD 开关、
   固定手势开关（Alt+滚轮结构偏移）、待处理偏移/切层/保存与材料清单；atomic、mutex 和容器均不向
   调用者暴露，快捷键交互逻辑仍在 `StructureLoader`；菜单页面及临时输入由 OreUI 前端持有。

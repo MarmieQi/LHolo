@@ -603,6 +603,13 @@ void testStructureUiState() {
     LHOLO_CHECK(state.updateMaterialListAvailability({7}));
     auto const revAfter = state.materialListSnapshotIfChanged(revBefore);
     LHOLO_CHECK(revAfter.has_value() && revAfter->requirements[0].available == 7);
+    LHOLO_CHECK(!revAfter->progressScanning);
+    state.markMaterialListLoading();
+    auto const loadingSnap = state.materialListSnapshotIfChanged(revAfter->revision);
+    LHOLO_CHECK(loadingSnap.has_value() && !loadingSnap->ready && !loadingSnap->progressScanning);
+    state.replaceMaterialRequirements(materials, false, lholo::structure::detail::MaterialListScope::All, true);
+    auto const scanningSnap = state.materialListSnapshotIfChanged(loadingSnap->revision);
+    LHOLO_CHECK(scanningSnap.has_value() && scanningSnap->ready && !scanningSnap->progressReady && scanningSnap->progressScanning);
 
     auto hudMaterials = state.materialHudSnapshot();
     LHOLO_CHECK(!hudMaterials.ready);

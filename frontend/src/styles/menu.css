@@ -1,9 +1,9 @@
 @font-face { font-family: LHoloSans; src: url('/hbui/fonts/NotoSansSC-Regular-a4317c614d07055b56ed.otf'); }
 /* Native divs inherit column flex; rows must be explicit. */
 .lholo-backdrop { position:absolute; top:0; left:0; width:100vw; height:100vh; align-items:center; justify-content:center; background-color:rgba(0,0,0,0.34); font-family:LHoloSans,sans-serif; color:#f5f5f5; }
-/* Shared frame dimensions: the material list matches the main menu. */
-.lholo-menu, .lholo-material-modal { box-sizing:border-box; width:93vw; max-width:62rem; height:72vh; max-height:35.2rem; min-height:0; flex-shrink:0; }
-.lholo-menu { flex-direction:row; padding:0; overflow:hidden; border-radius:0.38rem; background-color:#131313; border:0.06rem solid #2e2e30; }
+/* Shared frame dimensions: match Android's inset floating card ratio across viewport sizes. */
+.lholo-menu, .lholo-material-modal { box-sizing:border-box; width:93vw; height:90vh; min-height:0; flex-shrink:0; }
+.lholo-menu { flex-direction:row; padding:0; overflow:hidden; border-radius:0.5rem; background-color:#131313; border:0.06rem solid #2e2e30; }
 .lholo-sidebar { width:11.5rem; height:100%; flex-shrink:0; min-height:0; border-right:0.06rem solid #2e2e30; background-color:#131313; }
 .lholo-sidebar-header { height:3.25rem; flex-shrink:0; justify-content:center; padding:0 1rem; }
 .lholo-brand { font-size:1.12rem; font-weight:600; line-height:1.4; color:#f5f5f5; }
@@ -366,7 +366,7 @@
 }
 
 /* Material list uses the same neutral surfaces and type scale as the menu. */
-.lholo-material-modal { padding:0 1.25rem 1.25rem; border-radius:0.38rem; border:0.06rem solid #2e2e30; background-color:#131313; overflow:hidden; }
+.lholo-material-modal { padding:0 1.25rem 1.25rem; border-radius:0.5rem; border:0.06rem solid #2e2e30; background-color:#131313; overflow:hidden; }
 .lholo-material-modal-header { height:3.25rem; flex-direction:row; flex-shrink:0; align-items:center; justify-content:space-between; margin:0 -1.25rem; padding-left:1.5rem; padding-right:0; border-bottom:0.06rem solid #2e2e30; }
 .lholo-material-title { font-size:1.08rem; font-weight:600; line-height:1.4; color:#f5f5f5; }
 .lholo-material-filter-card { position:relative; z-index:2; flex-direction:row; flex-shrink:0; align-items:center; justify-content:space-between; flex-wrap:wrap; padding:0.48rem 0.8rem; margin:0.15rem 0 0.65rem; border-radius:0.35rem; border:0.06rem solid #252525; background-color:#151515; }

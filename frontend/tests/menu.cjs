@@ -388,6 +388,17 @@ assert(nodeText(materialModal).includes(labels['hint.noPlaceableMaterials']), 'C
 receive(JSON.stringify({
   ready: true,
   progressReady: false,
+  progressScanning: false,
+  scope: 'all',
+  items: [
+    { displayName: '石头', typeName: 'minecraft:stone', iconId: 'minecraft:stone', iconData: {id: 7, bag: '{}'}, count: 128, missing: 0, available: 64 },
+  ],
+}), 'lholo:materials');
+assert(!nodeText(materialModal).includes(labels['material.scanningProgress']), 'Hidden/non-scanning state omits scanning hint');
+receive(JSON.stringify({
+  ready: true,
+  progressReady: false,
+  progressScanning: true,
   scope: 'all',
   items: [
     { displayName: '石头', typeName: 'minecraft:stone', iconId: 'minecraft:stone', iconData: {id: 7, bag: '{}'}, count: 128, missing: 0, available: 64 },

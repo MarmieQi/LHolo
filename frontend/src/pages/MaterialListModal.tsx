@@ -73,6 +73,7 @@ export function MaterialListModal({
     displayedMaterials,
     ready,
     progressReady,
+    progressScanning,
     scope,
     setScope,
     sortColumn,
@@ -115,7 +116,7 @@ export function MaterialListModal({
             />
           </div>
           <div className="lholo-material-summary">
-            {formatMaterialSummary(materials, progressReady, labels)}
+            {formatMaterialSummary(materials, progressReady, progressScanning, labels)}
           </div>
           {materials.length === 0 ? (
             <div className="lholo-muted lholo-material-empty">

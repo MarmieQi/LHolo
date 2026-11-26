@@ -11,6 +11,7 @@
 
 #include "block/BlockPlacementRules.h"
 #include "projection/Projection.h"
+#include "structure/StructureFileLoader.h"
 #include "structure/StructureLoader.h"
 #include "structure/StructureSession.h"
 #include "structure/StructureUiState.h"
@@ -80,6 +81,13 @@ struct MaterialHudWorkerState {
     std::optional<MaterialDeltaState>             listDelta;
     MaterialListScope                             publishedListScope{MaterialListScope::All};
     std::uint64_t                                 nextListRefreshAt{};
+    std::uint64_t                                 materialReadId{};
+    std::string                                   pendingReadPath;
+    std::shared_ptr<LoadedStructure const>        pendingReadOwner;
+    int                                           pendingReadSource{-1};
+    MaterialListScope                             pendingReadScope{MaterialListScope::All};
+    std::string                                   cachedHiddenPath;
+    std::shared_ptr<LoadedStructure const>        cachedHiddenStructure;
     std::string                                   plainBlockLocale;
     std::unordered_map<Block const*, ResolvedPlainBlock> plainBlockCache;
 };
@@ -389,13 +397,51 @@ void updateMaterialHud(LocalPlayer& player) {
     worker.nextScheduleAt = now + kMaterialHudRecountIntervalMs;
 }
 
+void cancelPendingMaterialRead(MaterialHudWorkerState& worker) {
+    if (worker.materialReadId != 0) {
+        cancelMaterialStructureRead(worker.materialReadId);
+    }
+    worker.pendingReadPath.clear();
+    worker.pendingReadOwner.reset();
+    worker.pendingReadSource = -1;
+}
+
+void pollPendingMaterialRead() {
+    auto& worker = materialHudWorkerState();
+    auto result = takeMaterialStructureReadResult();
+    if (!result) return;
+    if (result->id != worker.materialReadId || result->worldRevision != structureFileWorldRevision()) {
+        return;
+    }
+    auto const path = std::move(worker.pendingReadPath);
+    auto const owner = std::move(worker.pendingReadOwner);
+    auto const source = worker.pendingReadSource;
+    auto const scope = worker.pendingReadScope;
+    worker.pendingReadPath.clear();
+    worker.pendingReadOwner.reset();
+    worker.pendingReadSource = -1;
+
+    auto& session = StructureSession::getInstance();
+    if (session.loaded() != owner || session.selectedSource() != source) {
+        return;
+    }
+    auto& ui = StructureUiState::getInstance();
+    if (result->loaded) {
+        worker.cachedHiddenPath = path;
+        worker.cachedHiddenStructure = result->loaded;
+        ui.requestMaterialList(scope);
+    } else {
+        ui.replaceMaterialRequirements({}, false, scope, false);
+    }
+}
+
 void publishMaterialListDelta(LocalPlayer& player, MaterialDeltaState const& delta, MaterialListScope scope) {
     auto materials = resolveMaterials(delta.exportFullCounts(), player.getLocaleCode(), player.getLevel());
     auto const available = collectInventoryAvailability(player, materials);
     for (std::size_t index = 0; index < materials.size(); ++index) {
         materials[index].available = available[index];
     }
-    StructureUiState::getInstance().replaceMaterialRequirements(std::move(materials), true, scope);
+    StructureUiState::getInstance().replaceMaterialRequirements(std::move(materials), true, scope, false);
 }
 
 void processPendingMaterialList(LocalPlayer& player) {
@@ -410,34 +456,68 @@ void processPendingMaterialList(LocalPlayer& player) {
     auto const& transform = session.transform;
     std::shared_ptr<LoadedStructure const> targetStructure;
     std::optional<TaskProjectionView> taskView;
+    bool targetVisible{};
     if (loaded && loaded->independentFiles) {
-        if (auto const* file = independentTaskFile(*loaded, source); file && file->visible && file->loaded) {
-            targetStructure = file->loaded;
-            auto files = loaded->independentFiles->files;
-            auto& selectedFile = files[static_cast<std::size_t>(source)];
-            if (scope == MaterialListScope::RenderRange) {
-                selectedFile.slice = LayerSettings{transform.layerAxis, transform.layerDisplayMode, transform.displayLayer};
-            } else {
-                selectedFile.slice = LayerSettings{};
+        if (auto const* file = independentTaskFile(*loaded, source)) {
+            if (file->visible && file->loaded) {
+                targetVisible = true;
+                targetStructure = file->loaded;
+                auto files = loaded->independentFiles->files;
+                auto& selectedFile = files[static_cast<std::size_t>(source)];
+                if (scope == MaterialListScope::RenderRange) {
+                    selectedFile.slice = LayerSettings{transform.layerAxis, transform.layerDisplayMode, transform.displayLayer};
+                } else {
+                    selectedFile.slice = LayerSettings{};
+                }
+                taskView.emplace(files);
+            } else if (!file->visible) {
+                if (file->loaded) {
+                    targetStructure = file->loaded;
+                } else if (!file->path.empty() && worker.cachedHiddenStructure && worker.cachedHiddenPath == file->path) {
+                    targetStructure = worker.cachedHiddenStructure;
+                } else if (!file->path.empty()) {
+                    if (worker.pendingReadOwner == loaded && worker.pendingReadSource == source
+                        && worker.pendingReadPath == file->path) {
+                        worker.pendingReadScope = scope;
+                        return;
+                    }
+                    cancelPendingMaterialRead(worker);
+                    auto const nextId = ++worker.materialReadId;
+                    if (startMaterialStructureRead(nextId, file->path)) {
+                        worker.pendingReadPath = file->path;
+                        worker.pendingReadOwner = loaded;
+                        worker.pendingReadSource = source;
+                        worker.pendingReadScope = scope;
+                        worker.waitingListProgress = false;
+                        worker.publishedListKey.reset();
+                        worker.listDelta.reset();
+                        worker.publishedListScope = scope;
+                        ui.markMaterialListLoading();
+                        return;
+                    }
+                }
             }
-            taskView.emplace(files);
         }
     } else if (loaded) {
+        targetVisible = true;
         targetStructure = loaded;
     }
 
+    cancelPendingMaterialRead(worker);
     bool progressReady{};
     std::optional<MaterialHudKey> usedKey;
     std::optional<MaterialDeltaState> builtDelta;
     std::vector<MaterialRequirement> materials;
     if (targetStructure) {
         std::optional<MaterialHudInput> progressSnapshot;
-        if (auto const key = currentMaterialHudKey()) {
-            if (auto captured = captureMaterialHudInput(*key);
-                captured && captured->structure == targetStructure
-                && captured->progressCorrect.size() == targetStructure->renderBlocks.size()) {
-                usedKey = captured->key;
-                progressSnapshot = std::move(captured);
+        if (targetVisible) {
+            if (auto const key = currentMaterialHudKey()) {
+                if (auto captured = captureMaterialHudInput(*key);
+                    captured && captured->structure == targetStructure
+                    && captured->progressCorrect.size() == targetStructure->renderBlocks.size()) {
+                    usedKey = captured->key;
+                    progressSnapshot = std::move(captured);
+                }
             }
         }
         progressReady = progressSnapshot.has_value();
@@ -476,7 +556,8 @@ void processPendingMaterialList(LocalPlayer& player) {
             materials[index].available = available[index];
         }
     }
-    worker.waitingListProgress = targetStructure && !progressReady;
+    bool const progressScanning = targetVisible && targetStructure && !progressReady;
+    worker.waitingListProgress = progressScanning;
     worker.publishedListKey = usedKey;
     worker.listDelta = std::move(builtDelta);
     worker.publishedListScope = scope;
@@ -489,7 +570,7 @@ void processPendingMaterialList(LocalPlayer& player) {
         ui.requestMaterialList(scope);
         return;
     }
-    ui.replaceMaterialRequirements(std::move(materials), progressReady, scope);
+    ui.replaceMaterialRequirements(std::move(materials), progressReady, scope, progressScanning);
     // Cover the narrow hand-off where the active structure changes between the
     // identity check above and publishing the snapshot.
     if (StructureSession::getInstance().loaded() != loaded || StructureSession::getInstance().selectedSource() != source) {
@@ -538,7 +619,7 @@ void refreshOpenMaterialList(LocalPlayer& player) {
     if (now < worker.nextListRefreshAt) return;
     worker.nextListRefreshAt = now + kAvailabilityRefreshMs;
 
-    if (key && !worker.publishedListKey) {
+    if (key && !worker.publishedListKey && worker.waitingListProgress) {
         ui.requestMaterialList(ui.requestedMaterialListScope());
         return;
     }
@@ -586,7 +667,11 @@ void tickMaterialTracker(LocalPlayer& player) {
         worker.publishedListKey.reset();
         worker.listDelta.reset();
         worker.nextListRefreshAt = 0;
+        cancelPendingMaterialRead(worker);
+        worker.cachedHiddenPath.clear();
+        worker.cachedHiddenStructure.reset();
     }
+    pollPendingMaterialRead();
     if (worker.waitingListProgress && currentMaterialHudKey()) {
         worker.waitingListProgress = false;
         auto& ui = StructureUiState::getInstance();
@@ -615,6 +700,10 @@ void shutdownMaterialTracker() {
     worker.publishedListKey.reset();
     worker.listDelta.reset();
     worker.nextListRefreshAt = 0;
+    cancelPendingMaterialRead(worker);
+    worker.materialReadId = 0;
+    worker.cachedHiddenPath.clear();
+    worker.cachedHiddenStructure.reset();
     worker.plainBlockCache.clear();
     worker.plainBlockLocale.clear();
     materialInvalidated.store(false, std::memory_order_relaxed);

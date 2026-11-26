@@ -24,6 +24,7 @@ export type MaterialScope = 'all' | 'render';
 export interface MaterialsState {
   ready: boolean;
   progressReady: boolean;
+  progressScanning: boolean;
   scope: MaterialScope;
   items: readonly MaterialItem[];
 }
@@ -126,6 +127,7 @@ export function parseMaterials(payload: string): MaterialsState {
   if (!value || typeof value !== 'object'
     || !('ready' in value) || typeof value.ready !== 'boolean'
     || !('progressReady' in value) || typeof value.progressReady !== 'boolean'
+    || ('progressScanning' in value && typeof value.progressScanning !== 'boolean')
     || !('scope' in value) || (value.scope !== 'all' && value.scope !== 'render')
     || !('items' in value) || !Array.isArray(value.items)
     || !value.items.every((item: unknown) => {
@@ -145,6 +147,7 @@ export function parseMaterials(payload: string): MaterialsState {
   return {
     ready: value.ready,
     progressReady: value.progressReady,
+    progressScanning: 'progressScanning' in value ? (value.progressScanning as boolean) : false,
     scope: value.scope,
     items: value.items as MaterialItem[],
   };

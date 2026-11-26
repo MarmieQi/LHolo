@@ -10,6 +10,7 @@ struct CompositionFile {
     bool visible{true};
     int x{}, y{}, z{}, rotation{}, mirror{};
     LayerSettings slice;
+    std::string path;
 };
 struct Composition {
     std::shared_ptr<LoadedStructure> loaded;

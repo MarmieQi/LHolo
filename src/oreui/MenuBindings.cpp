@@ -85,6 +85,7 @@ std::optional<std::string> takeMaterialsUpdate(IClientInstance const& client, bo
     auto state = nlohmann::json{
         {"ready", snapshot->ready},
         {"progressReady", snapshot->progressReady},
+        {"progressScanning", snapshot->progressScanning},
         {"scope", snapshot->scope == structure::detail::MaterialListScope::RenderRange ? "render" : "all"},
         {"items", std::move(items)},
     }.dump();

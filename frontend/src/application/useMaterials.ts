@@ -3,7 +3,7 @@ import type { MaterialItem, MaterialScope, MaterialsBridge, MaterialsState, Menu
 
 export type MaterialSortColumn = 'total' | 'missing' | 'available';
 
-const initialState: MaterialsState = { ready: false, progressReady: false, scope: 'all', items: [] };
+const initialState: MaterialsState = { ready: false, progressReady: false, progressScanning: false, scope: 'all', items: [] };
 
 export function formatMaterialDisplayName(item: MaterialItem, labels: MenuLabels): string {
   if (item.nameKey && labels[item.nameKey]) {
@@ -15,6 +15,7 @@ export function formatMaterialDisplayName(item: MaterialItem, labels: MenuLabels
 export function formatMaterialSummary(
   materials: readonly MaterialItem[],
   progressReady: boolean,
+  progressScanning: boolean,
   labels: MenuLabels
 ): string {
   let total = 0;
@@ -26,10 +27,13 @@ export function formatMaterialSummary(
   const base = labels['label.materialSummary']
     .replace('%llu', String(total))
     .replace('%zu', String(materials.length));
-  const detail = progressReady
-    ? labels['material.summaryMissing'].replace('%llu', String(missing))
-    : labels['material.scanningProgress'];
-  return `${base} · ${detail}`;
+  if (progressReady) {
+    return `${base} · ${labels['material.summaryMissing'].replace('%llu', String(missing))}`;
+  }
+  if (progressScanning && materials.length > 0) {
+    return `${base} · ${labels['material.scanningProgress']}`;
+  }
+  return base;
 }
 
 export function visibleMaterials(
@@ -101,6 +105,7 @@ export function useMaterials(bridge: MaterialsBridge) {
     isOpen,
     ready: state.ready,
     progressReady: state.progressReady,
+    progressScanning: state.progressScanning,
     scope,
     setScope,
     openModal,

@@ -28,7 +28,7 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
     { displayName: '石砖', typeName: 'minecraft:stone_bricks', iconId: 'stone_bricks', count: 80, missing: 0, available: 0 },
   ];
 
-  let materials: MaterialsState = {ready:false,progressReady:false,scope:'all',items:[]};
+  let materials: MaterialsState = {ready:false,progressReady:false,progressScanning:false,scope:'all',items:[]};
   let projection: ProjectionState = {worldAvailable:true,loading:false,hasProjection:false};
   let capture: CaptureState = {
     draft:{first:null,second:null,includeEntities:false},revision:0,ack:0,
@@ -132,9 +132,9 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
           queueMicrotask(() => {emit('lholo:menu-labels',labels);publish();});break;
         case 'lholo.menu.close': notice('这是浏览器开发预览。关闭此标签页即可退出。');break;
         case 'lholo.materials.request':
-          materials=projection.hasProjection?{ready:true,progressReady:true,scope:'all',items:previewMaterials}:{ready:false,progressReady:false,scope:'all',items:[]};publish();break;
+          materials=projection.hasProjection?{ready:true,progressReady:true,progressScanning:false,scope:'all',items:previewMaterials}:{ready:false,progressReady:false,progressScanning:false,scope:'all',items:[]};publish();break;
         case 'lholo.materials.request-render':
-          materials=projection.hasProjection?{ready:true,progressReady:true,scope:'render',items:previewRenderMaterials}:{ready:false,progressReady:false,scope:'render',items:[]};publish();break;
+          materials=projection.hasProjection?{ready:true,progressReady:true,progressScanning:false,scope:'render',items:previewRenderMaterials}:{ready:false,progressReady:false,progressScanning:false,scope:'render',items:[]};publish();break;
         case 'lholo.capture.blocks':
           emit('lholo:capture-blocks', [
             {id:'minecraft:stone_bricks', name:'石砖'},
@@ -156,11 +156,11 @@ export function createPreviewEngine(labels: MenuLabels, notice: (message: string
     capture={...capture,busy:false,worldAvailable:name!=='no-world',revision:capture.revision+1,error:''};
     if(name==='loaded') {
       projection={...projection,hasProjection:true};render={...render,maximum:[11,15,4]};
-      materials={ready:true,progressReady:true,scope:'all',items:previewMaterials};
+      materials={ready:true,progressReady:true,progressScanning:false,scope:'all',items:previewMaterials};
     } else if(name==='selection') {
       capture={...capture,status:labels['captureStatus.selectionReady'],draft:{first:{x:-79,y:-60,z:43},second:{x:-80,y:-60,z:29},includeEntities:false}};
     } else if(name==='no-world'||name==='reset') {
-      projection={...projection,hasProjection:false};materials={ready:false,progressReady:false,scope:'all',items:[]};
+      projection={...projection,hasProjection:false};materials={ready:false,progressReady:false,progressScanning:false,scope:'all',items:[]};
       render={...render,maximum:[0,0,0],values:{...render.values,axis:0,mode:0,layer:0}};
       capture={...capture,status:labels[name==='no-world'?'captureStatus.noWorld':'captureStatus.needTwoPoints'],draft:{first:null,second:null,includeEntities:false}};
     }

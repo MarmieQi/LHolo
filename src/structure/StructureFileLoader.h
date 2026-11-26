@@ -40,4 +40,10 @@ bool startStructureRead(std::uint64_t id, std::string path);
 void cancelStructureRead(std::uint64_t id);
 std::shared_ptr<StructureReadResult const> takeStructureReadResult();
 
+// Dedicated read-only channel for on-demand hidden/other-dimension material
+// lists, isolated from preview cancellation and task composition state.
+bool startMaterialStructureRead(std::uint64_t id, std::string path);
+void cancelMaterialStructureRead(std::uint64_t id);
+std::shared_ptr<StructureReadResult const> takeMaterialStructureReadResult();
+
 } // namespace lholo::structure::detail
