@@ -1,6 +1,8 @@
 #include "ui/preview/StructurePreviewRenderer.h"
 #include "ui/preview/StructurePreviewTransform.h"
 #include "ui/preview/StructurePreviewStorage.h"
+#include "render/OverlayMaterials.h"
+#include "render/ScopedShaderColor.h"
 #include "structure/StructureLoader.h"
 #include "structure/StructurePaths.h"
 #include "plugin/LHolo.h"
@@ -14,8 +16,11 @@
 #include "mc/client/gui/controls/renderers/StructureVolumeRenderer.h"
 #include "mc/client/gui/screens/ScreenContext.h"
 #include "mc/client/renderer/BaseActorRenderContext.h"
+#include "mc/client/renderer/SupplementaryFieldAutoGenerationMode.h"
 #include "mc/client/renderer/Tessellator.h"
 #include "mc/client/renderer/game/GameRenderer.h"
+#include "mc/deps/minecraft_renderer/framebuilder/dragon/RenderMetadata.h"
+#include "mc/deps/minecraft_renderer/renderer/Mesh.h"
 #include "mc/deps/renderer/Camera.h"
 #include "mc/client/renderer/screen/MinecraftUIRenderContext.h"
 #include "mc/client/renderer/block/tessellation_pipeline/client_block_pipeline/TessellatorContext.h"
@@ -39,6 +44,7 @@
 #include "mc/world/level/block/actor/component/IVanillaRenderBlockActorComponent.h"
 #include "mc/dataloadhelper/NewUniqueIdsDataLoadHelper.h"
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <stdexcept>
 
@@ -52,6 +58,57 @@ thread_local glm::vec2 activeCenter{};
 thread_local float activeZoom{1};
 thread_local bool zoomApplied{};
 thread_local char const** activeStage{};
+thread_local mce::Mesh const* activeBoundsMesh{};
+
+OffscreenCaptureDescription const& emptyOffscreenCaptureDescription() {
+    using Storage = decltype(dragon::RenderMetadata::mOffscreenCaptureDescription);
+    static Storage empty{};
+    return empty.get();
+}
+
+std::unique_ptr<mce::Mesh> buildPreviewBoundsMesh(Tessellator& tessellator, Vec3 const& extent) {
+    float const diag = std::sqrt(extent.x * extent.x + extent.y * extent.y + extent.z * extent.z);
+    float const h = std::max(0.008f, diag * 0.0009f);
+    float const x0 = -h, y0 = -h, z0 = -h;
+    float const x1 = extent.x + h, y1 = extent.y + h, z1 = extent.z + h;
+    // 12 edges x 6 faces x 2 triangles x 3 vertices = 432 vertices.
+    tessellator.begin(Tessellator::DebugContextCallback{}, mce::PrimitiveMode::TriangleList, 432, false);
+    auto v = [&](float x, float y, float z) {
+        tessellator.tex2({0.5f, 0.5f});
+        tessellator.vertex(x, y, z);
+    };
+    auto quad = [&](Vec3 a, Vec3 b, Vec3 c, Vec3 d) {
+        v(a.x, a.y, a.z); v(b.x, b.y, b.z); v(c.x, c.y, c.z);
+        v(a.x, a.y, a.z); v(c.x, c.y, c.z); v(d.x, d.y, d.z);
+    };
+    auto bar = [&](Vec3 a, Vec3 b, float r, float g, float bl) {
+        tessellator.color(r, g, bl, 1.f);
+        float const bx0 = std::min(a.x, b.x) - h, bx1 = std::max(a.x, b.x) + h;
+        float const by0 = std::min(a.y, b.y) - h, by1 = std::max(a.y, b.y) + h;
+        float const bz0 = std::min(a.z, b.z) - h, bz1 = std::max(a.z, b.z) + h;
+        quad({bx0, by0, bz0}, {bx0, by1, bz0}, {bx1, by1, bz0}, {bx1, by0, bz0}); // -Z
+        quad({bx0, by0, bz1}, {bx1, by0, bz1}, {bx1, by1, bz1}, {bx0, by1, bz1}); // +Z
+        quad({bx0, by0, bz0}, {bx0, by0, bz1}, {bx0, by1, bz1}, {bx0, by1, bz0}); // -X
+        quad({bx1, by0, bz0}, {bx1, by1, bz0}, {bx1, by1, bz1}, {bx1, by0, bz1}); // +X
+        quad({bx0, by0, bz0}, {bx1, by0, bz0}, {bx1, by0, bz1}, {bx0, by0, bz1}); // -Y
+        quad({bx0, by1, bz0}, {bx0, by1, bz1}, {bx1, by1, bz1}, {bx1, by1, bz0}); // +Y
+    };
+    // Bars 0: X axis (red, 0..35), 1: Y axis (green, 36..71), 2: Z axis (blue, 72..107), 3..11: white (108..431).
+    bar({x0, y0, z0}, {x1, y0, z0}, 1.f, 0.f, 0.f);
+    bar({x0, y0, z0}, {x0, y1, z0}, 0.f, 1.f, 0.f);
+    bar({x0, y0, z0}, {x0, y0, z1}, 0.f, 0.7f, 1.f);
+    bar({x1, y0, z0}, {x1, y1, z0}, 1.f, 1.f, 1.f);
+    bar({x1, y1, z0}, {x0, y1, z0}, 1.f, 1.f, 1.f);
+    bar({x0, y0, z1}, {x1, y0, z1}, 1.f, 1.f, 1.f);
+    bar({x1, y0, z1}, {x1, y1, z1}, 1.f, 1.f, 1.f);
+    bar({x1, y1, z1}, {x0, y1, z1}, 1.f, 1.f, 1.f);
+    bar({x0, y1, z1}, {x0, y0, z1}, 1.f, 1.f, 1.f);
+    bar({x1, y0, z0}, {x1, y0, z1}, 1.f, 1.f, 1.f);
+    bar({x1, y1, z0}, {x1, y1, z1}, 1.f, 1.f, 1.f);
+    bar({x0, y1, z0}, {x0, y1, z1}, 1.f, 1.f, 1.f);
+    return std::make_unique<mce::Mesh>(tessellator.end(
+        Tessellator::UploadMode::Buffered, "LHoloPreviewBounds", SupplementaryFieldAutoGenerationMode{0}));
+}
 // StructureVolumeRenderer copies its fitted world matrix to GameRenderer
 // before dispatching geometry. Keep that render-graph snapshot and the live
 // camera in sync; changing the projection stack alone is not consumed here.
@@ -98,6 +155,59 @@ LL_TYPE_INSTANCE_HOOK(PreviewBlocks, ll::memory::HookPriority::Normal,
     if (activeStage) *activeStage = "native-block-meshes";
     GeometryZoom zoom{&context.mScreenContext};
     auto const result = origin(context, *activeSource, area);
+    if (activeBoundsMesh && activeBoundsMesh->isValid()) {
+        auto const& material = this->mAxesMaterial.get();
+        if (render::materialExists(material)) {
+            Vec3 const extent = area.max - area.min;
+            Vec3 const half = extent * 0.5f;
+            auto const& top = context.mScreenContext.camera.worldMatrixStack.get().top()._m.get();
+            auto distToCenter = [&](Vec3 p) {
+                glm::vec4 const projected = top * glm::vec4{p.x, p.y, p.z, 1.f};
+                glm::vec2 const delta{projected.x - activeCenter.x, projected.y - activeCenter.y};
+                return glm::dot(delta, delta);
+            };
+            // Match whichever origin StructureVolumeRenderer used for the fitted matrix
+            // (world coordinates, area-local [0..extent], or centered [-half..+half]).
+            Vec3 const offset = [&] {
+                float const dWorld = distToCenter(area.min + half);
+                float const dLocal = distToCenter(half);
+                float const dCentered = distToCenter(Vec3{0.f, 0.f, 0.f});
+                if (dWorld <= dLocal && dWorld <= dCentered) return area.min;
+                if (dLocal <= dCentered) return Vec3{0.f, 0.f, 0.f};
+                return Vec3{-half.x, -half.y, -half.z};
+            }();
+            auto* levelRenderer = context.mClientInstance.getLevelRenderer();
+            auto const texture = levelRenderer
+                ? render::resolveWhiteTextureVariant(*levelRenderer)
+                : render::TextureVariant{};
+            auto matrix = context.mScreenContext.camera.worldMatrixStack.get().push(false);
+            matrix.mat->translate(offset.x, offset.y, offset.z);
+            // Match _renderBlocks's viewport clipping: RenderDragon's 3D chunk
+            // shaders ignore UI normalizedClipRegion, whereas mAxesMaterial obeys it.
+            struct UnclippedBoundsScope {
+                ScreenContext& screen;
+                std::optional<glm::vec4> saved;
+                ~UnclippedBoundsScope() { screen.normalizedClipRegion = saved; }
+            } unclipped{context.mScreenContext, context.mScreenContext.normalizedClipRegion.get()};
+            context.mScreenContext.normalizedClipRegion = std::nullopt;
+            auto drawSegment = [&](uint startOffset, uint count, mce::Color rgba) {
+                render::ScopedShaderColor color{context.mScreenContext.currentShaderColor, rgba};
+                activeBoundsMesh->renderMesh(
+                    context.mScreenContext,
+                    material,
+                    texture,
+                    startOffset,
+                    count,
+                    emptyOffscreenCaptureDescription(),
+                    nullptr
+                );
+            };
+            drawSegment(0, 36, mce::Color{1.f, 0.f, 0.f, 1.f});    // X axis (red)
+            drawSegment(36, 36, mce::Color{0.f, 1.f, 0.f, 1.f});   // Y axis (green)
+            drawSegment(72, 36, mce::Color{0.f, 0.7f, 1.f, 1.f});  // Z axis (blue)
+            drawSegment(108, 324, mce::Color{1.f, 1.f, 1.f, 1.f}); // Remaining 9 white edges
+        }
+    }
     if (activeStage) *activeStage = "native-render";
     return result;
 }
@@ -164,6 +274,7 @@ struct StructurePreviewRenderer::Impl {
     // Delete through the native virtual base: the generated derived header's
     // default destructor omits source-listener/garbage cleanup done by the game.
     std::unique_ptr<UICustomRenderer> rendererOwner; // destroyed before source/chunks
+    std::unique_ptr<mce::Mesh> boundsMesh;
     StructureVolumeRenderer* renderer{};
     std::string error;
     std::size_t cursor{};
@@ -247,6 +358,10 @@ void StructurePreviewRenderer::render(MinecraftUIRenderContext& context, ClientI
             // The wrapper keeps its normal listener lifecycle; only this
             // renderer's geometry and block-entity reads use the private source.
             s.renderer->mLastArea = area;
+            s.boundsMesh = buildPreviewBoundsMesh(
+                context.mScreenContext.tessellator,
+                {static_cast<float>(f.sizeX), static_cast<float>(f.sizeY), static_cast<float>(f.sizeZ)}
+            );
         }
         auto& bag = owner.getPropertyBag().mJsonValue.get();
         auto array = [](int x, int y, int z) {
@@ -286,19 +401,20 @@ void StructurePreviewRenderer::render(MinecraftUIRenderContext& context, ClientI
             glm::vec2 previousCenter;
             float previousZoom;
             char const** previousStage;
+            mce::Mesh const* previousBoundsMesh;
             StructureVolumeRenderer& renderer;
             ~SourceScope() {
                 renderer.mUnsafeSourcePointer = nullptr;
                 activeRenderer = previousRenderer; activeSource = previousSource;
                 activeScreen = previousScreen; activeZoom = previousZoom;
                 activeGameRenderer = previousGameRenderer; activeCenter = previousCenter;
-                activeStage = previousStage;
+                activeStage = previousStage; activeBoundsMesh = previousBoundsMesh;
             }
-        } sourceScope{activeRenderer, activeSource, activeScreen, activeGameRenderer, activeCenter, activeZoom, activeStage, *s.renderer};
+        } sourceScope{activeRenderer, activeSource, activeScreen, activeGameRenderer, activeCenter, activeZoom, activeStage, activeBoundsMesh, *s.renderer};
         activeRenderer = s.renderer; activeSource = s.region.get();
         activeScreen = &context.mScreenContext; activeZoom = zoom;
         activeGameRenderer = &client.getGameRenderer(); activeCenter = position + size * 0.5f;
-        activeStage = &s.stage;
+        activeStage = &s.stage; activeBoundsMesh = s.boundsMesh.get();
         // This renderer never subscribes to real-world block changes. The
         // preview scene owns its Level guard and the private data is immutable.
         s.renderer->mInitialize = false;

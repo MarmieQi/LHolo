@@ -46,7 +46,7 @@ StructureReadQueue 最多持有一个正在执行的读取和一个取消后重�
 
 区块构建器使用独立 Tessellator。资源释放顺序：原生 renderer/builder → pipeline → tessellator → BlockSource → chunks → 文件引用。原生渲染器经虚拟基类析构，避免生成的派生析构遗漏游戏资源。LevelListener 在世界注册表销毁前清理预览渲染资源。
 
-旋转使用原生相机。缩放只在几何绘制期间调整拟合后的 GUI 空间世界矩阵，同时同步 GameRenderer 快照，作用域退出恢复两者；不缩放 UIControl 或坐标轴。裁切固定在模型区域并恢复调用前状态。异常后停止后续绘制，资源保留至正常场景释放，不在当前批次内立即销毁。
+旋转使用原生相机。缩放只在几何绘制期间调整拟合后的 GUI 空间世界矩阵，同时同步 GameRenderer 快照，作用域退出恢复两者；不缩放 UIControl 或坐标轴。裁切固定在模型区域并恢复调用前状态。结构整体外框在预览初始化时一次性构建并缓存（原点 X/Y/Z 轴为红/绿/蓝，其余 9 条边为白色，按包围盒对角线自适应细方柱厚度），复用 `StructureVolumeRenderer::mAxesMaterial` 与原版纯白纹理，绘制期间临时放开 UI `normalizedClipRegion` 以与 `_renderBlocks` 3D 方块视口保持一致并在退出作用域后恢复。异常后停止后续绘制，资源保留至正常场景释放，不在当前批次内立即销毁。
 
 ## 验证与维护
 

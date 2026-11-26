@@ -9,7 +9,7 @@ inline constexpr char kStructurePreviewDefinition[] = R"json({
   "controls":[
     {"preview_backdrop":{"type":"custom","renderer":"gradient_renderer","layer":0,
       "color1":[0,0,0,0],"color2":[0,0,0,0]}},
-    {"preview_frame":{"type":"panel","size":["93%","72%"],
+    {"preview_frame":{"type":"panel","size":["93%","90%"],
       "anchor_from":"center","anchor_to":"center","layer":1,"controls":[
     {"lholo_preview_canvas":{"type":"custom","renderer":"3d_structure_renderer","layer":1,
       "size":["92%","80%"],"anchor_from":"center","anchor_to":"center",
