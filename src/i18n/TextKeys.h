@@ -310,6 +310,7 @@
     LHOLO_TEXT_KEY("checkbox.localShulkerRestock", CheckboxLocalShulkerRestock, "")                                        \
     LHOLO_TEXT_KEY("placement.groupModes", PlacementGroupModes, "") \
     LHOLO_TEXT_KEY("placement.groupRestock", PlacementGroupRestock, "") \
+    LHOLO_TEXT_KEY("placement.groupSettings", PlacementGroupSettings, "") \
     LHOLO_TEXT_KEY("checkbox.localCreativeRestock", CheckboxLocalCreativeRestock, "")                                        \
     LHOLO_TEXT_KEY("checkbox.localCreativeRestockOverwrite", CheckboxLocalCreativeRestockOverwrite, "")                      \
     LHOLO_TEXT_KEY("mode.manual", ModeManual, "")                                                        \

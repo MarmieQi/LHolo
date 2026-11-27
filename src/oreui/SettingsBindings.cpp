@@ -9,7 +9,15 @@
 #include "mc/client/game/ClientInstance.h"
 #include "mc/client/game/ClientInstanceState.h"
 namespace lholo::oreui {
-namespace { std::mutex mutex; std::string published; }
+namespace {
+struct PublishedSettings {
+    app::SettingsSnapshot snapshot;
+    i18n::Language language{};
+    bool operator==(PublishedSettings const&) const = default;
+};
+std::mutex mutex;
+std::optional<PublishedSettings> published;
+}
 bool queueSettingsIntent(std::string_view payload) {
     auto i = parseSettingsIntent(payload);
     if (!i) return false;
@@ -25,6 +33,10 @@ bool queueSettingsIntent(std::string_view payload) {
 std::optional<std::string> takeSettingsUpdate(bool force) {
     std::lock_guard lock(mutex);
     auto s = app::getSettingsSnapshot();
+    auto const lang = i18n::language();
+    PublishedSettings current{s, lang};
+    if (!force && published == current) return std::nullopt;
+    published = std::move(current);
     nlohmann::json values = nlohmann::json::object(), hotkeys = nlohmann::json::array(), languages = nlohmann::json::array();
     for (std::size_t n = 0; n < s.values.size(); ++n)
         std::visit([&](auto const& v) { values[std::string{kSettingsNames[n]}] = v; }, s.values[n]);
@@ -38,11 +50,9 @@ std::optional<std::string> takeSettingsUpdate(bool force) {
     }
     languages.push_back({{"code", i18n::kFollowGameLanguageCode}, {"name", i18n::tr(i18n::TextKey::LabelFollowGameLanguage)}});
     for (auto const& language : i18n::languages()) languages.push_back({{"code", language.code}, {"name", language.displayName}});
-    auto state = nlohmann::json{{"values", values}, {"hotkeys", hotkeys}, {"languages", languages},
+    return nlohmann::json{{"values", values}, {"hotkeys", hotkeys}, {"languages", languages},
         {"consent", s.consent}, {"localRangeAvailable", s.localRangeAvailable}, {"hotkeysRevision", s.hotkeysRevision}, {"context", s.context}, {"ack", s.ack}, {"accepted", s.accepted}}.dump();
-    if (!force && state == published) return std::nullopt;
-    published = state; return state;
 }
 void cancelSettingsHotkeyCapture() { app::requestHotkeyCaptureCancel(); }
-void resetSettingsBindings() { std::lock_guard lock(mutex); published.clear(); app::resetSettingsActions(); }
+void resetSettingsBindings() { std::lock_guard lock(mutex); published.reset(); app::resetSettingsActions(); }
 }

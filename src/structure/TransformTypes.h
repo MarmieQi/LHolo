@@ -3,7 +3,10 @@
 
 namespace lholo::structure {
 enum class TransformField { Rotation, Mirror, X, Y, Z };
-struct TransformValues { int rotation{}, mirror{}, x{}, y{}, z{}; };
+struct TransformValues {
+    int rotation{}, mirror{}, x{}, y{}, z{};
+    bool operator==(TransformValues const&) const = default;
+};
 struct TransformEdit {
     std::uint64_t id{}, context{};
     TransformField field{};
@@ -13,6 +16,7 @@ struct TransformState {
     TransformValues values;
     std::uint64_t context{}, ack{};
     bool accepted{};
+    bool operator==(TransformState const&) const = default;
 };
 inline bool validTransformEdit(TransformEdit const& edit) {
     if (!edit.id) return false;

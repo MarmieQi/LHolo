@@ -4,7 +4,7 @@
 /* Shared frame dimensions: match Android's inset floating card ratio across viewport sizes. */
 .lholo-menu, .lholo-material-modal { box-sizing:border-box; width:93vw; height:90vh; min-height:0; flex-shrink:0; }
 .lholo-menu { flex-direction:row; padding:0; overflow:hidden; border-radius:0.5rem; background-color:#131313; border:0.06rem solid #2e2e30; }
-.lholo-sidebar { width:11.5rem; height:100%; flex-shrink:0; min-height:0; border-right:0.06rem solid #2e2e30; background-color:#131313; }
+.lholo-sidebar { width:20%; min-width:9rem; max-width:11.5rem; height:100%; flex-shrink:0; min-height:0; border-right:0.06rem solid #2e2e30; background-color:#131313; }
 .lholo-sidebar-header { height:3.25rem; flex-shrink:0; justify-content:center; padding:0 1rem; }
 .lholo-brand { font-size:1.12rem; font-weight:600; line-height:1.4; color:#f5f5f5; }
 .lholo-main { flex:1; min-width:0; height:100%; min-height:0; }
@@ -132,8 +132,12 @@
 .lholo-tab-content { padding-top:0.2rem; }
 .lholo-hud-master { padding-bottom:0.65rem; border-bottom:0.06rem solid #303030; }
 .lholo-settings-columns { flex-direction:row; flex-wrap:wrap; margin-top:0.9rem; }
+.lholo-settings-columns.is-equal-cards { align-items:stretch; }
 .lholo-settings-column { box-sizing:border-box; flex:1 1 16rem; min-width:16rem; }
 .lholo-settings-column:first-child { padding-right:1.3rem; }
+.lholo-settings-columns.is-equal-cards > .lholo-settings-column > .lholo-group-section,
+.lholo-settings-columns.is-equal-cards > .lholo-settings-column > .lholo-group-section > .lholo-group,
+.lholo-settings-columns.is-equal-cards > .lholo-settings-column > .lholo-group-section > .lholo-group > .lholo-checkbox-row { flex:1; }
 .lholo-settings-group + .lholo-settings-group { margin-top:0.75rem; }
 .lholo-settings-group-title { color:#a0a0a0; font-size:0.9rem; line-height:1.5; margin-bottom:0.2rem; }
 .lholo-settings-option { min-height:2.2rem; }
@@ -397,12 +401,13 @@
 
 /* Narrow previews retain the same controls, with deliberate label wrapping. */
 @media (max-width:800px) {
-  .lholo-sidebar { width:9.5rem; }
+  .lholo-menu, .lholo-material-modal { width:96vw; height:94vh; }
+  .lholo-sidebar { width:24%; min-width:7.5rem; max-width:9.5rem; }
   .lholo-navigation { padding:0.35rem 0.45rem 0.65rem; }
   .lholo-navigation-item { padding:0 0.6rem; }
   .lholo-navigation-item .lholo-button-label { font-size:0.9rem; }
   .lholo-menu-header { padding-left:0.9rem; }
-  .lholo-content { padding-left:0.9rem; padding-right:0.9rem; }
+  .lholo-content { padding:0.9rem 0.9rem 1.2rem; }
   .lholo-settings-column { flex-basis:100%; min-width:0; }
   .lholo-settings-column:first-child { padding-right:0; }
   .lholo-settings-column + .lholo-settings-column { margin-top:0.75rem; }
@@ -413,6 +418,8 @@
   .lholo-hotkey-bind .lholo-button-label { flex-shrink:1; overflow-wrap:break-word; }
 }
 @media (max-width:640px) {
+  .lholo-group-row { flex-wrap:wrap; }
+  .lholo-group-row-text { flex-basis:100%; margin-right:0; margin-bottom:0.35rem; }
   .lholo-setting-row > .lholo-transform-label, .lholo-setting-row > .lholo-interface-label, .lholo-setting-row > .lholo-experimental-label, .lholo-setting-row > .lholo-opacity-label { flex:none; width:100%; min-width:0; margin-right:0; margin-bottom:0.3rem; }
   .lholo-setting-row > .lholo-select { min-width:0; }
   .lholo-setting-row > .lholo-stepper { min-width:0; }

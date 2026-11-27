@@ -55,6 +55,7 @@ window.__LHoloOreUiRuntime = {
         return e.createElement(uw, {
             defaultRoute: '/lholo-menu', errorComponent: qN,
             semanticCollection: IP, wrapperComponent: yG,
+            deviceInformationOptions: {trackAllUserInput: true},
             isKeyboardHintsEnabled: true, theme: 'menus'
         }, e.createElement(Cl, {
             route: '/lholo-menu', component: props.component, transitionComponent: cl

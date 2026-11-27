@@ -11,6 +11,7 @@ struct RenderValues {
     structure::LayerSettings layers;
     int fill{}, outline{}; // UI percentages; projection retains its float API
     bool correctionSeeThrough{}, missingSeeThrough{};
+    bool operator==(RenderValues const&) const = default;
 };
 struct RenderFieldEdit { RenderField field; RenderValue expected, value; };
 struct RenderSettingsEdit {
@@ -23,6 +24,7 @@ struct RenderSettingsState {
     std::array<int, 3> maximum{};
     std::uint64_t context{}, ack{};
     bool accepted{};
+    bool operator==(RenderSettingsState const&) const = default;
 };
 RenderValue renderValue(RenderValues const& values, RenderField field);
 bool validRenderEdit(RenderSettingsEdit const& edit);

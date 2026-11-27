@@ -32,6 +32,8 @@ struct Snapshot {
     bool        worldAvailable{};
     std::string status;
     std::uint64_t revision{};
+
+    bool operator==(Snapshot const&) const = default;
 };
 
 struct Bounds {

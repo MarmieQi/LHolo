@@ -32,7 +32,7 @@ export function ExperimentalPage(props: ExperimentalPageProps) {
     ]} />
     <div className="lholo-tab-content">
       {tab === 'singleplayer' ? <>
-        <div className="lholo-settings-columns">
+        <div className="lholo-settings-columns is-equal-cards">
           <div className="lholo-settings-column">
             <LHoloSectionGroup title={labels['placement.groupModes']}>
               <LHoloCheckbox row label={labels['checkbox.manualPlace']} value={experimental.localManualEnabled}
@@ -41,8 +41,6 @@ export function ExperimentalPage(props: ExperimentalPageProps) {
                 disabled={localModesDisabled} onChange={experimental.toggleLocalEasy} />
               <LHoloCheckbox row label={labels['checkbox.rangePlace']} value={experimental.localRangeEnabled}
                 disabled={localModesDisabled} onChange={experimental.toggleLocalRange} />
-              <LHoloCheckbox row label={labels['checkbox.localPlacementLiquidsDisabled']} value={experimental.localLiquidsDisabled}
-                disabled={!experimental.ready} onChange={experimental.setLocalLiquidsDisabled} />
             </LHoloSectionGroup>
           </div>
           <div className="lholo-settings-column">
@@ -112,7 +110,11 @@ function RangeSettings({ labels, experimental, local }: Pick<ExperimentalPagePro
   const cooldownLabel = labels['label.autoPlacementCooldown'];
 
   return (
-    <LHoloSectionGroup>
+    <LHoloSectionGroup title={labels['placement.groupSettings']}>
+      {local ? (
+        <LHoloCheckbox row label={labels['checkbox.localPlacementLiquidsDisabled']} value={experimental.localLiquidsDisabled}
+          disabled={!experimental.ready} onChange={experimental.setLocalLiquidsDisabled} />
+      ) : null}
       <LHoloSettingRow label={radiusLabel}>
         <div className="lholo-stepper">
           <LHoloStepButton direction="dec" disabled={!experimental.ready}

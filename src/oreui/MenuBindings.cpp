@@ -16,8 +16,14 @@
 
 namespace lholo::oreui {
 namespace {
+struct ProjectionState {
+    bool worldAvailable{};
+    bool loading{};
+    bool hasProjection{};
+    bool operator==(ProjectionState const&) const = default;
+};
 std::mutex bindingsMutex;
-std::string publishedProjection;
+std::optional<ProjectionState> publishedProjection;
 std::optional<std::uint64_t> publishedMaterialsRevision;
 bool worldAvailable() {
     auto client = ll::service::getClientInstance();
@@ -38,14 +44,18 @@ void setMaterialListOpen(bool open) { structure::setMaterialListOpen(open); }
 
 std::optional<std::string> takeProjectionUpdate(bool force) {
     std::lock_guard lock(bindingsMutex);
-    auto state = nlohmann::json{
-        {"worldAvailable", worldAvailable()},
-        {"loading", structure::projectionActionPending() || structure::detail::isStructureFileLoading()},
-        {"hasProjection", structure::detail::StructureSession::getInstance().hasLoaded()}
+    ProjectionState const current{
+        worldAvailable(),
+        structure::projectionActionPending() || structure::detail::isStructureFileLoading(),
+        structure::detail::StructureSession::getInstance().hasLoaded(),
+    };
+    if (!force && publishedProjection == current) return std::nullopt;
+    publishedProjection = current;
+    return nlohmann::json{
+        {"worldAvailable", current.worldAvailable},
+        {"loading", current.loading},
+        {"hasProjection", current.hasProjection}
     }.dump();
-    if (!force && state == publishedProjection) return std::nullopt;
-    publishedProjection = state;
-    return state;
 }
 
 std::optional<std::string> takeMaterialsUpdate(IClientInstance const& client, bool force) {
@@ -96,7 +106,7 @@ std::optional<std::string> takeMaterialsUpdate(IClientInstance const& client, bo
 
 void resetMenuBindings() {
     std::lock_guard lock(bindingsMutex);
-    publishedProjection.clear();
+    publishedProjection.reset();
     publishedMaterialsRevision.reset();
     structure::setMaterialListOpen(false);
 }

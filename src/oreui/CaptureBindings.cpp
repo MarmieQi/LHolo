@@ -10,11 +10,21 @@
 
 namespace lholo::oreui {
 namespace {
+struct PublishedCapture {
+    structure::capture::Snapshot snapshot;
+    i18n::TextKey customStatus{};
+    i18n::Language language{};
+    std::uint64_t ack{};
+    bool busy{};
+    std::string error;
+    bool operator==(PublishedCapture const&) const = default;
+};
 std::mutex mutex;
 std::optional<structure::capture::Request> intent;
 ui::StructureFilePicker outputPicker{ui::selectMcstructureOutput, ui::StructureFileTypes::Mcstructure};
 std::optional<structure::capture::Request> inFlight;
-std::string published, error;
+std::optional<PublishedCapture> published;
+std::string error;
 i18n::TextKey customStatus{};
 std::uint64_t ack{};
 bool selecting{};
@@ -91,17 +101,18 @@ std::optional<std::string> takeCaptureUpdate(bool force) {
         selecting = false;
         error = i18n::tr(i18n::TextKey::OreUiCaptureChanged);
     }
-    auto state = nlohmann::json{
+    bool const busy = inFlight.has_value() || outputPicker.busy() || actionPending();
+    PublishedCapture current{snapshot, customStatus, i18n::language(), ack, busy, error};
+    if (!force && published == current) return std::nullopt;
+    published = std::move(current);
+    return nlohmann::json{
         {"draft", {{"first", pointJson(snapshot.draft.first)}, {"second", pointJson(snapshot.draft.second)},
             {"includeEntities", snapshot.draft.includeEntities}}},
         {"worldAvailable", snapshot.worldAvailable}, {"status", snapshot.status}, {"customStatus", i18n::tr(customStatus)},
         {"revision", snapshot.revision}, {"ack", ack}, {"maxCustomCells", kMaximumCustomStructureCells},
         {"maxRequestBytes", kCaptureIntentMaxBytes},
-        {"busy", inFlight.has_value() || outputPicker.busy() || actionPending()}, {"error", error}
+        {"busy", busy}, {"error", error}
     }.dump();
-    if (!force && published == state) return std::nullopt;
-    published = state;
-    return state;
 }
 void resetCaptureBindings() {
     std::lock_guard lock(mutex);
@@ -112,7 +123,7 @@ void resetCaptureBindings() {
     selecting = false;
     error.clear();
     customStatus = i18n::TextKey::None;
-    published.clear();
+    published.reset();
 }
 void shutdownCaptureBindings() { resetCaptureBindings(); outputPicker.shutdown(); }
 }

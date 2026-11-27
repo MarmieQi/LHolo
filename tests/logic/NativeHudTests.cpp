@@ -159,7 +159,7 @@ int runNativeHudTests() {
         auto current = makeMaterialHud(material, 2, false, 5, &paging, n == 0 ? 0 : 1);
         check(paging.index == static_cast<std::size_t>(n) && paging.count == 4,
             "sixteen materials form four pages with five rows per page");
-        check(current.lines.front().text == "Missing materials"
+        check(current.lines.front().text == "Material list"
             && current.lines.front().quantity == std::to_string(n + 1) + "/4" && !current.lines.front().iconId,
             "localized title and right-aligned page indicator remain independent");
         for (std::size_t row = 1; row < current.lines.size(); ++row) pagedNames.push_back(current.lines[row].text);
@@ -176,7 +176,7 @@ int runNativeHudTests() {
     (void)makeMaterialHud(material, 2, false, 5, &paging, 1);
     i18n::setLanguageByCode("zh_CN");
     auto translated = makeMaterialHud(material, 2, false, 5, &paging);
-    check(translated.lines.front().text == "缺失材料" && translated.lines.front().quantity == "2/4",
+    check(translated.lines.front().text == "材料列表" && translated.lines.front().quantity == "2/4",
         "language switches update pagination text without resetting the page");
     i18n::setLanguageByCode("en_US");
     auto fewer = material;
@@ -187,7 +187,7 @@ int runNativeHudTests() {
         "shrinking deficits clamp page index before rendering");
     fewer.available.assign(3, 1000);
     auto complete = makeMaterialHud(fewer, 2, false, 5, &paging);
-    check(complete.lines.size() == 2 && complete.lines.front().text == "Missing materials" && complete.lines.front().quantity == "1/1",
+    check(complete.lines.size() == 2 && complete.lines.front().text == "Material list" && complete.lines.front().quantity == "1/1",
         "completed materials have one empty page with existing completion text");
     (void)makeMaterialHud(material, 2, false, 5, &paging, 2);
     check(paging.setContext({100, 0, 5, 0, 0, 0}) && paging.index == 0, "new structure resets page");

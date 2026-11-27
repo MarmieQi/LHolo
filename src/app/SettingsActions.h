@@ -32,6 +32,7 @@ struct SettingsSnapshot {
     std::array<SettingsHotkey, input::kHotkeyCount> hotkeys;
     std::uint64_t hotkeysRevision{}, context{}, ack{};
     bool consent{}, accepted{}, localRangeAvailable{};
+    bool operator==(SettingsSnapshot const&) const = default;
 };
 bool validSettingsIntent(SettingsIntent const& intent);
 bool submitSettingsIntent(SettingsIntent const& intent);
