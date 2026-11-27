@@ -1,6 +1,5 @@
 #pragma once
 #include "structure/write/StructureWriteTypes.h"
-#include "structure/write/command/CommandWriteSession.h"
 #include "i18n/TextKeys.h"
 #include <algorithm>
 
@@ -24,16 +23,16 @@ inline i18n::TextKey writeResultText(WriteResult result) {
     }
     return K::WriteWorldFailed;
 }
-inline i18n::TextKey writeCommandText(command::Status const& status) {
-    using enum command::State;
+inline i18n::TextKey writeProgressText(WriteMode mode, WriteProgress const& status) {
+    using enum WriteState;
     using K = i18n::TextKey;
     switch (status.state) {
     case Idle: return K::Count;
-    case Running: return K::WriteWorldCommandRunning;
+    case Running: return mode == WriteMode::LocalWorld ? K::WriteWorldBusy : K::WriteWorldCommandRunning;
     case WaitingChunks: return K::WriteWorldCommandWaiting;
     case WaitingDimension: return K::WriteWorldCommandDimension;
     case Complete: return K::WriteWorldComplete;
-    case Cancelled: return K::WriteWorldCommandCancelled;
+    case Cancelled: return mode == WriteMode::LocalWorld ? K::WriteWorldCancelled : K::WriteWorldCommandCancelled;
     case Paused: case Unknown: {
         auto const found = std::find(i18n::kTextKeyIds.begin(), i18n::kTextKeyIds.end(), status.error);
         return found == i18n::kTextKeyIds.end() ? K::WriteWorldCommandPaused

@@ -98,6 +98,7 @@
     LHOLO_TEXT_KEY("writeWorld.commandPermission", WriteWorldCommandPermission, "") \
     LHOLO_TEXT_KEY("writeWorld.commandSyntax", WriteWorldCommandSyntax, "") \
     LHOLO_TEXT_KEY("writeWorld.commandCancelled", WriteWorldCommandCancelled, "") \
+    LHOLO_TEXT_KEY("writeWorld.cancelled", WriteWorldCancelled, "") \
     LHOLO_TEXT_KEY("writeWorld.commandDescription", WriteWorldCommandDescription, "") \
     LHOLO_TEXT_KEY("writeWorld.commandDescriptionSkipAir", WriteWorldCommandDescriptionSkipAir, "") \
     LHOLO_TEXT_KEY("writeWorld.commandProgress", WriteWorldCommandProgress, "") \

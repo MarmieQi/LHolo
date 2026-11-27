@@ -72,6 +72,7 @@
   "writeWorld.commandPermission": "O servidor negou este comando; verifique as permissões e cheats antes de continuar",
   "writeWorld.commandSyntax": "Erro de sintaxe no comando; gravação pausada",
   "writeWorld.commandCancelled": "Gravação por comandos cancelada; os blocos já colocados permanecem",
+  "writeWorld.cancelled": "Gravação da estrutura cancelada; os blocos já colocados permanecem",
   "writeWorld.commandDescription": "Processa os chunks 3×3 ao redor do jogador\nContinue conforme se move; as camadas de exibição não limitam a gravação\nAr limpa os blocos existentes",
   "writeWorld.commandDescriptionSkipAir": "Processa os chunks 3×3 ao redor do jogador\nContinue conforme se move; as camadas de exibição não limitam a gravação\nPreserva os blocos existentes nessas posições",
   "writeWorld.commandProgress": "Concluído %s / %s",

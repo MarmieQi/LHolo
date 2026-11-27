@@ -1,6 +1,5 @@
 #pragma once
 #include "structure/write/StructureWriteTypes.h"
-#include "structure/write/command/CommandWriteSession.h"
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -21,7 +20,7 @@ struct StructureWriteStatus {
     std::string detail;
     bool commandAvailable{};
     structure::write::WriteMode mode{structure::write::WriteMode::LocalWorld};
-    structure::write::command::Status command;
+    structure::write::WriteProgress progress;
     std::string targetName;
     bool skipAir{};
     bool skipPlaced{};

@@ -246,9 +246,9 @@ HUD 布局编辑已迁移到 src/ui/hud/editor 的独立原生 UIScene。OreUI �
 
 成功/失败提示为页面局部的请求回执，离开页面、关闭菜单或切换任务/文件/路径/世界即清除；重新进入不展示原生保留的旧结果，旧请求迟到完成也不恢复提示。原生操作及 busy 状态继续独立存在，切页不取消已接受写入，不允许重复提交。
 
-导航顺序为“渲染设置”→“创建结构”→“写入世界”，默认“结构方块”模式；模式下方说明当前适用范围：结构方块仅用于单人存档，指令适用于单人存档和服务器并要求管理员权限，沿用页面统一字色。页面通过 lholo.write.intent 提交 {id, revision, worldRevision, taskId, fileId, mode:"local"|"commands", skipAir:boolean, skipPlaced:boolean}，由 StructureWriteProtocol/Bindings 接入 app/StructureWriteActions；lholo:write 发布 ack、worldRevision、dimension、busy、localAvailable、commandAvailable、mode、targetName、已接受请求的 skipAir/skipPlaced、command 进度/阶段/失败跳过量和本地化结果键。前端不提交世界坐标、结构内容或独立默认配置。原生校验当前激活任务、当前选中文件、显隐、维度及上下文，再固定缓存原文件与完整变换；分层仅影响显示。已接受的写入不因菜单关闭取消，停用与世界上下文变化撤销尚未开始的操作；原版放置开始后不提供回滚。
+导航顺序为“渲染设置”→“创建结构”→“写入世界”，默认“结构方块”模式；模式下方说明当前适用范围：结构方块仅用于单人存档，指令适用于单人存档和服务器并要求管理员权限，沿用页面统一字色。页面通过 lholo.write.intent 提交 {id, revision, worldRevision, taskId, fileId, mode:"local"|"commands", skipAir:boolean, skipPlaced:boolean}，由 StructureWriteProtocol/Bindings 接入 app/StructureWriteActions；lholo:write 发布 ack、worldRevision、dimension、busy、localAvailable、commandAvailable、mode、targetName、已接受请求的 skipAir/skipPlaced、progress 进度/阶段/失败跳过量和本地化结果键。前端不提交世界坐标、结构内容或独立默认配置。原生校验当前激活任务、当前选中文件、显隐、维度及上下文，再固定缓存原文件与完整变换；分层仅影响显示。已接受的写入不因菜单关闭取消，停用与世界上下文变化撤销尚未开始的操作；原版放置开始后不提供回滚。
 
-单人写入实现集中在 structure/write/local/，计划为独立 NBT 字节与数据，不跨线程持有客户端世界或 Block 指针。LocalWorldWriter 订阅 LeviLamina ServerLevelTickEvent，在本地服务端 tick 中重新检查维度、世界 revision、目标高度和已加载区块，复用 StructureTemplate::load / getTransformedBounds / placeInWorld。LocalWriteQueue 分开结果邮箱锁与原生执行门：控制帧轮询不等待原版放置，只有取消/停用等待正在执行的调用，并清除其迟到结果；停用先关闭 OreUI 请求入口，再撤销写入和监听。模板尺寸按 NBT IntArray 的 int32 长度上限检查，先验证预期目标高度和区块，再分配稠密索引；取得原版变换边界后仍校验实际范围。保存交由游戏正常存档流程；完成状态仅表示原版放置调用返回，不表示已强制刷盘或逐方块验证。原版调用仍同步占用服务端 tick，且控制帧生成独立写入计划有开销，大结构可能导致卡顿；解除邮箱锁等待并不等于实现分批放置。
+单人写入实现集中在 structure/write/local/，计划为独立 NBT 字节与数据，不跨线程持有客户端世界或 Block 指针。`LocalWriteSession` 将结构按世界 16×16 区块切片（稀疏结构不分配整图稠密数组，不受 `INT_MAX` 外接包围盒体积上限限制），通过 `inverseTransformCell` 将每个区块交集映射回局部子盒并保留原旋转/镜像、含水副层、`skipAir` 与方块实体 NBT；空切片跳过。`LocalWorldWriter` 订阅 `LeviLamina` `ServerLevelTickEvent`，在本地服务端 tick 中检查维度、目标高度，并使用 `BlockSource::getChunk`（非只读且 `ChunkState::Loaded`）与水平外扩 1 格的 `BlockSource::areChunksFullyLoaded` 判定当前可写区块，按玩家距离由近及远每 tick 构造并放置 1 个区块的局部 `StructureTemplate`。当待写区块尚未加载或玩家切出目标维度时进入 `WaitingChunks` / `WaitingDimension` 状态，支持靠近自动续写、手动继续与取消；`LocalWriteQueue` 分开结果邮箱锁与原生执行门，控制帧轮询不等待原版放置，只有取消/停用等待正在执行的区块放置并清除其迟到结果。停用先关闭 OreUI 请求入口，再撤销写入和监听。保存交由游戏正常存档流程；完成状态仅表示原版放置调用返回，不表示已强制刷盘或逐方块验证。
 
 内部写入模板统一生成 format 2：block_indices 使用 IntArrayTag，并移动接管索引数组；副层仅在出现含水等双层单元时分配，没有副层内容时省略第二个数组。NBT 容器逐层移动组装，避免初始化列表深拷贝大数组和方块实体数据。size 与 structure_world_origin 仍使用三个整数的 ListTag；原版 load 内部可能复制数据，不承诺端到端零复制。旧文件的读取兼容性沿用现有解析器，格式变化仅作用于内部写入模板。
 
@@ -268,9 +268,9 @@ StructureWritePlan 保留区域、空气、源格式 -1 省略单元、两层方
 
 “跳过已放置的投影方块”仅在指令模式显示，复用 LHoloCheckbox，默认关闭且不持久化，随单次写入请求的 skipPlaced 固定到指令执行计划。执行期间不可编辑，跨页面重进显示原生冻结的本次选项。发送前读取当前维度中已加载的目标位置，只在主层类型和状态的原版序列化哈希与投影一致时跳过，朝向等状态错误、不同方块和未加载位置均继续原有发送/回执流程；忽略方块实体 NBT 与独立含水层的限制沿用指令模式。直接跳过的位置计入已完成，但不伪造命令回执，也不进入网络发送。每次客户端更新最多检查 4096 个位置，实际发送仍最多 128 条，在途仍最多 1024 条，跳过的位置不占发包额度。关闭选项时不做额外的发送前匹配检查。结构方块模式的默认覆盖、原版模板及两层放置不变，协议拒绝 local 模式携带 skipPlaced:true。
 
-“HUD 信息显示”增加独立写入进度页签，writeHudEnabled 经现有 SettingsActions/SettingsProtocol 字段通路持久化。布局编辑入口保持同一原生 UIScene，第三个面板也可拖动、缩放、调整透明度、重置或取消。默认顶部居中不通过前端 CSS 模拟，位置与绘制在共用原生 Painter 中处理。任务进度与 2.5 秒结束提示跟随 app 中接受的操作身份和真实结束时间，切换页面或选中文件不改正在执行的 HUD 文件与进度；菜单上的旧回执仍遵守原页面生命周期。原版模板写入没有逐格统计时不显示虚假的百分比。
+“HUD 信息显示”增加独立写入进度页签，writeHudEnabled 经现有 SettingsActions/SettingsProtocol 字段通路持久化。布局编辑入口保持同一原生 UIScene，第三个面板也可拖动、缩放、调整透明度、重置或取消。默认顶部居中不通过前端 CSS 模拟，位置与绘制在共用原生 Painter 中处理。任务进度与 2.5 秒结束提示跟随 app 中接受的操作身份和真实结束时间，切换页面或选中文件不改正在执行的 HUD 文件与进度；菜单上的旧回执仍遵守原页面生命周期。结构方块模式与指令模式均按实际已处理区块/方块数量展示进度。
 
-重新进入有指令任务正在执行的写入页时，将原生任务的模式及冻结选项接入当前页面草稿；任务取消或完成后保留本页的指令模式与选项，不退回结构方块模式。离开页面后的新实例仍按原默认规则初始化，不持久化这些选择。
+重新进入有写入任务正在执行的写入页时，将原生任务的模式及冻结选项接入当前页面草稿；任务取消或完成后保留本页的模式与选项，不退回默认模式。离开页面后的新实例仍按原默认规则初始化，不持久化这些选择。
 
 写入页排版按当前文件、模式说明、选项、写入说明与操作分组，不显示文件下方的重复摘要，复用现有选择框/复选框/按钮；模式行复用渲染设置页的共享设置列宽、选择框宽度和窄屏换行规则。空气效果与范围说明合并放在操作前，统一左对齐，指令范围分两行呈现；说明文字沿用共享字号，保持单一主文字色。描述语言表按范围、空气效果的顺序提供文本，以换行分隔显示行。
 

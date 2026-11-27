@@ -1,4 +1,5 @@
 #pragma once
+#include "structure/write/StructureWriteTypes.h"
 #include <array>
 #include <algorithm>
 #include <cstdint>
@@ -8,8 +9,9 @@
 #include <vector>
 
 namespace lholo::structure::write::command {
-inline int chunkCoordinate(int value) { return value / 16 - (value % 16 < 0); }
-enum class State { Idle, Running, WaitingChunks, WaitingDimension, Paused, Unknown, Complete, Cancelled };
+using write::chunkCoordinate;
+using State = WriteState;
+using Status = WriteProgress;
 enum class Reply { Success, NoChange, Unloaded, Failed, Skip };
 enum class TargetState { Pending, InFlight, Done };
 struct Target {
@@ -32,14 +34,6 @@ struct Plan {
     std::vector<std::uint64_t> expected;
     bool skipPlaced{};
     std::vector<Chunk> chunks;
-};
-struct Status {
-    State state{State::Idle};
-    bool active{}, canResume{};
-    std::uint64_t done{}, total{}; // Processed targets, including separately reported rejected blocks.
-    std::string error;
-    std::uint64_t failedSkipped{};
-    bool operator==(Status const&) const = default;
 };
 struct Dispatch { std::string id, text; Target target; };
 

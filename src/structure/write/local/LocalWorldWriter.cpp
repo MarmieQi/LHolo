@@ -2,13 +2,17 @@
 #include "structure/write/local/BedrockTemplateBuilder.h"
 #include "structure/write/local/LocalWriteQueue.h"
 #include "structure/write/StructureWritePlan.h"
-#include "structure/write/StructureWriteIndices.h"
 #include "structure/StructureFileLoader.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/world/ServerLevelTickEvent.h"
 #include "ll/api/service/Bedrock.h"
-#include "mc/world/level/BlockSource.h"
+#include "mc/world/actor/player/Player.h"
 #include "mc/world/level/BlockPalette.h"
+#include "mc/world/level/BlockSource.h"
+#include "mc/world/level/ChunkPos.h"
+#include "mc/world/level/Level.h"
+#include "mc/world/level/chunk/ChunkState.h"
+#include "mc/world/level/chunk/LevelChunk.h"
 #include "mc/world/level/dimension/Dimension.h"
 #include "mc/world/level/levelgen/structure/BoundingBox.h"
 #include "mc/world/level/levelgen/structure/StructureSettings.h"
@@ -17,22 +21,26 @@
 
 namespace lholo::structure::write {
 namespace {
+
 ll::event::ListenerPtr listener;
 LocalWriteQueue queue;
-WriteResult execute(StructureWritePlan const& plan, Level& level) {
-    auto dimension = level.getDimension(DimensionType{plan.target.dimension}).lock();
-    if (!dimension) return WriteResult::ContextChanged;
-    auto& region = dimension->getBlockSourceFromMainChunkSource();
+
+bool isChunkWritable(
+    BlockSource& region,
+    int cx,
+    int cz,
+    std::array<int, 3> const& worldMin,
+    std::array<int, 3> const& worldMax
+) {
+    auto const* chunk = region.getChunk(ChunkPos{cx, cz});
+    if (!chunk || chunk->mReadOnly || chunk->mLoadState->load() != ChunkState::Loaded) return false;
+    BlockPos const checkMin{worldMin[0] - 1, worldMin[1], worldMin[2] - 1};
+    BlockPos const checkMax{worldMax[0] + 1, worldMax[1], worldMax[2] + 1};
+    return region.areChunksFullyLoaded(checkMin, checkMax);
+}
+
+WriteResult placeChunkTemplate(StructureWritePlan const& plan, Level& level, BlockSource& region) {
     auto const& p = plan.target.position;
-    // Reject unsupported sizes/unloaded destinations before allocating dense
-    // template layers, especially for sparse files with widely separated regions.
-    writeVolume(plan.size);
-    std::array<int, 3> expectedMaximum;
-    if (!writeBounds(plan.target, plan.size, expectedMaximum)) return WriteResult::CoordinateLimit;
-    BlockPos const minimum{p[0], p[1], p[2]};
-    BlockPos const expectedMax{expectedMaximum[0], expectedMaximum[1], expectedMaximum[2]};
-    if (minimum.y < region.getMinHeight() || expectedMax.y >= region.getMaxHeight()) return WriteResult::HeightLimit;
-    if (!region.areChunksFullyLoaded(minimum, expectedMax)) return WriteResult::RegionNotLoaded;
     auto structure = buildBedrockTemplate(plan, level);
     if (!structure) return WriteResult::TemplateFailed;
     StructureSettings settings{};
@@ -48,46 +56,78 @@ WriteResult execute(StructureWritePlan const& plan, Level& level) {
     settings.mAnimationMode = AnimationMode::None;
     settings.mIntegrityValue = 100.0f;
     settings.mIntegritySeed = 0;
-    // Ask vanilla for its transformed bounds rather than assuming its pivot convention.
     auto const bounds = structure->getTransformedBounds(BlockPos{0, 0, 0}, settings);
     std::array<int, 3> const transformedMinimum{bounds.min.x, bounds.min.y, bounds.min.z};
-    std::array<int, 3> const transformedMaximum{bounds.max.x, bounds.max.y, bounds.max.z};
-    BlockPos placement, maximum;
+    BlockPos placement;
     for (int axis = 0; axis < 3; ++axis) {
         auto const value = static_cast<long long>(p[axis]) - transformedMinimum[axis];
         if (value < INT_MIN || value > INT_MAX) return WriteResult::CoordinateLimit;
         placement[axis] = static_cast<int>(value);
-        auto const end = value + transformedMaximum[axis];
-        if (end < INT_MIN || end > INT_MAX) return WriteResult::CoordinateLimit;
-        maximum[axis] = static_cast<int>(end);
     }
-    if (minimum.y < region.getMinHeight() || maximum.y >= region.getMaxHeight()) return WriteResult::HeightLimit;
-    if (!region.areChunksFullyLoaded(minimum, maximum)) return WriteResult::RegionNotLoaded;
     structure->placeInWorld(region, level.getBlockPalette(), placement, settings, nullptr, true);
     return WriteResult::Complete;
 }
+
+void tickLocalWrite(Level& level) {
+    std::shared_ptr<Dimension> dimension;
+    BlockSource* region{};
+    queue.runTick(
+        detail::structureFileWorldRevision(),
+        [&](int targetDimension, std::array<int, 2> const& yBounds) -> LocalEnvironment {
+            auto* player = level.getPrimaryLocalPlayer();
+            if (player && static_cast<int>(player->getDimensionId()) != targetDimension) {
+                return {LocalEnvironment::State::WaitingDimension, std::nullopt};
+            }
+            dimension = level.getDimension(DimensionType{targetDimension}).lock();
+            if (!dimension) return {LocalEnvironment::State::ContextChanged, std::nullopt};
+            region = &dimension->getBlockSourceFromMainChunkSource();
+            if (yBounds[0] < region->getMinHeight() || yBounds[1] >= region->getMaxHeight()) {
+                return {LocalEnvironment::State::HeightLimit, std::nullopt};
+            }
+            std::optional<std::array<int, 3>> feet;
+            if (player) {
+                auto const pos = player->getFeetBlockPos();
+                feet = {pos.x, pos.y, pos.z};
+            }
+            return {LocalEnvironment::State::Ready, feet};
+        },
+        [&](int cx, int cz, std::array<int, 3> const& worldMin, std::array<int, 3> const& worldMax) {
+            return isChunkWritable(*region, cx, cz, worldMin, worldMax);
+        },
+        [&](StructureWritePlan const& subPlan) {
+            return placeChunkTemplate(subPlan, level, *region);
+        }
+    );
 }
+
+} // namespace
+
 bool localWorldAvailable() { return queue.enabled() && ll::service::getServerInstance().has_value(); }
+
 bool installLocalWorldWriter() {
     if (queue.enabled()) return true;
     listener = ll::event::EventBus::getInstance().emplaceListener<ll::event::ServerLevelTickEvent>(
-        [](ll::event::ServerLevelTickEvent& event) {
-            queue.run(detail::structureFileWorldRevision(),
-                [&](StructureWritePlan const& plan) { return execute(plan, event.level()); });
-        });
+        [](ll::event::ServerLevelTickEvent& event) { tickLocalWrite(event.level()); });
     if (listener) queue.enable();
     return listener != nullptr;
 }
+
 void cancelLocalWrite() { queue.cancel(); }
+
 void uninstallLocalWorldWriter() {
     queue.disable();
     if (listener) ll::event::EventBus::getInstance().removeListener(listener);
     listener.reset();
 }
-bool queueLocalWrite(StructureWritePlan plan, std::uint64_t revision) {
-    return localWorldAvailable() && queue.enqueue(std::move(plan), revision);
+
+bool startLocalWrite(StructureWritePlan plan, std::uint64_t revision) {
+    return localWorldAvailable() && queue.start(std::move(plan), revision);
 }
-std::optional<WriteCompletion> takeLocalWriteResult() {
-    return queue.take();
-}
-}
+
+WriteProgress localWriteStatus() { return queue.status(); }
+
+void resumeLocalWrite() { queue.resume(); }
+
+std::optional<WriteCompletion> takeLocalWriteResult() { return queue.take(); }
+
+} // namespace lholo::structure::write

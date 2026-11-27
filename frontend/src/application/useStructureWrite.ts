@@ -16,7 +16,7 @@ export function useStructureWrite() {
     state, waiting, busy: waiting || !!state?.busy,
     control(action: 'resume' | 'cancel') {
       const s = latest.current;
-      if (!s?.command.active || s.mode !== 'commands' || pending.current) return;
+      if (!s?.progress.active || pending.current) return;
       const id = ++next.current;
       pending.current = id; setWaiting(true);
       structureWriteBridge.send({id, worldRevision: s.worldRevision, action});

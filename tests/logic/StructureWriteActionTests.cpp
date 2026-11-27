@@ -14,7 +14,8 @@ namespace {
 bool local = true;
 std::optional<lholo::structure::write::StructureWritePlan> queued;
 std::optional<lholo::structure::write::WriteCompletion> completion;
-lholo::structure::write::command::Status commandStatus;
+lholo::structure::write::WriteProgress localStatus;
+lholo::structure::write::WriteProgress commandStatus;
 bool commandSkipPlaced{};
 }
 // Replace only native serialization and the server executor; use the real task
@@ -26,9 +27,22 @@ StructureWritePlan makeWritePlan(LoadedStructure const& source, WriteTarget targ
     plan.target = target; plan.size = {source.sizeX, source.sizeY, source.sizeZ};
     return plan;
 }
-bool queueLocalWrite(StructureWritePlan plan, std::uint64_t) { queued = std::move(plan); return true; }
+bool startLocalWrite(StructureWritePlan plan, std::uint64_t) {
+    if (!local) return false;
+    queued = std::move(plan);
+    localStatus = {WriteState::Running, true, false, 0, 2};
+    return true;
+}
+WriteProgress localWriteStatus() { return localStatus; }
+void resumeLocalWrite() { localStatus.state = WriteState::Running; localStatus.canResume = false; }
 std::optional<WriteCompletion> takeLocalWriteResult() { return std::exchange(completion, {}); }
-void cancelLocalWrite() { queued.reset(); completion.reset(); }
+void cancelLocalWrite() {
+    queued.reset();
+    completion.reset();
+    localStatus.active = false;
+    localStatus.canResume = false;
+    localStatus.state = WriteState::Cancelled;
+}
 namespace command {
 bool commandWorldAvailable() { return true; }
 Status commandWriteStatus() { return commandStatus; }
@@ -47,6 +61,7 @@ int runStructureWriteActionTests(lholo::structure::detail::StructureLoadOrigin& 
         if (!valid) { ++failures; std::fprintf(stderr, "World-write actions: %s\n", message); }
     };
     app::resetStructureWriteActions();
+    localStatus = {};
     app::processStructureWriteActions();
     auto task = app::getTaskSnapshot();
     auto* selectedTask = tasks::findTask(task.catalog, task.activeTaskId);
@@ -119,6 +134,15 @@ int runStructureWriteActionTests(lholo::structure::detail::StructureLoadOrigin& 
             "native dimension and rotation used");
     }
     check(!app::submitStructureWrite(request()), "duplicate while writing rejected");
+    localStatus.state = WriteState::WaitingChunks; localStatus.canResume = true; localStatus.done = 1;
+    control = request(); control.action = app::StructureWriteIntent::Action::Resume; send(control);
+    check(localStatus.state == WriteState::Running && app::structureWriteStatus().progress.done == 1,
+        "local progressive job supports waiting and resume");
+    control = request(); control.action = app::StructureWriteIntent::Action::Cancel; send(control);
+    check(!app::structureWriteStatus().busy && !localStatus.active && app::structureWriteStatus().finishedAt != 0,
+        "local progressive job can be cancelled");
+    send(request());
+    localStatus = {WriteState::Complete, false, false, 2, 2};
     completion = WriteCompletion{WriteResult::Complete, {}};
     app::processStructureWriteActions();
     check(!app::structureWriteStatus().busy && app::structureWriteStatus().result == WriteResult::Complete,

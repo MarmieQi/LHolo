@@ -37,6 +37,7 @@ void resetStructureWriteActions() {
     structure::write::cancelLocalWrite();
     structure::write::command::cancelCommandWrite();
     status.busy = false;
+    status.progress = {};
     status.operation = status.finishedAt = 0;
 }
 void processStructureWriteActions() {
@@ -49,6 +50,7 @@ void processStructureWriteActions() {
         status.result = status.busy ? WriteResult::ContextChanged : WriteResult::None;
         status.detail.clear();
         status.busy = false;
+        status.progress = {};
         observedWorld = world;
         status.operation = status.finishedAt = 0;
     }
@@ -57,31 +59,41 @@ void processStructureWriteActions() {
     status.dimension = player ? player->dimensionId : std::nullopt;
     status.localAvailable = player.has_value() && localWorldAvailable();
     status.commandAvailable = player.has_value() && command::commandWorldAvailable();
-    status.command = command::commandWriteStatus();
-    if (status.mode == WriteMode::ServerCommands && status.busy) {
-        status.busy = status.command.active;
-        if (!status.busy) {
-            status.result = status.command.state == command::State::Complete ? WriteResult::Complete : WriteResult::ContextChanged;
+    if (status.mode == WriteMode::ServerCommands) {
+        status.progress = command::commandWriteStatus();
+        if (status.busy) {
+            status.busy = status.progress.active;
+            if (!status.busy) {
+                status.result = status.progress.state == WriteState::Complete ? WriteResult::Complete : WriteResult::ContextChanged;
+                finishOperation();
+            }
+        }
+    } else {
+        status.progress = localWriteStatus();
+        if (auto result = takeLocalWriteResult()) {
+            status.busy = false;
+            status.result = result->result;
+            status.detail = std::move(result->detail);
+            status.progress = localWriteStatus();
             finishOperation();
         }
-    }
-    if (auto result = takeLocalWriteResult()) {
-        status.busy = false;
-        status.result = result->result;
-        status.detail = std::move(result->detail);
-        finishOperation();
     }
     if (!pending) return;
     auto request = std::move(*std::exchange(pending, {}));
     status.ack = request.id;
     status.detail.clear();
     if (request.action != StructureWriteIntent::Action::Write) {
-        if (request.worldRevision != world || status.mode != WriteMode::ServerCommands || !status.command.active) return;
+        if (request.worldRevision != world || !status.progress.active) return;
         if (request.action == StructureWriteIntent::Action::Cancel) {
-            command::cancelCommandWrite(); status.busy = false; status.result = WriteResult::None;
+            if (status.mode == WriteMode::ServerCommands) command::cancelCommandWrite();
+            else cancelLocalWrite();
+            status.busy = false; status.result = WriteResult::None;
             finishOperation();
-        } else command::resumeCommandWrite();
-        status.command = command::commandWriteStatus();
+        } else {
+            if (status.mode == WriteMode::ServerCommands) command::resumeCommandWrite();
+            else resumeLocalWrite();
+        }
+        status.progress = status.mode == WriteMode::ServerCommands ? command::commandWriteStatus() : localWriteStatus();
         return;
     }
     status.mode = request.mode;
@@ -116,13 +128,20 @@ void processStructureWriteActions() {
         status.mode = request.mode;
         status.targetName = structure::detail::pathToUtf8(structure::detail::pathFromUtf8(file->path).filename());
         if (request.mode == WriteMode::LocalWorld) {
-            status.busy = queueLocalWrite(std::move(plan), world);
-            status.result = status.busy ? WriteResult::None : WriteResult::NoLocalWorld;
-            if (status.busy) status.operation = request.id;
+            if (!startLocalWrite(std::move(plan), world)) {
+                status.busy = false;
+                status.result = WriteResult::NoLocalWorld;
+            } else {
+                status.progress = localWriteStatus();
+                status.busy = status.progress.active;
+                status.result = status.busy ? WriteResult::None : WriteResult::Complete;
+                status.operation = request.id;
+                if (!status.busy) finishOperation();
+            }
         } else {
             command::startCommandWrite(plan, world, request.skipPlaced);
-            status.command = command::commandWriteStatus();
-            status.busy = status.command.active;
+            status.progress = command::commandWriteStatus();
+            status.busy = status.progress.active;
             status.result = status.busy ? WriteResult::None : WriteResult::Complete;
             status.operation = request.id;
             if (!status.busy) finishOperation();

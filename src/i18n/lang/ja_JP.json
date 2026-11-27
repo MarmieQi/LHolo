@@ -72,6 +72,7 @@
   "writeWorld.commandPermission": "サーバーにコマンドを拒否されました。権限とチートの設定を確認してから続行してください",
   "writeWorld.commandSyntax": "コマンドの構文エラーにより、書き込みを一時停止しました",
   "writeWorld.commandCancelled": "コマンドによる書き込みをキャンセルしました。設置済みのブロックは残ります",
+  "writeWorld.cancelled": "構造物の書き込みをキャンセルしました。設置済みのブロックは残ります",
   "writeWorld.commandDescription": "プレイヤー周辺の 3×3 チャンクを処理します\n移動に合わせて続行できます。表示レイヤーの範囲に関係なく書き込みます\n空気ブロックに対応する位置の既存ブロックは削除されます",
   "writeWorld.commandDescriptionSkipAir": "プレイヤー周辺の 3×3 チャンクを処理します\n移動に合わせて続行できます。表示レイヤーの範囲に関係なく書き込みます\n空気ブロックに対応する位置の既存ブロックは保持されます",
   "writeWorld.commandProgress": "完了: %s / %s",

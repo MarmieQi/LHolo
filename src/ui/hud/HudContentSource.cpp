@@ -48,12 +48,13 @@ HudContent readHudContent() {
     if (!materialEnabled) { paging = {}; cachedMaterialKey.reset(); }
     if (editing || state.writeHudEnabled()) {
         auto const write = app::structureWriteStatus();
-        auto const command = write.mode == structure::write::WriteMode::ServerCommands;
-        auto const phase = command ? structure::write::writeCommandText(write.command)
-            : write.busy ? i18n::TextKey::WriteWorldBusy : structure::write::writeResultText(write.result);
+        auto const progressKnown = write.progress.total > 0;
+        auto const phase = (write.result != structure::write::WriteResult::None && write.result != structure::write::WriteResult::Complete)
+            ? structure::write::writeResultText(write.result)
+            : structure::write::writeProgressText(write.mode, write.progress);
         auto const now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-        result.write = makeWriteHud({write.operation, write.finishedAt, write.command.done, write.command.total,
-            write.busy, command, write.targetName, phase, write.command.failedSkipped}, state.writeHudPosition(), now);
+        result.write = makeWriteHud({write.operation, write.finishedAt, write.progress.done, write.progress.total,
+            write.busy, progressKnown, write.targetName, phase, write.progress.failedSkipped}, state.writeHudPosition(), now);
         if (editing && result.write.lines.empty()) result.write = makeHudEditorContent(settings.position, state.materialHudPosition()).write;
     }
     if (!settings.enabled && !materialEnabled) return result;

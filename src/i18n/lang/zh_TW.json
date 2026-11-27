@@ -72,6 +72,7 @@
   "writeWorld.commandPermission": "伺服器不允許執行此指令，請檢查權限和作弊設定後繼續",
   "writeWorld.commandSyntax": "指令語法錯誤，寫入已暫停",
   "writeWorld.commandCancelled": "指令寫入已取消，已放置的方塊保留",
+  "writeWorld.cancelled": "結構寫入已取消，已放置的方塊保留",
   "writeWorld.commandDescription": "逐步寫入玩家附近 3×3 區塊\n移動後繼續處理附近區域，不受分層顯示影響\n空氣會清除原有方塊",
   "writeWorld.commandDescriptionSkipAir": "逐步寫入玩家附近 3×3 區塊\n移動後繼續處理附近區域，不受分層顯示影響\n保留對應位置的原有方塊",
   "writeWorld.commandProgress": "已完成 %s / %s",

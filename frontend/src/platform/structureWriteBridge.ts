@@ -3,7 +3,7 @@ export interface StructureWriteState {
   ack: number; worldRevision: number; busy: boolean; localAvailable: boolean; result: string;
   dimension: number | null;
   commandAvailable: boolean; mode: WriteMode; targetName: string; skipAir: boolean; skipPlaced: boolean;
-  command: {active: boolean; canResume: boolean; done: number; total: number; state: string; failedSkipped: number};
+  progress: {active: boolean; canResume: boolean; done: number; total: number; state: string; failedSkipped: number};
 }
 export type StructureWriteIntent = {
   id: number; revision: number; worldRevision: number; taskId: string; fileId: string; mode: WriteMode; skipAir: boolean; skipPlaced: boolean;
@@ -14,10 +14,10 @@ export function parseStructureWriteState(payload: string): StructureWriteState {
     || typeof s.busy !== 'boolean' || typeof s.localAvailable !== 'boolean' || typeof s.result !== 'string'
     || typeof s.commandAvailable !== 'boolean' || !['local', 'commands'].includes(s.mode) || typeof s.targetName !== 'string'
     || typeof s.skipAir !== 'boolean' || typeof s.skipPlaced !== 'boolean'
-    || !s.command || typeof s.command.active !== 'boolean' || typeof s.command.canResume !== 'boolean'
-    || !Number.isSafeInteger(s.command.done) || s.command.done < 0 || !Number.isSafeInteger(s.command.total)
-    || s.command.total < s.command.done || typeof s.command.state !== 'string'
-    || !Number.isSafeInteger(s.command.failedSkipped) || s.command.failedSkipped < 0 || s.command.failedSkipped > s.command.done
+    || !s.progress || typeof s.progress.active !== 'boolean' || typeof s.progress.canResume !== 'boolean'
+    || !Number.isSafeInteger(s.progress.done) || s.progress.done < 0 || !Number.isSafeInteger(s.progress.total)
+    || s.progress.total < s.progress.done || typeof s.progress.state !== 'string'
+    || !Number.isSafeInteger(s.progress.failedSkipped) || s.progress.failedSkipped < 0 || s.progress.failedSkipped > s.progress.done
     || !(s.dimension === null || Number.isSafeInteger(s.dimension)))
     throw new Error('Invalid LHolo world-write state');
   return s;

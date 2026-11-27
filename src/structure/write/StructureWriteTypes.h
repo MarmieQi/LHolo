@@ -5,8 +5,18 @@
 #include <vector>
 
 namespace lholo::structure::write {
+inline int chunkCoordinate(int value) { return value / 16 - (value % 16 < 0); }
 enum class WriteMode { LocalWorld, ServerCommands };
 enum class WriteResult { None, Complete, NoLocalWorld, NoCommandWorld, CommandUnsupported, ContextChanged, NoSelection, UnmappedBlocks, RegionNotLoaded, HeightLimit, CoordinateLimit, TemplateFailed, Failed };
+enum class WriteState { Idle, Running, WaitingChunks, WaitingDimension, Paused, Unknown, Complete, Cancelled };
+struct WriteProgress {
+    WriteState state{WriteState::Idle};
+    bool active{}, canResume{};
+    std::uint64_t done{}, total{};
+    std::string error;
+    std::uint64_t failedSkipped{};
+    bool operator==(WriteProgress const&) const = default;
+};
 struct WriteCompletion { WriteResult result; std::string detail; };
 struct WriteTarget {
     std::array<int, 3> position{};

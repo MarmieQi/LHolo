@@ -22,13 +22,13 @@ std::optional<std::string> takeStructureWriteUpdate(bool force) {
         return key == i18n::TextKey::Count ? std::string_view{} : i18n::kTextKeyIds[static_cast<std::size_t>(key)];
     };
     auto const result = keyId(structure::write::writeResultText(status.result));
-    auto const commandState = keyId(structure::write::writeCommandText(status.command));
+    auto const progressState = keyId(structure::write::writeProgressText(status.mode, status.progress));
     return nlohmann::json{{"ack", status.ack}, {"worldRevision", status.worldRevision},
         {"busy", status.busy}, {"localAvailable", status.localAvailable},
         {"commandAvailable", status.commandAvailable}, {"mode", status.mode == structure::write::WriteMode::LocalWorld ? "local" : "commands"},
-        {"command", {{"active", status.command.active}, {"canResume", status.command.canResume},
-            {"done", status.command.done}, {"total", status.command.total}, {"state", commandState},
-            {"failedSkipped", status.command.failedSkipped}}},
+        {"progress", {{"active", status.progress.active}, {"canResume", status.progress.canResume},
+            {"done", status.progress.done}, {"total", status.progress.total}, {"state", progressState},
+            {"failedSkipped", status.progress.failedSkipped}}},
         {"targetName", status.targetName}, {"skipAir", status.skipAir}, {"skipPlaced", status.skipPlaced},
         {"dimension", status.dimension ? nlohmann::json(*status.dimension) : nlohmann::json(nullptr)}, {"result", result}}.dump();
 }

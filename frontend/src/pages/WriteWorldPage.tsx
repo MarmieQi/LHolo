@@ -15,23 +15,26 @@ export function WriteWorldPage({labels, tasks, writer}: {
   labels: MenuLabels; tasks: TaskControls; writer: StructureWriteControls;
 }) {
   const [mode, setMode] = useState(0);
-  const activeCommand = writer.state?.mode === 'commands' && writer.state.command.active;
-  const commandMode = activeCommand || mode === 1;
+  const progress = writer.state?.progress;
+  const activeJob = !!progress?.active;
+  const activeMode = activeJob ? (writer.state!.mode === 'commands' ? 1 : 0) : mode;
+  const commandMode = activeMode === 1;
   const available = commandMode ? writer.state?.commandAvailable : writer.state?.localAvailable;
   const [airChoices, setAirChoices] = useState({local: false, commands: true});
   const writeMode = commandMode ? 'commands' : 'local';
   const skipAir = airChoices[writeMode];
   const [skipPlaced, setSkipPlaced] = useState(false);
-  const displayedSkipAir = activeCommand ? writer.state!.skipAir : skipAir;
-  const displayedSkipPlaced = activeCommand ? writer.state!.skipPlaced : skipPlaced;
+  const displayedSkipAir = activeJob ? writer.state!.skipAir : skipAir;
+  const displayedSkipPlaced = activeJob && commandMode ? writer.state!.skipPlaced : skipPlaced;
   // Adopt a running task into this page's draft so its mode/options survive
   // completion or cancellation after navigating back to the page.
   useEffect(() => {
-    if (!activeCommand) return;
-    setMode(1);
-    setAirChoices(previous => ({...previous, commands: writer.state!.skipAir}));
-    setSkipPlaced(writer.state!.skipPlaced);
-  }, [activeCommand, writer.state?.skipAir, writer.state?.skipPlaced]);
+    if (!activeJob) return;
+    const runningMode = writer.state!.mode === 'commands' ? 'commands' : 'local';
+    setMode(runningMode === 'commands' ? 1 : 0);
+    setAirChoices(previous => ({...previous, [runningMode]: writer.state!.skipAir}));
+    if (runningMode === 'commands') setSkipPlaced(writer.state!.skipPlaced);
+  }, [activeJob, writer.state?.mode, writer.state?.skipAir, writer.state?.skipPlaced]);
   // A receipt belongs to this page instance, not to the native writer's lifetime.
   const [resultRequest, setResultRequest] = useState<number>();
   const file = tasks.selectedLayer;
@@ -49,10 +52,9 @@ export function WriteWorldPage({labels, tasks, writer}: {
   const description = labels[commandMode
     ? displayedSkipAir ? 'writeWorld.commandDescriptionSkipAir' : 'writeWorld.commandDescription'
     : displayedSkipAir ? 'writeWorld.descriptionSkipAir' : 'writeWorld.description'];
-  const command = writer.state?.command;
   const ownReceipt = resultRequest === writer.state?.ack;
-  const showCommand = writer.state?.mode === 'commands' && (activeCommand
-    || (ownReceipt && (!writer.state.result || writer.state.result === 'writeWorld.complete'))) && !!command?.total;
+  const showProgress = (activeJob
+    || (ownReceipt && (!writer.state?.result || writer.state.result === 'writeWorld.complete'))) && !!progress?.total;
   return <div className="lholo-write-world-page">
     <div className="lholo-write-file">
       <SelectedFileContext label={labels['tasks.currentSelection']} name={file?.name ?? labels['tasks.noSelection']} />
@@ -60,7 +62,7 @@ export function WriteWorldPage({labels, tasks, writer}: {
     <LHoloSectionGroup>
       <LHoloSettingRow label={labels['writeWorld.mode']}
         hint={labels[commandMode ? 'writeWorld.commandScope' : 'writeWorld.localScope']}>
-        <LHoloSelect label={labels['writeWorld.mode']} value={activeCommand ? 1 : mode} onChange={setMode}
+        <LHoloSelect label={labels['writeWorld.mode']} value={activeMode} onChange={setMode}
           options={[labels['writeWorld.localMode'], labels['writeWorld.commandMode']]}
           disabled={writer.busy} />
       </LHoloSettingRow>
@@ -75,21 +77,20 @@ export function WriteWorldPage({labels, tasks, writer}: {
     <div className="lholo-action-row"><LHoloButton label={labels['page.writeWorld']}
       disabled={!canWrite} onClick={() => setResultRequest(writer.write(tasks.currentTaskId, file!.id, tasks.state!.revision, skipAir,
         writeMode, commandMode && skipPlaced))} />
-      {activeCommand && command?.canResume && <LHoloButton label={labels['writeWorld.commandContinue']} disabled={writer.waiting}
+      {activeJob && progress?.canResume && <LHoloButton label={labels['writeWorld.commandContinue']} disabled={writer.waiting}
         onClick={() => setResultRequest(writer.control('resume'))} />}
-      {activeCommand && <LHoloButton label={labels['writeWorld.commandCancel']} disabled={writer.waiting}
+      {activeJob && <LHoloButton label={labels['writeWorld.commandCancel']} disabled={writer.waiting}
         onClick={() => setResultRequest(writer.control('cancel'))} />}
     </div>
-    {showCommand && <div className="lholo-status">
+    {showProgress && <div className="lholo-status">
       <div>{labels['writeWorld.commandTarget'].replace('%s', writer.state!.targetName)}</div>
-      <div>{labels['writeWorld.commandProgress'].replace('%s', String(command!.done)).replace('%s', String(command!.total))}</div>
-      {!!command!.failedSkipped && <div>{labels['writeWorld.commandFailedSkipped'].replace('%llu', String(command!.failedSkipped))}</div>}
+      <div>{labels['writeWorld.commandProgress'].replace('%s', String(progress!.done)).replace('%s', String(progress!.total))}</div>
+      {commandMode && !!progress!.failedSkipped && <div>{labels['writeWorld.commandFailedSkipped'].replace('%llu', String(progress!.failedSkipped))}</div>}
     </div>}
-    {activeCommand ? <div className="lholo-status">{labels[command!.state]}</div>
+    {activeJob ? <div className="lholo-status">{labels[progress!.state]}</div>
       : writer.busy ? <div className="lholo-status">{labels['writeWorld.busy']}</div>
       : ownReceipt && writer.state?.result ? <div className="lholo-status">{labels[writer.state.result]}</div>
-      : ownReceipt && writer.state?.mode === 'commands' && command?.state
-        ? <div className="lholo-status">{labels[command.state]}</div>
+      : ownReceipt && progress?.state ? <div className="lholo-status">{labels[progress.state]}</div>
       : blockedHint ? <div className="lholo-muted">{labels[blockedHint]}</div>
       : null}
   </div>;

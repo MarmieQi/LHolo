@@ -5,7 +5,9 @@ namespace lholo::structure::write {
 bool installLocalWorldWriter();
 void uninstallLocalWorldWriter();
 bool localWorldAvailable();
-bool queueLocalWrite(StructureWritePlan, std::uint64_t worldRevision);
+bool startLocalWrite(StructureWritePlan, std::uint64_t worldRevision);
+WriteProgress localWriteStatus();
+void resumeLocalWrite();
 std::optional<WriteCompletion> takeLocalWriteResult();
 void cancelLocalWrite();
 }
