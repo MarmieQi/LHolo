@@ -4,7 +4,7 @@ export interface SettingsValues {
   hudShowOverallProgress: boolean; hudShowProgress: boolean; hudShowProjectedBlockName: boolean;
   hudShowWrongState: boolean; hudShowWrongType: boolean; hudShowExtraBlocks: boolean;
   materialHudEnabled: boolean; materialHudStackConversion: boolean; materialHudMaxItems: number; materialHudPosition: number; altWheelOffsetEnabled: boolean;
-  placementRadius: number; localPlacementRadius: number; localPlacementLiquidsDisabled: boolean; localShulkerRestock: boolean; localCreativeRestock: boolean; localCreativeRestockOverwrite: boolean; autoPlacementCooldown: number; activeMode: number; language: string;
+  placementRadius: number; localPlacementRadius: number; localPlacementLiquidsDisabled: boolean; localShulkerRestock: boolean; localCreativeRestock: boolean; localCreativeRestockOverwrite: boolean; autoPlacementCooldown: number; activeMode: number; language: string; uiScalePercent: number;
 }
 export type SettingsField = keyof SettingsValues;
 export interface SettingsHotkey {slot: number; labelKey: string; groupKey: string; key: number; modifiers: number; capturing: boolean; display: string}
@@ -32,6 +32,7 @@ export function parseSettings(payload: string): SettingsState {
     || !integer(v.materialHudMaxItems, 1, 50) || !integer(v.materialHudPosition, 0, 3) || !integer(v.placementRadius, 1, 4)
     || !integer(v.localPlacementRadius, 1, 64)
     || !integer(v.autoPlacementCooldown, 0, 60) || !integer(v.activeMode, 0, 6) || typeof v.language !== 'string'
+    || !integer(v.uiScalePercent, 50, 200)
     || !id(s.context) || !id(s.ack) || !id(s.hotkeysRevision) || typeof s.accepted !== 'boolean' || typeof s.consent !== 'boolean' || typeof s.localRangeAvailable !== 'boolean'
     || !Array.isArray(s.languages) || !s.languages.length || !s.languages.every((l: any) => l && typeof l.code === 'string' && !!l.code && typeof l.name === 'string')
     || new Set(s.languages.map((l: any) => l.code)).size !== s.languages.length || !s.languages.some((l: any) => l.code === v.language)

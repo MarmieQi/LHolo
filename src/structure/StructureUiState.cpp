@@ -334,6 +334,15 @@ PendingHotkeyActions StructureUiState::consumePendingHotkeyActions() {
     };
 }
 
+int StructureUiState::uiScalePercent() const {
+    return mUiScalePercent.load(std::memory_order_acquire);
+}
+
+bool StructureUiState::setUiScalePercent(int percent) {
+    percent = std::clamp(percent, 50, 200);
+    return mUiScalePercent.exchange(percent, std::memory_order_acq_rel) != percent;
+}
+
 bool StructureUiState::experimentalConsentGiven() const {
     return mExperimentalConsent.load(std::memory_order_acquire);
 }

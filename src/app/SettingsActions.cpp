@@ -41,7 +41,7 @@ SettingsSnapshot snapshot() {
         h.showProgress, h.showProjectedBlockName, h.showWrongState, h.showWrongType, h.showExtraBlocks,
         ui().materialHudEnabled(), ui().materialHudStackConversion(), ui().materialHudMaxItems(), ui().materialHudPosition(), ui().altWheelOffsetEnabled(),
         place::getPlacementRadius(), place::getAutoPlacementBreakCooldownSeconds(), activeMode(),
-        std::string{i18n::languagePreferenceCode()}, ui().writeHudEnabled(), place::getLocalPlacementRadius(), place::getLocalPlacementLiquidsDisabled(), place::getLocalShulkerRestock(), place::getLocalCreativeRestock(), place::getLocalCreativeRestockOverwrite()}, {}, 0,
+        std::string{i18n::languagePreferenceCode()}, ui().uiScalePercent(), ui().writeHudEnabled(), place::getLocalPlacementRadius(), place::getLocalPlacementLiquidsDisabled(), place::getLocalShulkerRestock(), place::getLocalCreativeRestock(), place::getLocalCreativeRestockOverwrite()}, {}, 0,
         structure::detail::StructureSession::getInstance().transformEditorState().context, ack,
         ui().experimentalConsentGiven(), accepted, place::localRangeAvailable()};
     for (std::size_t n = 0; n < s.hotkeys.size(); ++n) {
@@ -81,6 +81,7 @@ bool applyField(SettingsField field, SettingsValue const& value) {
     case F::Cooldown: place::setAutoPlacementBreakCooldownSeconds(std::get<int>(value)); return false;
     case F::Mode: setMode(std::get<int>(value)); return false;
     case F::Language: return i18n::setLanguageByCode(std::get<std::string>(value));
+    case F::UiScalePercent: return ui().setUiScalePercent(std::get<int>(value));
     default: return false;
     }
 }
@@ -104,6 +105,7 @@ bool validSettingsIntent(SettingsIntent const& i) {
         case F::Radius: return integer(1, 4);
         case F::LocalRadius: return integer(1, 64);
         case F::Cooldown: return integer(0, 60);
+        case F::UiScalePercent: return integer(50, 200);
         case F::Language: { auto s = std::get_if<std::string>(&v); return s && !s->empty() && s->size() <= 32; }
         default: return std::holds_alternative<bool>(v);
         }

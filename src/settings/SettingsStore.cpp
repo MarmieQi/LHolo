@@ -116,6 +116,7 @@ void normalize(Settings& s) {
         if (!std::isfinite(value)) throw std::invalid_argument("Settings contain a non-finite number");
         return std::clamp(value, lo, hi);
     };
+    s.uiScalePercent = std::clamp(s.uiScalePercent, 50, 200);
     s.correctionFillOpacity = finite(s.correctionFillOpacity, 0, 1);
     s.correctionOutlineOpacity = finite(s.correctionOutlineOpacity, 0, 1);
     s.materialHudMaxItems = std::clamp(s.materialHudMaxItems, kMinMaterialHudItems, kMaxMaterialHudItems);
@@ -244,6 +245,7 @@ void readLayout(Json const& panel, Settings& out, std::size_t n, int& anchor) {
 void readCurrent(Json const& data, Settings& out) {
     auto const interfaceSettings = section(data, "interface");
     out.language = interfaceSettings.value("language", out.language);
+    out.uiScalePercent = integer(interfaceSettings, "uiScalePercent", out.uiScalePercent, 50, 200);
     auto const rendering = section(data, "rendering");
     out.structureBoundsEnabled = rendering.value("structureBounds", out.structureBoundsEnabled);
     out.missingSeeThrough = rendering.value("missingSeeThrough", out.missingSeeThrough);
@@ -294,7 +296,7 @@ Json encode(Settings s) {
     for (auto binding : bindings(s)) hotkeys[binding.name] = encodeBinding(binding);
     return {
         {"version", kSettingsVersion},
-        {"interface", {{"language", s.language}}},
+        {"interface", {{"language", s.language}, {"uiScalePercent", s.uiScalePercent}}},
         {"rendering", {{"structureBounds", s.structureBoundsEnabled},
             {"correction", {{"fillOpacityPercent", percent(s.correctionFillOpacity)},
                 {"outlineOpacityPercent", percent(s.correctionOutlineOpacity)}, {"seeThrough", s.correctionSeeThrough}}},

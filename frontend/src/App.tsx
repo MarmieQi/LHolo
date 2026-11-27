@@ -14,7 +14,7 @@ import { useTasks } from './application/useTasks';
 import { useStructurePreview } from './application/useStructurePreview';
 import { useStructureWrite } from './application/useStructureWrite';
 import { menuBridge, type MenuEntry, type MenuLabels } from './platform/bridge';
-import { FrameCompletion, GameShell } from './platform/native';
+import { FrameCompletion, GameShell, setNativeUiScale } from './platform/native';
 import { LHoloButton } from './components/LHoloControls';
 
 function MenuPage() {
@@ -35,6 +35,7 @@ function MenuPage() {
   const writer = useStructureWrite();
   useEffect(() => menuBridge.subscribeEntry(setEntryPage), []);
   useEffect(() => menuBridge.subscribe(setLabels), []);
+  useEffect(() => { setNativeUiScale(interfaceSettings.uiScalePercent / 100); }, [interfaceSettings.uiScalePercent]);
   return <>
     {labels ? <LHoloMenu entryPage={entryPage} labels={labels} projection={projection} capture={capture}
       transform={transform} render={render} hud={hud} hotkeys={hotkeys}

@@ -269,7 +269,7 @@
   "label.localPlacementRadius": "放置半径（范围 1～64）",
   "label.autoPlacementCooldown": "投影方块被破坏自动放置冷却时长（范围 0～60 秒）",
   "section.interfaceSettings": "界面设置",
-  "label.uiScale": "界面缩放（范围 1～5）",
+  "label.uiScale": "界面缩放",
   "label.language": "语言",
   "label.followGameLanguage": "跟随游戏",
   "material.water": "水",

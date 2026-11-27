@@ -53,7 +53,15 @@ int runSettingsActionsTests() {
     check(oreui::parseSettingsIntent(j.dump()).has_value(), "valid HUD boolean");
     auto bad = j; bad["value"] = 1;
     check(!oreui::parseSettingsIntent(bad.dump()), "boolean cannot become integer");
-    bad = j; bad["field"] = "uiScale"; check(!oreui::parseSettingsIntent(bad.dump()), "OreUI cannot write ImGui scale");
+    bad = j; bad["field"] = "uiScale"; check(!oreui::parseSettingsIntent(bad.dump()), "OreUI cannot write legacy ImGui scale");
+    bad = j; bad["field"] = "uiScalePercent"; bad["expected"] = 100; bad["value"] = 49;
+    check(!oreui::parseSettingsIntent(bad.dump()), "UI scale rejects below 50");
+    bad["value"] = 201;
+    check(!oreui::parseSettingsIntent(bad.dump()), "UI scale rejects above 200");
+    bad["value"] = 1.5;
+    check(!oreui::parseSettingsIntent(bad.dump()), "UI scale rejects non-integer");
+    bad["value"] = 130;
+    check(oreui::parseSettingsIntent(bad.dump()).has_value(), "valid UI scale percent accepted");
     bad = j; bad["field"] = "activeMode"; bad["expected"] = 0; bad["value"] = 7;
     check(!oreui::parseSettingsIntent(bad.dump()), "mode range");
     bad["field"] = "placementRadius"; bad["expected"] = 1; bad["value"] = 18446744073709551615ULL;
@@ -85,6 +93,8 @@ int runSettingsActionsTests() {
     conversion["value"] = true;
     check(!oreui::parseSettingsIntent(conversion.dump()), "item count rejects booleans");
     check(apply(F::MaterialHudMaxItems, 5), "restore item limit");
+    check(apply(F::UiScalePercent, 130) && ui.uiScalePercent() == 130, "UI scale persists");
+    check(apply(F::UiScalePercent, 100) && ui.uiScalePercent() == 100, "restore UI scale");
     check(!apply(F::Mode, 2) && !getSettingsSnapshot().accepted && !place::isEnabled(), "backend refuses mode before consent");
     check(!apply(F::Mode, 4) && !getSettingsSnapshot().accepted && place::getLocalPlacementMode() == place::LocalPlacementMode::Off,
           "singleplayer range requires an eligible local world");

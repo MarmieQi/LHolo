@@ -22,6 +22,8 @@ inline constexpr int kSettingsVersion = 13;
 struct Settings {
     // "auto" follows Minecraft; a locale code pins the interface language.
     std::string language{"auto"};
+    // OreUI menu scale as an integer percentage (50..200, default 100 = 1.0x).
+    int uiScalePercent{100};
     // Rendering preferences.
     float correctionFillOpacity{0.15f};
     float correctionOutlineOpacity{1.0f};

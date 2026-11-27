@@ -269,7 +269,7 @@
   "label.localPlacementRadius": "Радиус установки (1–64)",
   "label.autoPlacementCooldown": "Задержка автоматической установки после разрушения блока проекции (0–60 с)",
   "section.interfaceSettings": "Настройки интерфейса",
-  "label.uiScale": "Масштаб интерфейса (1–5)",
+  "label.uiScale": "Масштаб интерфейса",
   "label.language": "Язык",
   "label.followGameLanguage": "Как в игре",
   "material.water": "Вода",

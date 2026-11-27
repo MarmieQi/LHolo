@@ -22,6 +22,7 @@ export interface NativeRuntime {
   Scroll: React.ComponentType<React.PropsWithChildren>;
   Completion: React.ComponentType;
   ItemIcon: React.ComponentType<ItemIconProps>;
+  setUiScale?(scale: number): void;
 }
 
 declare global {
@@ -33,3 +34,6 @@ export const NativeInteractive = window.__LHoloOreUiRuntime.Interactive;
 export const NativeScrollView = window.__LHoloOreUiRuntime.Scroll;
 export const FrameCompletion = window.__LHoloOreUiRuntime.Completion;
 export const NativeItemIcon = window.__LHoloOreUiRuntime.ItemIcon;
+export function setNativeUiScale(scale: number) {
+  window.__LHoloOreUiRuntime.setUiScale?.(scale);
+}

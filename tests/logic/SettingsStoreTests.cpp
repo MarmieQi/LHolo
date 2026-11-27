@@ -49,6 +49,7 @@ int runSettingsStoreTests() {
 
     Settings custom;
     custom.language = "en_US";
+    custom.uiScalePercent = 140;
     custom.correctionFillOpacity = 0.3f; custom.correctionOutlineOpacity = 0.7f;
     custom.structureBoundsEnabled = false; custom.correctionSeeThrough = true; custom.missingSeeThrough = true;
     custom.materialHudEnabled = true; custom.materialHudStackConversion = true; custom.materialHudMaxItems = 23;
@@ -77,6 +78,18 @@ int runSettingsStoreTests() {
     write(json.dump());
     check(loadSettingsFile(path, loaded) && loaded.guiHotkey == 'L' && loaded.guiHotkeyModifiers == 1,
         "hand-edited shortcuts accept case and surrounding whitespace");
+    json["interface"].erase("uiScalePercent");
+    write(json.dump());
+    check(loadSettingsFile(path, loaded) && loaded.uiScalePercent == 100,
+        "v13 config without uiScalePercent defaults to 100");
+    json["interface"]["uiScalePercent"] = 300;
+    write(json.dump());
+    check(loadSettingsFile(path, loaded) && loaded.uiScalePercent == 200,
+        "uiScalePercent clamps above maximum");
+    json["interface"]["uiScalePercent"] = 10;
+    write(json.dump());
+    check(loadSettingsFile(path, loaded) && loaded.uiScalePercent == 50,
+        "uiScalePercent clamps below minimum");
 
     std::string const legacy = R"({
   "version":12,"language":"en_US","uiScale":"retired","lastStructurePath":null,

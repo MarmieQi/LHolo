@@ -269,7 +269,7 @@
   "label.localPlacementRadius": "Placement radius (1-64)",
   "label.autoPlacementCooldown": "Auto-place cooldown after a projected block is broken (0-60 s)",
   "section.interfaceSettings": "Interface settings",
-  "label.uiScale": "UI scale (1-5)",
+  "label.uiScale": "UI scale",
   "label.language": "Language",
   "label.followGameLanguage": "Follow game language",
   "material.water": "Water",

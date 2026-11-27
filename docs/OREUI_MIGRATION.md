@@ -14,7 +14,7 @@
 任务删除和文件移除按用户要求增加二次确认，复用新建/重命名任务的同一个弹窗。弹窗显示操作对象名称，只有点击“确定”才提交原生意图；取消、点击遮罩或切换页面都不删除数据。确认目标按打开弹窗时的任务/文件 ID 保存。
 现行界面通过建造任务管理文件与投影，并提供创建结构、结构变换、渲染设置、HUD、快捷键、语言和实验性功能。
 快捷键页不再提供“加载投影”和“关闭投影”绑定；加载与关闭由建造任务页控制。
-材料清单弹窗已接入原生 `MaterialTracker` / `StructureUiState` 统计快照并复用原版物品缩略图渲染通路；OreUI 界面不提供缩放控件。
+材料清单弹窗已接入原生 `MaterialTracker` / `StructureUiState` 统计快照并复用原版物品缩略图渲染通路；OreUI 界面设置支持 0.5～2.0（默认 1.0）界面缩放，经 `uiScalePercent` 持久化并通过 `tools/oreui/runtime_adapter.js` 应用。
 普通 HUD 和材料显示 HUD 的画面由 `src/ui/hud/` 原生绘制，OreUI 只负责原有 HUD 设置；实现边界及验收见 [原生 HUD](NATIVE_HUD_RENDERING.md)。
 选择路径仍是菜单草稿，不自动加载或写配置；明确点击加载后复用现有加载器与投影会话，不改变配置格式。
 
@@ -131,10 +131,10 @@ lholo.transform.intent 接收 {id, context, field, expected, value}；lholo:tran
 依赖方向：页面 → 各功能 use*Settings → application/useSettings → platform/settingsBridge → OreUiBridge → SettingsBindings/SettingsProtocol → app/SettingsActions → StructureUiState / i18n / place。应用层只编排具体字段和命令；settings/SettingsStore 仍只负责原有配置读写，下层不依赖 OreUI 或页面 JSON。单个共享队列防止各页争用同一请求通道，四个页面 hook 仅暴露各自控件所需能力；不把整个配置对象回传后直接覆盖。
 
 - SettingsActions 在 AppKernel 控制帧执行，返回是否需要保存；HUD、材料 HUD、Alt+滚轮和语言沿用现有持久化。实验性功能页的模式、半径、冷却、知情确认及开关均为游戏进程内状态，六个辅助放置模式互斥。旧模式要求实验性确认，单人模式要求本地内置服务器。模式切换先清除原有模式及手动按压状态。context 沿用加载 revision，旧世界或加载前排队的意图失效。
-- settings snapshot 发布 values、hotkeys、languages、consent、context、ack、accepted、hotkeysRevision。字段编辑仅传对应 expected/value；动作包括 set/capture/clearHotkey/resetHotkey/resetHotkeys/consent。快捷键动作携带原生 revision 和受限 slot，拒绝旧快照；取消捕获为独立无参 query，可取消尚未执行的 capture。字段和类型均白名单，拒绝分数、越界、未知字段、无效 locale 和超 4096 字节 payload；协议不接受 uiScale。
+- settings snapshot 发布 values、hotkeys、languages、consent、context、ack、accepted、hotkeysRevision。字段编辑仅传对应 expected/value；动作包括 set/capture/clearHotkey/resetHotkey/resetHotkeys/consent。快捷键动作携带原生 revision 和受限 slot，拒绝旧快照；取消捕获为独立无参 query，可取消尚未执行的 capture。字段和类型均白名单，拒绝分数、越界、未知字段、无效 locale 和超 4096 字节 payload；界面缩放走 `uiScalePercent`（50～200 整数，默认 100），协议仍拒绝旧 `uiScale`。
 - input/HotkeyCapture 抽出旧菜单原有捕获规则，两个入口共用，原生正式前端不自行翻译 KeyboardEvent.key。Overlay 在 OreUI 激活捕获期间只把按键/中键/侧键交给捕获器，其余时候仍由原版场景接收；保留 F11 的完整生命周期，认领的重复按下和释放不泄漏给场景。Esc 取消捕获不会同时关闭菜单。切页 query、关闭菜单、原生上下文销毁清理捕获。HotkeyDefinitions 共用于输入处理和 OreUI 标签，按键名称仍由 HotkeyFormat 格式化；默认键值只在 StructureUiState 原有表中维护。
 - 语言代码和列表来自 i18n 动态注册表，不硬编码四个语言索引。OreUiBridge 观察语言变化主动重发 labels，开屏中后端改变语言也能刷新；名称沿用每种语言自己的 displayName。
-- OreUI 界面设置仅提供语言选择，已移除缩放占位控件、说明与局部状态；旧 ImGui 菜单缩放状态也已删除。HUD 通过 StructureUiState 的原子单字段 setter 修改目标字段，保留各自的原生缩放设置。
+- OreUI 界面设置提供语言选择与界面缩放（0.5～2.0，步进 0.1，默认 1.0，无重置按钮），配置增量保存于 `interface.uiScalePercent`（50～200），`tools/oreui/runtime_adapter.js` 在 `1.0` 时不覆盖原生 GUI 缩放、非 `1.0` 时按 `nativeScale * uiScale` 覆盖；旧 ImGui 菜单缩放状态已删除。HUD 通过 StructureUiState 的原子单字段 setter 修改目标字段，保留各自的原生缩放设置。
 - 实验性说明继续使用旧 UI 的原文和确认流程；取消无启用请求，确认后等原生授权/模式应答。后端独立校验授权，模式勾选不能由前端草稿自称成功。旧模式半径 1～4、单人模式半径 1～64，冷却 0～60 秒，原生与前端均验证。
 
 本次检查纠正了前端写死语言表/语言索引、复制快捷键默认值、将 Esc/退格/F11 当普通绑定、恢复默认仅改前端、知情授权和模式互斥只存在于草稿的问题。这些状态现在由原生拥有，正式页面只保留 UI 文本/弹窗；没有新增用户操作。检查范围是这些页面与共用设置/输入通路，不宣称完成全仓库审计。

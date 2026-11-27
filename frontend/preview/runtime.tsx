@@ -38,6 +38,10 @@ export function installPreviewRuntime() {
       fill="none" stroke="currentColor" strokeWidth="1.3">
       <path d="m12 3 9 5v9l-9 4-9-4V8l9-5Zm0 10L3 8m9 5 9-5m-9 5v8" />
     </svg></div>,
+    setUiScale: scale => {
+      const clamped = Number.isFinite(scale) ? Math.max(0.5, Math.min(2.0, scale)) : 1.0;
+      document.documentElement.style.fontSize = `${16 * clamped}px`;
+    },
   };
   window.__LHoloOreUiRuntime = runtime;
 }

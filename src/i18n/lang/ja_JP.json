@@ -269,7 +269,7 @@
   "label.localPlacementRadius": "設置半径 (1-64)",
   "label.autoPlacementCooldown": "投影に対応するブロック破壊後の自動設置クールダウン (0-60 秒)",
   "section.interfaceSettings": "インターフェース設定",
-  "label.uiScale": "UI の拡大率 (1-5)",
+  "label.uiScale": "UI スケール",
   "label.language": "言語",
   "label.followGameLanguage": "ゲームの言語に従う",
   "material.water": "水",

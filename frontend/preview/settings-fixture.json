@@ -3,7 +3,7 @@
     "hudShowOverallProgress": false, "hudShowProgress": true, "hudShowProjectedBlockName": true,
     "hudShowWrongState": true, "hudShowWrongType": true, "hudShowExtraBlocks": true,
     "materialHudEnabled": false, "materialHudStackConversion": false, "materialHudMaxItems": 5, "materialHudPosition": 3, "altWheelOffsetEnabled": true,
-    "placementRadius": 4, "localPlacementRadius": 4, "localPlacementLiquidsDisabled": true, "localShulkerRestock": false, "localCreativeRestock": false, "localCreativeRestockOverwrite": false, "autoPlacementCooldown": 10, "activeMode": 0, "language": "zh_CN"},
+    "placementRadius": 4, "localPlacementRadius": 4, "localPlacementLiquidsDisabled": true, "localShulkerRestock": false, "localCreativeRestock": false, "localCreativeRestockOverwrite": false, "autoPlacementCooldown": 10, "activeMode": 0, "language": "zh_CN", "uiScalePercent": 100},
   "defaults": [
     {"labelKey":"hotkey.openMenu", "groupKey":"hotkeys.group.menu", "key":77, "modifiers":2},
     {"labelKey":"hotkey.moveLeft", "groupKey":"hotkeys.group.movement", "key":37, "modifiers":1},

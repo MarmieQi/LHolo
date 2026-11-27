@@ -9,7 +9,35 @@ const lholoMenuHistory = i({history: {
 }});
 function LHoloUseMenuHistory() { return lholoMenuHistory; }
 
+let lholoUiScaleValue = 1.0;
+const lholoUiScaleListeners = new Set();
+function setLHoloUiScale(scale) {
+    const next = (typeof scale === 'number' && Number.isFinite(scale))
+        ? Math.max(0.5, Math.min(2.0, scale))
+        : 1.0;
+    if (next === lholoUiScaleValue) return;
+    lholoUiScaleValue = next;
+    for (const fn of lholoUiScaleListeners) fn(next);
+}
+
+function LHoloShellWrapper({children}) {
+    const display = e.useContext(Jl);
+    const setGuiScaleOverride = e.useContext(Iu);
+    const [uiScale, setUiScale] = e.useState(lholoUiScaleValue);
+    e.useEffect(() => {
+        lholoUiScaleListeners.add(setUiScale);
+        if (lholoUiScaleValue !== uiScale) setUiScale(lholoUiScaleValue);
+        return () => { lholoUiScaleListeners.delete(setUiScale); };
+    }, []);
+    G((base, mod) => {
+        const nativeScale = Math.max(1, (base || 2) + (mod || 0));
+        setGuiScaleOverride(uiScale === 1 ? undefined : nativeScale * uiScale);
+    }, [setGuiScaleOverride, uiScale], [display.guiScaleBase, display.guiScaleModifier]);
+    return e.createElement(yG, null, children);
+}
+
 window.__LHoloOreUiRuntime = {
+    setUiScale: setLHoloUiScale,
     React: e,
     Facet: {createFacet: R, createStaticFacet: i, useFacetState: Ge,
         useFacetUnwrap: W, useFacetMap: F, useFacetCallback: M, useFacetEffect: G, NO_VALUE: l},
@@ -54,7 +82,7 @@ window.__LHoloOreUiRuntime = {
     Shell: function (props) {
         return e.createElement(uw, {
             defaultRoute: '/lholo-menu', errorComponent: qN,
-            semanticCollection: IP, wrapperComponent: yG,
+            semanticCollection: IP, wrapperComponent: LHoloShellWrapper,
             deviceInformationOptions: {trackAllUserInput: true},
             isKeyboardHintsEnabled: true, theme: 'menus'
         }, e.createElement(Cl, {

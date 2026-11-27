@@ -5,7 +5,7 @@ import type {SettingsBridge, SettingsCommand, SettingsField, SettingsIntent, Set
 const initial: SettingsValues = {writeHudEnabled: true, hudEnabled: true, hudPosition: 1, hudShowFileName: true, hudShowLayer: true,
   hudShowOverallProgress: false, hudShowProgress: true, hudShowProjectedBlockName: true, hudShowWrongState: true,
   hudShowWrongType: true, hudShowExtraBlocks: true, materialHudEnabled: false, materialHudStackConversion: false, materialHudMaxItems: 5, materialHudPosition: 3,
-  altWheelOffsetEnabled: true, placementRadius: 4, localPlacementRadius: 4, localPlacementLiquidsDisabled: true, localShulkerRestock: false, localCreativeRestock: false, localCreativeRestockOverwrite: false, autoPlacementCooldown: 10, activeMode: 0, language: ''};
+  altWheelOffsetEnabled: true, placementRadius: 4, localPlacementRadius: 4, localPlacementLiquidsDisabled: true, localShulkerRestock: false, localCreativeRestock: false, localCreativeRestockOverwrite: false, autoPlacementCooldown: 10, activeMode: 0, language: '', uiScalePercent: 100};
 interface Editor {native: SettingsState | null; dirty: Partial<SettingsValues>; pending: SettingsIntent | null; failed: boolean}
 let nextId = 0;
 // Shared acknowledgement scheduling for these settings pages; page hooks own

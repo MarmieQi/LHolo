@@ -39,7 +39,7 @@ HUD 布局编辑使用独立原生 UIScene，入口仍在 OreUI HUD 设置页。
 
 OreUI 渐进迁移状态（2026-11-01）：聊天命令和菜单快捷键均打开当前自有样式的 OreUI 主菜单。旧 C++ ImGui 菜单、专用模型/控件/控制器和同步文件对话框已移除；动作提示统一由独立 OreUI 覆盖层绘制；全局快捷键由 input/WindowHotkeys 独立接收。
 主界面入口试验：菜单快捷键允许在 Idle + start_screen 打开同一页面；路由调度在主 ClientInstance::update 上执行，不依赖已有 OreUI View。进入/退出世界或加载状态变化关闭旧上下文页面。无世界时允许浏览文件和编辑偏好，禁用加载/恢复投影、选区/导出与辅助放置启用；前后端均校验 worldAvailable。主界面实机结果待验收。
-默认入口为建造任务，旧单文件“投影”页面和专用浏览/加载/恢复桥接已移除；材料清单位于任务页。前端任务意图经 TaskBindings/TaskProtocol 进入 app/TaskActions，复用现有加载器、合成器和投影会话；MenuBindings 只提供材料与运行上下文快照。OreUI 不提供缩放控件，不写旧 ImGui 缩放。协议、取消、测试与部署要求见
+默认入口为建造任务，旧单文件“投影”页面和专用浏览/加载/恢复桥接已移除；材料清单位于任务页。前端任务意图经 TaskBindings/TaskProtocol 进入 app/TaskActions，复用现有加载器、合成器和投影会话；MenuBindings 只提供材料与运行上下文快照。OreUI 界面缩放使用 `interface.uiScalePercent`（50～200，默认 100，即 0.5～2.0 倍），通过 `tools/oreui/runtime_adapter.js` 覆盖 OreUI GUI 缩放，不写旧 ImGui 缩放。协议、取消、测试与部署要求见
 [OreUI 迁移说明](docs/OREUI_MIGRATION.md)；前端入口见 [frontend/README.md](frontend/README.md)。
 材料清单经 useMaterials → MaterialsBridge → MenuBindings 读取 StructureUiState 的版本化一致快照。协议 iconId 仅用于显示，保留完整命名空间；版本私有格式转换集中在 tools/oreui/runtime_adapter.js，不借图标显示改变材料背包计数或辅助放置规则。原生快照未变化时不复制材料数组或重建 JSON。
 收尾审计、官方依据/私有适配边界与未闭合事项见 [OreUI 审计报告](docs/OREUI_AUDIT.md)。
@@ -49,7 +49,7 @@ OreUI 渐进迁移状态（2026-11-01）：聊天命令和菜单快捷键均打�
 
 渲染设置经 application/useRenderSettings → RenderSettingsBindings/Protocol → app/RenderSettingsActions 接入。AppKernel::processControlFrame 在客户端更新时编排结构动作与渲染设置，并复用 saveSettings。应用启用时向 Overlay 注册原子帧回调，Overlay 不依赖 AppKernel，关闭时移除回调。投影视觉参数仍由 projection 持有，分层和真实范围由 StructureSession / LayerSettings 持有；下层不得反向依赖 app 或 OreUI。请求只包含改动字段，控制帧校验原值、会话和分层轴，避免整页配置覆盖。
 
-HUD/快捷键/语言/实验性功能由 app/SettingsActions 统一接收字段或具体命令，原生持有实际状态；前端共享 useSettings 的应答调度，各页 hook 只持有局部编辑状态。语言列表/快捷键标签与默认值不在正式前端复制；input/HotkeyCapture 共用原有输入规则。实验性功能页的模式、知情确认和参数均为游戏进程内状态。缩放协议不开放。详见迁移说明。
+HUD/快捷键/语言/界面缩放/实验性功能由 app/SettingsActions 统一接收字段或具体命令，原生持有实际状态；前端共享 useSettings 的应答调度，各页 hook 只持有局部编辑状态。语言列表/快捷键标签与默认值不在正式前端复制；input/HotkeyCapture 共用原有输入规则。实验性功能页的模式、知情确认和参数均为游戏进程内状态。界面缩放通过 `uiScalePercent`（50～200，默认 100）持久化于 `interface.uiScalePercent`，协议仍拒绝旧 `uiScale`。详见迁移说明。
 
 建造任务的数据规则和原子存储位于 `src/tasks/`，`app/TaskActions` 负责编排、版本和发布。`structure/IndependentTaskFiles` 生成仅含原文件引用的任务快照，`TaskProjectionView` 统一解释顺序、切片、重叠获胜者与真实覆盖区域；原生投影保留每文件实例。选中文件决定变换、HUD/材料和放置目标。任务保存在 `data/tasks.json`，与全局配置及旧单文件恢复记录分离。实现边界和验证清单见 [建造任务](docs/TASKS_DESIGN.md)。
 

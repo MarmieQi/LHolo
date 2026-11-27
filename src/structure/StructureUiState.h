@@ -163,6 +163,8 @@ public:
     void requestSettingsSave();
     [[nodiscard]] PendingHotkeyActions consumePendingHotkeyActions();
 
+    [[nodiscard]] int uiScalePercent() const;
+    bool setUiScalePercent(int percent);
     [[nodiscard]] bool experimentalConsentGiven() const;
     void setExperimentalConsentGiven(bool given);
     [[nodiscard]] bool writeHudEnabled() const;
@@ -265,6 +267,7 @@ private:
     std::atomic_bool     mPendingSettingsSave{false};
     std::atomic_uint64_t mIgnoreHotkeyUntil{0};
 
+    std::atomic_int  mUiScalePercent{100};
     std::atomic_bool mExperimentalConsent{false};
     std::atomic_bool mMaterialHudEnabled{false};
     std::atomic_bool mWriteHudEnabled{true};

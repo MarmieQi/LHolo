@@ -321,6 +321,7 @@ void loadSettings() {
                 i18n::kDefaultLanguageCode
             );
         }
+        uiState().setUiScalePercent(settings.uiScalePercent);
         projection::setCorrectionFillOpacity(settings.correctionFillOpacity);
         projection::setCorrectionOutlineOpacity(settings.correctionOutlineOpacity);
         projection::setStructureBoundsEnabled(settings.structureBoundsEnabled);
@@ -392,6 +393,7 @@ void saveSettings() {
         auto const hud = uiState().hud();
         lholo::settings::Settings settings;
         settings.language = i18n::languagePreferenceCode();
+        settings.uiScalePercent = uiState().uiScalePercent();
         settings.correctionFillOpacity = projection::getCorrectionFillOpacity();
         settings.correctionOutlineOpacity = projection::getCorrectionOutlineOpacity();
         settings.structureBoundsEnabled = projection::getStructureBoundsEnabled();

@@ -269,7 +269,7 @@
   "label.localPlacementRadius": "Raio de colocação (1-64)",
   "label.autoPlacementCooldown": "Tempo de recarga após quebrar um bloco projetado (0-60 s)",
   "section.interfaceSettings": "Configurações de interface",
-  "label.uiScale": "Escala da interface (1-5)",
+  "label.uiScale": "Escala da interface",
   "label.language": "Idioma",
   "label.followGameLanguage": "Seguir idioma do jogo",
   "material.water": "Água",

@@ -30,7 +30,7 @@ LHolo 是当前开发项目。同级 OreUIProbe 仅供参考，ore-ui 提供官�
 
 - 渲染设置经 app/RenderSettingsActions 协调 projection 参数与 StructureSession 分层，AppKernel 控制帧执行；低层不反向依赖 app/OreUI。分层范围来自原生快照，材料编号仅在 UI 做一基转换，字段批次须检查原值/context/原轴。
 
-- HUD/快捷键/语言/实验性设置通过 app/SettingsActions 的字段/命令通路，不复制完整配置；正式前端不得硬编码原生语言表、快捷键默认值或自行捕获按键。input/HotkeyCapture 共享旧规则，模式是会话态。OreUI 不提供缩放控件，协议不接受 uiScale。
+- HUD/快捷键/语言/实验性设置通过 app/SettingsActions 的字段/命令通路，不复制完整配置；正式前端不得硬编码原生语言表、快捷键默认值或自行捕获按键。input/HotkeyCapture 共享旧规则，模式是会话态。OreUI 界面缩放使用 `uiScalePercent`（50～200，对应 0.5～2.0，默认 100）经 `runtime_adapter.js` 覆盖原生 GUI 缩放，协议仍拒绝旧 `uiScale`。
 
 - 文件预览使用独立 ui/preview 原生场景；通过 PreviewBindings/Protocol → app/StructurePreviewActions → StructureFileLoader 只读通道进入，不激活任务或修改选中文件。私有区块及原版渲染适配归预览渲染器所有，不依赖 projection/detail；见 docs/STRUCTURE_PREVIEW.md。原版捕获参数的 SDK 声明不完整，不直接调用 _render 或猜测其 ABI。
 - 预览解析使用 StructureReadQueue 独立 future/结果/取消通道，不计入任务 loading、不改任务缓存或投影会话。关闭先撤销结果发布，迟到结果丢弃；重开最多排队一个新请求，旧 async future 留到完成后回收，禁止在 UI 取消路径析构仍运行的 future。仅原生解析互斥及 Level 生命周期屏障与任务加载共享。
