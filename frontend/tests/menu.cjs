@@ -464,6 +464,15 @@ assert.equal(totalHeader.findAllByProps({ className: 'lholo-material-sort-icon i
 const missingHeader = materialModal.findAllByType('button').find(node => nodeText(node) === labels['column.missing']);
 renderer.act(() => missingHeader.props.onClick());
 assert.equal(missingHeader.findAllByProps({ className: 'lholo-material-sort-icon is-desc' }).length, 1, 'Clicking missing header sorts descending');
+const expandButton = materialModal.findAllByType('button').find(node => node.props.className?.includes('lholo-close-button') && nodeText(node) === '');
+assert(expandButton, 'Material modal header includes expand toggle button');
+renderer.act(() => expandButton.props.onClick());
+assert(materialModal.props.className.includes('is-expanded'), 'Expand button toggles expanded material modal');
+assert.equal(materialModal.findAllByProps({ className: 'lholo-material-filter-card' }).length, 0, 'Expanded view hides filter card');
+assert.equal(materialModal.findAllByProps({ className: 'lholo-material-summary' }).length, 0, 'Expanded view hides summary line');
+renderer.act(() => expandButton.props.onClick());
+assert(!materialModal.props.className.includes('is-expanded'), 'Clicking expand button again restores default modal');
+assert.equal(materialModal.findAllByProps({ className: 'lholo-material-filter-card' }).length, 1, 'Restored view shows filter card');
 renderer.act(() => materialModal.findAllByType('button').find(node => nodeText(node) === labels['button.close']).props.onClick());
 assert.equal(tree.root.findAllByProps({ className: 'lholo-material-modal' }).length, 0, 'Close button dismisses material modal');
 

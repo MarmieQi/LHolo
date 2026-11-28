@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   formatMaterialDisplayName,
   formatMaterialSummary,
@@ -21,6 +21,18 @@ const sortDescSvg = (
 const sortAscSvg = (
   <svg viewBox="0 0 12 12" fill="currentColor" style={{ width: '0.68rem', height: '0.68rem' }}>
     <path d="M2.2 8.2h7.6a.55.55 0 0 0 .44-.88L6.44 2.85a.55.55 0 0 0-.88 0L1.76 7.32a.55.55 0 0 0 .44.88Z" />
+  </svg>
+);
+
+const expandSvg = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.05rem', height: '1.05rem' }}>
+    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+  </svg>
+);
+
+const restoreSvg = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ width: '1.05rem', height: '1.05rem' }}>
+    <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" />
   </svg>
 );
 
@@ -67,6 +79,7 @@ export function MaterialListModal({
   sourceName: string;
   materialsState: MaterialsControls;
 }) {
+  const [expanded, setExpanded] = useState(false);
   if (!materialsState.isOpen) return null;
   const {
     materials,
@@ -85,39 +98,56 @@ export function MaterialListModal({
   } = materialsState;
 
   return <div className="lholo-modal-backdrop">
-    <div className="lholo-material-modal">
+    <div className={'lholo-material-modal' + (expanded ? ' is-expanded' : '')}>
       <div className="lholo-material-modal-header">
         <div className="lholo-material-title">{labels['material.listTitle']}</div>
-        <LHoloCloseButton label={labels['button.close']} onClick={closeModal} />
+        <div className="lholo-material-header-actions">
+          {hasLoadedStructure && ready && materials.length > 0 ? (
+            <NativeInteractive
+              label={labels['material.listTitle']}
+              className={'lholo-close-button' + (expanded ? ' is-active' : '')}
+              onClick={() => setExpanded(value => !value)}
+            >
+              {expanded ? restoreSvg : expandSvg}
+            </NativeInteractive>
+          ) : null}
+          <LHoloCloseButton label={labels['button.close']} onClick={closeModal} />
+        </div>
       </div>
-      {sourceName ? <SelectedFileContext label={labels['tasks.currentSelection']} name={sourceName} /> : null}
+      {sourceName && !(expanded && hasLoadedStructure && ready && materials.length > 0)
+        ? <SelectedFileContext label={labels['tasks.currentSelection']} name={sourceName} />
+        : null}
       {!hasLoadedStructure ? (
         <div className="lholo-muted lholo-material-empty">{labels['status.notLoaded']}</div>
       ) : !ready ? (
         <div className="lholo-muted lholo-material-empty">{labels['material.loading']}</div>
       ) : (
         <>
-          <div className="lholo-material-filter-card">
-            <div className="lholo-material-filter-left">
-              <div className="lholo-material-filter-label">{labels['material.scope']}</div>
-              <LHoloSelect
-                label={labels['material.scope']}
-                size="compact"
-                value={scope === 'render' ? 1 : 0}
-                options={[labels['material.scopeAll'], labels['material.scopeRenderRange']]}
-                onChange={index => setScope(index === 1 ? 'render' : 'all')}
-              />
-            </div>
-            <LHoloCheckbox
-              label={labels['material.hideCompleted']}
-              value={hideCompleted}
-              disabled={!progressReady || materials.length === 0}
-              onChange={setHideCompleted}
-            />
-          </div>
-          <div className="lholo-material-summary">
-            {formatMaterialSummary(materials, progressReady, progressScanning, labels)}
-          </div>
+          {!(expanded && materials.length > 0) ? (
+            <>
+              <div className="lholo-material-filter-card">
+                <div className="lholo-material-filter-left">
+                  <div className="lholo-material-filter-label">{labels['material.scope']}</div>
+                  <LHoloSelect
+                    label={labels['material.scope']}
+                    size="compact"
+                    value={scope === 'render' ? 1 : 0}
+                    options={[labels['material.scopeAll'], labels['material.scopeRenderRange']]}
+                    onChange={index => setScope(index === 1 ? 'render' : 'all')}
+                  />
+                </div>
+                <LHoloCheckbox
+                  label={labels['material.hideCompleted']}
+                  value={hideCompleted}
+                  disabled={!progressReady || materials.length === 0}
+                  onChange={setHideCompleted}
+                />
+              </div>
+              <div className="lholo-material-summary">
+                {formatMaterialSummary(materials, progressReady, progressScanning, labels)}
+              </div>
+            </>
+          ) : null}
           {materials.length === 0 ? (
             <div className="lholo-muted lholo-material-empty">
               {labels['hint.noPlaceableMaterials']}
